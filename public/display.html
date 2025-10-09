@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Timer Display</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #000;
+            color: white;
+            overflow: hidden;
+            height: 100vh;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            padding: 2rem;
+        }
+        .timer-display {
+            font-size: 15vw;
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 2rem;
+            transition: color 0.5s ease;
+            text-shadow: 0 0 20px rgba(255,255,255,0.5);
+        }
+        .clock-display {
+            font-size: 8vw;
+            font-weight: normal;
+            text-align: center;
+            margin-bottom: 1rem;
+            opacity: 0.8;
+        }
+        .status {
+            font-size: 3vw;
+            margin-bottom: 2rem;
+            opacity: 0.7;
+        }
+        .controls {
+            position: absolute;
+            top: 2rem;
+            left: 2rem;
+            display: flex;
+            gap: 1rem;
+        }
+        .control-button {
+            padding: 0.5rem 1rem;
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1rem;
+            backdrop-filter: blur(10px);
+        }
+        .control-button:hover {
+            background: rgba(255,255,255,0.3);
+        }
+        .settings {
+            position: absolute;
+            top: 2rem;
+            right: 2rem;
+        }
+        .fullscreen-button {
+            padding: 0.5rem 1rem;
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1rem;
+            backdrop-filter: blur(10px);
+        }
+        .fullscreen-button:hover {
+            background: rgba(255,255,255,0.3);
+        }
+        /* Color themes */
+        .color-normal {
+            color: #28a745; /* Green */
+        }
+        .color-amber {
+            color: #ffc107; /* Amber */
+        }
+        .color-red {
+            color: #dc3545; /* Red */
+        }
+        .color-finished {
+            color: #6f42c1; /* Purple for finished */
+        }
+        .blinking {
+            animation: blink 1s infinite;
+        }
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0.3; }
+        }
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .timer-display {
+                font-size: 20vw;
+            }
+            .clock-display {
+                font-size: 10vw;
+            }
+            .status {
+                font-size: 4vw;
+            }
+        }
+        @media (max-width: 480px) {
+            .timer-display {
+                font-size: 25vw;
+            }
+            .clock-display {
+                font-size: 12vw;
+            }
+            .status {
+                font-size: 5vw;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="settings">
+            <button class="fullscreen-button" onclick="toggleFullscreen()">Fullscreen</button>
+        </div>
+
+        <div id="timerDisplay" class="timer-display color-normal">00:00</div>
+        <div id="clockDisplay" class="clock-display" style="display: none;">00:00:00</div>
+        <div id="status" class="status">Ready</div>
+
+        <div class="controls">
+            <button class="control-button" onclick="window.open('/control', '_blank')">Control</button>
+            <button class="control-button" onclick="window.open('/', '_blank')">Home</button>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        let currentState = {};
+        let blinkInterval = null;
+
+        socket.on('timerState', (state) => {
+            currentState = state;
+            updateDisplay();
+        });
+
+        function updateDisplay() {
+            const timerEl = document.getElementById('timerDisplay');
+            const clockEl = document.getElementById('clockDisplay');
+            const statusEl = document.getElementById('status');
+
+            if (currentState.showClock) {
+                timerEl.style.display = 'none';
+                clockEl.style.display = 'block';
+                updateClockDisplay();
+            } else {
+                timerEl.style.display = 'block';
+                clockEl.style.display = 'none';
+                updateTimerDisplay();
+            }
+
+            // Update status
+            statusEl.textContent = getStatusText();
+        }
+
+        function updateTimerDisplay() {
+            const timerEl = document.getElementById('timerDisplay');
+            const { mode, durationMs, startTime, pauseTime, speed, amberThresholdMs, redThresholdMs, countUp } = currentState;
+
+            let remainingMs = durationMs;
+            let isFinished = false;
+
+            if (mode === 'running' && startTime) {
+                const now = Date.now();
+                const elapsedMs = (now - startTime) * speed;
+                remainingMs = durationMs - elapsedMs;
+
+                if (remainingMs <= 0) {
+                    isFinished = true;
+                    if (countUp) {
+                        remainingMs = Math.abs(remainingMs); // Show elapsed time after zero
+                    } else {
+                        remainingMs = 0;
+                    }
+                }
+            }
+
+            // Update color based on remaining time
+            updateTimerColor(timerEl, remainingMs, durationMs, amberThresholdMs, redThresholdMs, isFinished);
+
+            // Format time
+            const totalSeconds = Math.floor(remainingMs / 1000);
+            const minutes = Math.floor(totalSeconds / 60);
+            const seconds = totalSeconds % 60;
+            const timeStr = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+
+            timerEl.textContent = timeStr;
+
+            // Handle blinking for finished state
+            if (isFinished && !countUp) {
+                if (!blinkInterval) {
+                    blinkInterval = setInterval(() => {
+                        timerEl.classList.toggle('blinking');
+                    }, 1000);
+                }
+            } else {
+                if (blinkInterval) {
+                    clearInterval(blinkInterval);
+                    blinkInterval = null;
+                }
+                timerEl.classList.remove('blinking');
+            }
+        }
+
+        function updateClockDisplay() {
+            const clockEl = document.getElementById('clockDisplay');
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString('en-GB', {
+                hour12: false,
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+            clockEl.textContent = timeStr;
+        }
+
+        function updateTimerColor(element, remainingMs, totalMs, amberThresholdMs, redThresholdMs, isFinished) {
+            element.className = 'timer-display';
+
+            if (isFinished) {
+                element.classList.add('color-finished');
+            } else if (remainingMs <= redThresholdMs) {
+                element.classList.add('color-red');
+            } else if (remainingMs <= amberThresholdMs) {
+                element.classList.add('color-amber');
+            } else {
+                element.classList.add('color-normal');
+            }
+        }
+
+        function getStatusText() {
+            const { mode, showClock } = currentState;
+
+            if (showClock) {
+                return 'Clock Mode';
+            }
+
+            switch (mode) {
+                case 'running':
+                    return 'Running';
+                case 'paused':
+                    return 'Paused';
+                case 'stopped':
+                default:
+                    return 'Ready';
+            }
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => {
+                    console.log('Fullscreen request failed:', err);
+                });
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Update clock every second if in clock mode
+        setInterval(() => {
+            if (currentState.showClock) {
+                updateClockDisplay();
+            }
+        }, 1000);
+
+        // Handle fullscreen change
+        document.addEventListener('fullscreenchange', () => {
+            const button = document.querySelector('.fullscreen-button');
+            if (document.fullscreenElement) {
+                button.textContent = 'Exit Fullscreen';
+            } else {
+                button.textContent = 'Fullscreen';
+            }
+        });
+
+        // Initial display update
+        updateDisplay();
+    </script>
+</body>
+</html>

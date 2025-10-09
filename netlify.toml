@@ -1,0 +1,13 @@
+{
+  "name": "presentation-timer",
+  "version": "1.0.0",
+  "build": {
+    "command": "npm install",
+    "publish": "."
+  },
+  "functions": {
+    "server.js": {
+      "runtime": "nodejs18.x"
+    }
+  }
+}
