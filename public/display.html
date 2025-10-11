@@ -24,7 +24,7 @@
             padding: 2rem;
         }
         .timer-display {
-            font-size: 15vw;
+            font-size: 18vw;
             font-weight: bold;
             text-align: center;
             margin-bottom: 2rem;
@@ -32,7 +32,7 @@
             text-shadow: 0 0 20px rgba(255,255,255,0.5);
         }
         .clock-display {
-            font-size: 8vw;
+            font-size: 10vw;
             font-weight: normal;
             text-align: center;
             margin-bottom: 1rem;
@@ -146,13 +146,16 @@
         const socket = io();
         let currentState = {};
         let blinkInterval = null;
+        let displaySeconds = null; // smoothed displayed seconds
+        let lastFrameTime = performance.now();
 
         socket.on('timerState', (state) => {
             currentState = state;
-            updateDisplay();
+            // On any state update, ensure we refresh immediately
+            updateDisplay(true);
         });
 
-        function updateDisplay() {
+        function updateDisplay(forceImmediate = false) {
             const timerEl = document.getElementById('timerDisplay');
             const clockEl = document.getElementById('clockDisplay');
             const statusEl = document.getElementById('status');
@@ -164,29 +167,30 @@
             } else {
                 timerEl.style.display = 'block';
                 clockEl.style.display = 'none';
-                updateTimerDisplay();
+                updateTimerDisplay(forceImmediate);
             }
 
             // Update status
             statusEl.textContent = getStatusText();
         }
 
-        function updateTimerDisplay() {
+        function updateTimerDisplay(forceImmediate = false) {
             const timerEl = document.getElementById('timerDisplay');
-            const { mode, durationMs, startTime, pauseTime, speed, amberThresholdMs, redThresholdMs, countUp } = currentState;
+            const { mode, durationMs, startTime, pauseTime, accumulatedPauseMs = 0, speed = 1.0, amberThresholdMs, redThresholdMs, countUp } = currentState;
 
-            let remainingMs = durationMs;
+            let remainingMs = durationMs || 0;
             let isFinished = false;
 
-            if (mode === 'running' && startTime) {
+            if (startTime) {
                 const now = Date.now();
-                const elapsedMs = (now - startTime) * speed;
+                const pausedOffset = pauseTime ? (pauseTime - startTime) - accumulatedPauseMs : (now - startTime) - accumulatedPauseMs;
+                const elapsedMs = Math.max(0, pausedOffset) * speed;
                 remainingMs = durationMs - elapsedMs;
 
                 if (remainingMs <= 0) {
                     isFinished = true;
                     if (countUp) {
-                        remainingMs = Math.abs(remainingMs); // Show elapsed time after zero
+                        remainingMs = Math.abs(remainingMs); // elapsed since zero
                     } else {
                         remainingMs = 0;
                     }
@@ -197,10 +201,25 @@
             updateTimerColor(timerEl, remainingMs, durationMs, amberThresholdMs, redThresholdMs, isFinished);
 
             // Format time
-            const totalSeconds = Math.floor(remainingMs / 1000);
-            const minutes = Math.floor(totalSeconds / 60);
-            const seconds = totalSeconds % 60;
-            const timeStr = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            const targetSeconds = Math.floor(remainingMs / 1000);
+
+            // Initialize or update smoothed displaySeconds
+            if (displaySeconds === null || forceImmediate) {
+                displaySeconds = targetSeconds;
+            } else {
+                // Smoothly approach target, avoid skipping more than 1 per frame
+                if (displaySeconds > targetSeconds) {
+                    displaySeconds = Math.max(targetSeconds, displaySeconds - 1);
+                } else if (displaySeconds < targetSeconds) {
+                    displaySeconds = Math.min(targetSeconds, displaySeconds + 1);
+                }
+            }
+
+            const showSeconds = displaySeconds;
+            const sign = (isFinished && countUp) ? '-' : '';
+            const minutes = Math.floor(showSeconds / 60);
+            const seconds = Math.abs(showSeconds % 60);
+            const timeStr = `${sign}${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 
             timerEl.textContent = timeStr;
 
@@ -274,12 +293,19 @@
             }
         }
 
-        // Update clock every second if in clock mode
-        setInterval(() => {
-            if (currentState.showClock) {
+        // Animation loop to refresh display smoothly
+        function animate() {
+            const now = performance.now();
+            if (!currentState.showClock) {
+                updateTimerDisplay();
+            } else if (now - lastFrameTime > 500) {
+                // update clock twice a second for freshness
                 updateClockDisplay();
+                lastFrameTime = now;
             }
-        }, 1000);
+            requestAnimationFrame(animate);
+        }
+        requestAnimationFrame(animate);
 
         // Handle fullscreen change
         document.addEventListener('fullscreenchange', () => {

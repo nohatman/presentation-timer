@@ -167,7 +167,7 @@
                     <input type="radio" name="mode" value="endAt"> End At Time
                 </label>
                 <input type="time" id="endAtTime">
-                <small>Timer will end at this clock time</small>
+                <small>Timer will end at this clock time (updates live)</small>
             </div>
         </div>
 
@@ -338,21 +338,48 @@
             document.getElementById('redSec').value = redSec;
         }
 
+        // Emit live settings to server when inputs change
+        function emitSettings() {
+            const mode = document.querySelector('input[name="mode"]:checked').value;
+            const payload = {
+                durationMs: getDurationMs(),
+                speed: parseFloat(document.getElementById('speed').value) || 1.0,
+                amberThresholdMs: getAmberThresholdMs(),
+                redThresholdMs: getRedThresholdMs(),
+                countUp: document.getElementById('countUp').checked,
+                showClock: document.getElementById('showClock').checked
+            };
+            if (mode === 'endAt') {
+                payload.endAtTarget = document.getElementById('endAtTime').value;
+            }
+            socket.emit('updateSettings', payload);
+        }
+
         // Load saved settings from localStorage
         window.addEventListener('load', () => {
             const saved = localStorage.getItem('timerSettings');
             if (saved) {
                 const settings = JSON.parse(saved);
-                document.getElementById('durationMin').value = settings.durationMin || 30;
-                document.getElementById('durationSec').value = settings.durationSec || 0;
-                document.getElementById('amberMin').value = settings.amberMin || 5;
-                document.getElementById('amberSec').value = settings.amberSec || 0;
-                document.getElementById('redMin').value = settings.redMin || 2;
-                document.getElementById('redSec').value = settings.redSec || 0;
+                document.getElementById('durationMin').value = settings.durationMin ?? 30;
+                document.getElementById('durationSec').value = settings.durationSec ?? 0;
+                document.getElementById('amberMin').value = settings.amberMin ?? 5;
+                document.getElementById('amberSec').value = settings.amberSec ?? 0;
+                document.getElementById('redMin').value = settings.redMin ?? 2;
+                document.getElementById('redSec').value = settings.redSec ?? 0;
                 document.getElementById('speed').value = settings.speed || 1.0;
                 document.getElementById('countUp').checked = settings.countUp || false;
                 document.getElementById('showClock').checked = settings.showClock || false;
+            } else {
+                // Set sensible defaults on first load
+                document.getElementById('durationMin').value = 30;
+                document.getElementById('durationSec').value = 0;
+                document.getElementById('amberMin').value = 5;
+                document.getElementById('amberSec').value = 0;
+                document.getElementById('redMin').value = 2;
+                document.getElementById('redSec').value = 0;
             }
+            // Send initial settings to server so thresholds match immediately
+            emitSettings();
         });
 
         // Save settings to localStorage
@@ -371,9 +398,16 @@
             localStorage.setItem('timerSettings', JSON.stringify(settings));
         }
 
-        // Auto-save settings when changed
+        // Auto-save settings when changed and emit live to server
         document.querySelectorAll('input').forEach(input => {
-            input.addEventListener('change', saveSettings);
+            input.addEventListener('change', () => {
+                saveSettings();
+                emitSettings();
+            });
+            input.addEventListener('input', () => {
+                saveSettings();
+                emitSettings();
+            });
         });
     </script>
 </body>
