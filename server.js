@@ -48,11 +48,11 @@ io.on('connection', (socket) => {
     timerState.startTime = Date.now();
     timerState.pauseTime = null;
     timerState.accumulatedPauseMs = 0;
-    if (data.durationMs) timerState.durationMs = data.durationMs;
+    if (data.durationMs !== undefined) timerState.durationMs = data.durationMs;
     if (data.speed !== undefined) timerState.speed = data.speed;
     if (data.amberThresholdMs !== undefined) timerState.amberThresholdMs = data.amberThresholdMs;
     if (data.redThresholdMs !== undefined) timerState.redThresholdMs = data.redThresholdMs;
-    if (data.endAtTarget) {
+    if (data.durationMs === undefined && data.endAtTarget) {
       timerState.endAtTarget = data.endAtTarget;
       // Compute duration from endAtTarget (supports next day)
       const now = new Date();
@@ -108,7 +108,7 @@ io.on('connection', (socket) => {
     if (data.showClock !== undefined) timerState.showClock = data.showClock;
 
     // If setting end-at time, calculate duration (supports next day)
-    if (data.endAtTarget) {
+    if (data.durationMs === undefined && data.endAtTarget) {
       const now = new Date();
       const endTime = new Date(now);
       const [hours, minutes] = data.endAtTarget.split(':');
