@@ -298,6 +298,15 @@
                 data.durationMs = getDurationMs();
             } else {
                 data.endAtTarget = document.getElementById('endAtTime').value;
+                // Compute duration locally to avoid server timezone issues
+                const now = new Date();
+                const end = new Date(now);
+                const [h, m] = (data.endAtTarget || '00:00').split(':');
+                end.setHours(parseInt(h||'0'), parseInt(m||'0'), 0, 0);
+                if (end <= now) {
+                    end.setDate(end.getDate() + 1);
+                }
+                data.durationMs = Math.max(0, end.getTime() - now.getTime());
             }
 
             socket.emit('startTimer', data);
@@ -351,6 +360,15 @@
             };
             if (mode === 'endAt') {
                 payload.endAtTarget = document.getElementById('endAtTime').value;
+                // Compute and include duration from local clock
+                const now = new Date();
+                const end = new Date(now);
+                const [h, m] = (payload.endAtTarget || '00:00').split(':');
+                end.setHours(parseInt(h||'0'), parseInt(m||'0'), 0, 0);
+                if (end <= now) {
+                    end.setDate(end.getDate() + 1);
+                }
+                payload.durationMs = Math.max(0, end.getTime() - now.getTime());
             }
             socket.emit('updateSettings', payload);
         }
