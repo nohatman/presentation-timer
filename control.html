@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Timer Control</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 1rem;
+            background: #f8f9fa;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        .section {
+            margin-bottom: 2rem;
+            padding: 1.5rem;
+            border: 1px solid #e9ecef;
+            border-radius: 5px;
+        }
+        .form-group {
+            margin-bottom: 1rem;
+        }
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+            color: #495057;
+        }
+        input, select {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            font-size: 1rem;
+        }
+        .time-input {
+            display: flex;
+            gap: 0.5rem;
+        }
+        .time-input input {
+            flex: 1;
+        }
+        .button-group {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            margin-top: 2rem;
+        }
+        .button {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 4px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .button.primary {
+            background: #007bff;
+            color: white;
+        }
+        .button.primary:hover {
+            background: #0056b3;
+        }
+        .button.secondary {
+            background: #6c757d;
+            color: white;
+        }
+        .button.secondary:hover {
+            background: #545b62;
+        }
+        .button.danger {
+            background: #dc3545;
+            color: white;
+        }
+        .button.danger:hover {
+            background: #c82333;
+        }
+        .presets {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .preset-button {
+            padding: 0.5rem 1rem;
+            background: #e9ecef;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+        .preset-button:hover {
+            background: #dee2e6;
+        }
+        .status {
+            text-align: center;
+            padding: 1rem;
+            margin: 1rem 0;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .status.running {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status.paused {
+            background: #fff3cd;
+            color: #856404;
+        }
+        .status.stopped {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .preview {
+            height: 60px;
+            border-radius: 4px;
+            margin: 1rem 0;
+            transition: background 0.3s;
+        }
+        .links {
+            text-align: center;
+            margin-top: 2rem;
+        }
+        .links a {
+            color: #007bff;
+            text-decoration: none;
+            margin: 0 1rem;
+        }
+        .links a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Timer Control</h1>
+
+        <div class="status" id="status">Loading...</div>
+
+        <div class="section">
+            <h3>Timer Mode</h3>
+            <div class="form-group">
+                <label>
+                    <input type="radio" name="mode" value="duration" checked> Set Duration
+                </label>
+                <div class="time-input">
+                    <input type="number" id="durationMin" placeholder="30" min="0" max="999"> minutes
+                    <input type="number" id="durationSec" placeholder="0" min="0" max="59"> seconds
+                </div>
+            </div>
+            <div class="form-group">
+                <label>
+                    <input type="radio" name="mode" value="endAt"> End At Time
+                </label>
+                <input type="time" id="endAtTime">
+                <small>Timer will end at this clock time (updates live)</small>
+            </div>
+        </div>
+
+        <div class="section">
+            <h3>Thresholds & Speed</h3>
+            <div class="form-group">
+                <label for="amberThreshold">Amber Warning (minutes:seconds)</label>
+                <div class="time-input">
+                    <input type="number" id="amberMin" placeholder="5" min="0" max="999"> m
+                    <input type="number" id="amberSec" placeholder="0" min="0" max="59"> s
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="redThreshold">Red Warning (minutes:seconds)</label>
+                <div class="time-input">
+                    <input type="number" id="redMin" placeholder="2" min="0" max="999"> m
+                    <input type="number" id="redSec" placeholder="0" min="0" max="59"> s
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="speed">Speed Multiplier</label>
+                <input type="number" id="speed" step="0.1" min="0.1" max="5" value="1.0">
+                <small>1.0 = normal speed, 1.5 = 50% faster, 0.5 = half speed</small>
+            </div>
+        </div>
+
+        <div class="section">
+            <h3>Display Options</h3>
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" id="countUp"> Count up after zero
+                </label>
+            </div>
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" id="showClock"> Show clock instead of timer
+                </label>
+            </div>
+        </div>
+
+        <div class="section">
+            <h3>Quick Presets (Ctrl+Click to save)</h3>
+            <div class="presets" id="presetsGrid"></div>
+        </div>
+
+        <div class="section">
+            <h3>Adjust Time</h3>
+            <div class="button-group">
+                <button class="button secondary" onclick="nudge(-5*60*1000)">-5 min</button>
+                <button class="button secondary" onclick="nudge(-60*1000)">-1 min</button>
+                <button class="button secondary" onclick="nudge(60*1000)">+1 min</button>
+                <button class="button secondary" onclick="nudge(5*60*1000)">+5 min</button>
+            </div>
+        </div>
+
+        <div class="section">
+            <h3>Output Mode</h3>
+            <div class="button-group">
+                <button class="button" id="modeTimerBtn" onclick="setOutputMode('timer')">Timer</button>
+                <button class="button" id="modeClockBtn" onclick="setOutputMode('clock')">Clock</button>
+            </div>
+        </div>
+
+        <div class="preview" id="colorPreview"></div>
+
+        <div class="button-group">
+            <button class="button primary" onclick="startTimer()">Start</button>
+            <button class="button secondary" onclick="pauseTimer()">Pause</button>
+            <button class="button secondary" onclick="resumeTimer()">Resume</button>
+            <button class="button danger" onclick="resetTimer()">Reset</button>
+        </div>
+
+        <div class="links">
+            <a href="/display" target="_blank">Open Display Screen</a> |
+            <a href="/">Home</a>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        let currentState = {};
+
+        socket.on('timerState', (state) => {
+            currentState = state;
+            updateStatus();
+            updatePreview();
+        });
+
+        function updateStatus() {
+            const statusEl = document.getElementById('status');
+            const modeClass = currentState.mode;
+            statusEl.className = `status ${modeClass}`;
+            statusEl.textContent = `Timer: ${modeClass.charAt(0).toUpperCase() + modeClass.slice(1)}`;
+        }
+
+        function updatePreview() {
+            const previewEl = document.getElementById('colorPreview');
+            // This would show the current color based on remaining time
+            previewEl.style.background = getCurrentColor();
+        }
+
+        function getCurrentColor() {
+            // Simplified color logic - would be more sophisticated in display
+            if (currentState.mode === 'stopped') return '#f8d7da';
+            if (currentState.mode === 'paused') return '#fff3cd';
+            return '#d4edda'; // running - green
+        }
+
+        function getDurationMs() {
+            const min = parseInt(document.getElementById('durationMin').value) || 0;
+            const sec = parseInt(document.getElementById('durationSec').value) || 0;
+            return (min * 60 + sec) * 1000;
+        }
+
+        function getAmberThresholdMs() {
+            const min = parseInt(document.getElementById('amberMin').value) || 0;
+            const sec = parseInt(document.getElementById('amberSec').value) || 0;
+            return (min * 60 + sec) * 1000;
+        }
+
+        function getRedThresholdMs() {
+            const min = parseInt(document.getElementById('redMin').value) || 0;
+            const sec = parseInt(document.getElementById('redSec').value) || 0;
+            return (min * 60 + sec) * 1000;
+        }
+
+        function startTimer() {
+            const mode = document.querySelector('input[name="mode"]:checked').value;
+            const data = {
+                speed: parseFloat(document.getElementById('speed').value) || 1.0,
+                amberThresholdMs: getAmberThresholdMs(),
+                redThresholdMs: getRedThresholdMs(),
+                countUp: document.getElementById('countUp').checked,
+                showClock: document.getElementById('showClock').checked
+            };
+
+            if (mode === 'duration') {
+                data.durationMs = getDurationMs();
+            } else {
+                data.endAtTarget = document.getElementById('endAtTime').value;
+                // Compute duration locally to avoid server timezone issues
+                const now = new Date();
+                const end = new Date(now);
+                const [h, m] = (data.endAtTarget || '00:00').split(':');
+                end.setHours(parseInt(h||'0'), parseInt(m||'0'), 0, 0);
+                if (end <= now) {
+                    end.setDate(end.getDate() + 1);
+                }
+                data.durationMs = Math.max(0, end.getTime() - now.getTime());
+            }
+
+            socket.emit('startTimer', data);
+        }
+
+        function pauseTimer() {
+            socket.emit('pauseTimer');
+        }
+
+        function resumeTimer() {
+            socket.emit('resumeTimer');
+        }
+
+        function resetTimer() {
+            socket.emit('resetTimer');
+        }
+
+        // Presets: 8 editable slots persisted in localStorage
+        const DEFAULT_PRESETS = [5,10,15,20,25,30,35,45].map(m=>m*60*1000);
+        function loadPresets() {
+            try {
+                const raw = localStorage.getItem('timerPresets');
+                const arr = raw ? JSON.parse(raw) : DEFAULT_PRESETS;
+                if (Array.isArray(arr) && arr.length === 8) return arr;
+            } catch {}
+            return DEFAULT_PRESETS;
+        }
+        function savePresets(presets) {
+            localStorage.setItem('timerPresets', JSON.stringify(presets));
+        }
+        function msToLabel(ms){
+            const min = Math.floor(ms/60000);
+            const sec = Math.floor((ms%60000)/1000);
+            return `${min.toString().padStart(2,'0')}:${sec.toString().padStart(2,'0')}`;
+        }
+        function renderPresets(){
+            const grid = document.getElementById('presetsGrid');
+            grid.innerHTML='';
+            const presets = loadPresets();
+            presets.forEach((ms,idx)=>{
+                const btn = document.createElement('button');
+                btn.className='preset-button';
+                btn.textContent = msToLabel(ms);
+                btn.title = 'Click to apply; Ctrl+Click to save current duration to this preset';
+                btn.addEventListener('click', (e)=>{
+                    if (e.ctrlKey || e.metaKey){
+                        // save current duration to this preset
+                        const newMs = getDurationMs();
+                        const updated = loadPresets();
+                        updated[idx]=newMs;
+                        savePresets(updated);
+                        renderPresets();
+                    } else {
+                        applyPreset(ms);
+                    }
+                });
+                grid.appendChild(btn);
+            });
+        }
+        function applyPreset(durationMs) {
+            const minutes = Math.floor(durationMs / (60 * 1000));
+            const seconds = Math.floor((durationMs % (60 * 1000)) / 1000);
+            document.getElementById('durationMin').value = minutes;
+            document.getElementById('durationSec').value = seconds;
+            document.querySelector('input[name="mode"][value="duration"]').checked = true;
+            emitSettings();
+        }
+
+        // Nudge helpers
+        function nudge(deltaMs){
+            socket.emit('nudgeTimer', deltaMs);
+        }
+
+        // Output mode toggle
+        function setOutputMode(mode){
+            socket.emit('setOutputMode', mode);
+            // also mirror immediate UI feedback
+            document.getElementById('modeTimerBtn').classList.toggle('primary', mode==='timer');
+            document.getElementById('modeClockBtn').classList.toggle('primary', mode==='clock');
+        }
+
+        // Emit live settings to server when inputs change
+        function emitSettings() {
+            const mode = document.querySelector('input[name="mode"]:checked').value;
+            const payload = {
+                durationMs: getDurationMs(),
+                speed: parseFloat(document.getElementById('speed').value) || 1.0,
+                amberThresholdMs: getAmberThresholdMs(),
+                redThresholdMs: getRedThresholdMs(),
+                countUp: document.getElementById('countUp').checked,
+                showClock: document.getElementById('showClock').checked
+            };
+            if (mode === 'endAt') {
+                payload.endAtTarget = document.getElementById('endAtTime').value;
+                // Compute and include duration from local clock
+                const now = new Date();
+                const end = new Date(now);
+                const [h, m] = (payload.endAtTarget || '00:00').split(':');
+                end.setHours(parseInt(h||'0'), parseInt(m||'0'), 0, 0);
+                if (end <= now) {
+                    end.setDate(end.getDate() + 1);
+                }
+                payload.durationMs = Math.max(0, end.getTime() - now.getTime());
+            }
+            socket.emit('updateSettings', payload);
+        }
+
+        // Load saved settings from localStorage
+        window.addEventListener('load', () => {
+            const saved = localStorage.getItem('timerSettings');
+            if (saved) {
+                const settings = JSON.parse(saved);
+                document.getElementById('durationMin').value = settings.durationMin ?? 30;
+                document.getElementById('durationSec').value = settings.durationSec ?? 0;
+                document.getElementById('amberMin').value = settings.amberMin ?? 5;
+                document.getElementById('amberSec').value = settings.amberSec ?? 0;
+                document.getElementById('redMin').value = settings.redMin ?? 2;
+                document.getElementById('redSec').value = settings.redSec ?? 0;
+                document.getElementById('speed').value = settings.speed || 1.0;
+                document.getElementById('countUp').checked = settings.countUp || false;
+                document.getElementById('showClock').checked = settings.showClock || false;
+            } else {
+                // Set sensible defaults on first load
+                document.getElementById('durationMin').value = 30;
+                document.getElementById('durationSec').value = 0;
+                document.getElementById('amberMin').value = 5;
+                document.getElementById('amberSec').value = 0;
+                document.getElementById('redMin').value = 2;
+                document.getElementById('redSec').value = 0;
+            }
+            // Send initial settings to server so thresholds match immediately
+            emitSettings();
+            // Render presets grid
+            renderPresets();
+            // Initialize output mode buttons state
+            setOutputMode('timer');
+        });
+
+        // Save settings to localStorage
+        function saveSettings() {
+            const settings = {
+                durationMin: document.getElementById('durationMin').value,
+                durationSec: document.getElementById('durationSec').value,
+                amberMin: document.getElementById('amberMin').value,
+                amberSec: document.getElementById('amberSec').value,
+                redMin: document.getElementById('redMin').value,
+                redSec: document.getElementById('redSec').value,
+                speed: document.getElementById('speed').value,
+                countUp: document.getElementById('countUp').checked,
+                showClock: document.getElementById('showClock').checked
+            };
+            localStorage.setItem('timerSettings', JSON.stringify(settings));
+        }
+
+        // Auto-save settings when changed and emit live to server
+        document.querySelectorAll('input').forEach(input => {
+            input.addEventListener('change', () => {
+                saveSettings();
+                emitSettings();
+            });
+            input.addEventListener('input', () => {
+                saveSettings();
+                emitSettings();
+            });
+        });
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e)=>{
+            if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+            if (e.code === 'Space') { e.preventDefault();
+                if (currentState.mode === 'running') pauseTimer(); else if (currentState.mode==='paused') resumeTimer(); else startTimer();
+            }
+            if (e.key.toLowerCase() === 'r') { e.preventDefault(); resetTimer(); }
+            if (e.key === '+' || e.key === '=') { e.preventDefault(); nudge(e.shiftKey? 5*60*1000 : 60*1000); }
+            if (e.key === '-' || e.key === '_') { e.preventDefault(); nudge(e.shiftKey? -5*60*1000 : -60*1000); }
+        });
+    </script>
+</body>
+</html>

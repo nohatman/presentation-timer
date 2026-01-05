@@ -32,7 +32,8 @@ let timerState = {
   redThresholdMs: 2 * 60 * 1000, // 2 minutes
   endAtTarget: null,
   countUp: false,
-  showClock: false
+  showClock: false,
+  outputMode: 'timer' // 'timer' | 'clock'
 };
 
 // Socket.IO connection handling
@@ -67,6 +68,25 @@ io.on('connection', (socket) => {
     if (data.countUp !== undefined) timerState.countUp = data.countUp;
     if (data.showClock !== undefined) timerState.showClock = data.showClock;
 
+    io.emit('timerState', timerState);
+  });
+
+  // Explicit output mode control (overrides showClock convenience)
+  socket.on('setOutputMode', (mode) => {
+    if (mode === 'timer' || mode === 'clock') {
+      timerState.outputMode = mode;
+      // mirror to showClock for backward compatibility on clients
+      timerState.showClock = (mode === 'clock');
+      io.emit('timerState', timerState);
+    }
+  });
+
+  // Nudge timer by deltaMs (positive to add time, negative to subtract)
+  socket.on('nudgeTimer', (deltaMs) => {
+    if (typeof deltaMs !== 'number' || !isFinite(deltaMs)) return;
+    // Adjust duration, which effectively adjusts remaining for all modes
+    const newDuration = Math.max(0, (timerState.durationMs || 0) + Math.trunc(deltaMs));
+    timerState.durationMs = newDuration;
     io.emit('timerState', timerState);
   });
 
