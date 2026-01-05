@@ -17,8 +17,17 @@ const io = socketIo(server, {
 app.use(cors());
 app.use(express.json());
 
-// Serve static files
-app.use(express.static(path.join(__dirname, 'public')));
+// Serve static files with cache-control (avoid stale HTML after deploy)
+app.use(express.static(path.join(__dirname, 'public'), {
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-store');
+    } else {
+      // cache other assets briefly
+      res.setHeader('Cache-Control', 'public, max-age=300');
+    }
+  }
+}));
 
 // Timer state - single room for now
 let timerState = {
