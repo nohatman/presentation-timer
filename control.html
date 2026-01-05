@@ -9,43 +9,50 @@
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             margin: 0;
-            padding: 1rem;
-            background: #f8f9fa;
+            padding: 0;
+            background: #121212;
+            color: #e5e5e5;
         }
         .container {
-            max-width: 800px;
-            margin: 0 auto;
-            background: white;
-            padding: 2rem;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin: 0;
+            padding: 16px;
+            display: grid;
+            grid-template-columns: repeat(3, minmax(280px, 1fr));
+            grid-auto-rows: minmax(90px, auto);
+            gap: 16px;
         }
         h1 {
-            color: #333;
-            text-align: center;
-            margin-bottom: 2rem;
+            color: #fafafa;
+            text-align: left;
+            margin: 0 0 8px 0;
+            grid-column: 1 / -1;
+            font-weight: 600;
+            letter-spacing: 0.3px;
         }
         .section {
-            margin-bottom: 2rem;
-            padding: 1.5rem;
-            border: 1px solid #e9ecef;
-            border-radius: 5px;
+            margin: 0;
+            padding: 14px;
+            border: 1px solid #2a2a2a;
+            border-radius: 8px;
+            background: #1a1a1a;
         }
         .form-group {
-            margin-bottom: 1rem;
+            margin-bottom: 10px;
         }
         label {
             display: block;
-            margin-bottom: 0.5rem;
+            margin-bottom: 6px;
             font-weight: 500;
-            color: #495057;
+            color: #cfcfcf;
         }
         input, select {
             width: 100%;
-            padding: 0.75rem;
-            border: 1px solid #ced4da;
-            border-radius: 4px;
+            padding: 12px;
+            border: 1px solid #333;
+            border-radius: 6px;
             font-size: 1rem;
+            background: #101010;
+            color: #e5e5e5;
         }
         .time-input {
             display: flex;
@@ -57,86 +64,89 @@
         .button-group {
             display: flex;
             gap: 1rem;
-            justify-content: center;
-            margin-top: 2rem;
+            justify-content: flex-start;
+            margin-top: 6px;
         }
         .button {
-            padding: 0.75rem 1.5rem;
+            padding: 12px 16px;
             border: none;
             border-radius: 4px;
             font-size: 1rem;
             cursor: pointer;
             transition: background 0.2s;
+            background: #2a2a2a;
+            color: #e5e5e5;
         }
         .button.primary {
-            background: #007bff;
-            color: white;
+            background: #2e7d32; /* green */
+            color: #fff;
         }
         .button.primary:hover {
-            background: #0056b3;
+            background: #256628;
         }
         .button.secondary {
-            background: #6c757d;
-            color: white;
+            background: #3a3a3a;
+            color: #e5e5e5;
         }
         .button.secondary:hover {
-            background: #545b62;
+            background: #4a4a4a;
         }
         .button.danger {
-            background: #dc3545;
-            color: white;
+            background: #b71c1c;
+            color: #fff;
         }
         .button.danger:hover {
-            background: #c82333;
+            background: #941616;
         }
         .presets {
-            display: flex;
-            gap: 0.5rem;
-            flex-wrap: wrap;
-            justify-content: center;
+            display: grid;
+            grid-template-columns: repeat(4, minmax(90px, 1fr));
+            gap: 8px;
         }
         .preset-button {
-            padding: 0.5rem 1rem;
-            background: #e9ecef;
-            border: 1px solid #ced4da;
-            border-radius: 4px;
+            padding: 12px 10px;
+            background: #2a2a2a;
+            border: 1px solid #3a3a3a;
+            border-radius: 6px;
             cursor: pointer;
-            font-size: 0.9rem;
+            font-size: 1.05rem;
+            color: #e5e5e5;
+            text-align: center;
         }
         .preset-button:hover {
-            background: #dee2e6;
+            background: #3a3a3a;
         }
         .status {
-            text-align: center;
-            padding: 1rem;
-            margin: 1rem 0;
+            text-align: left;
+            padding: 12px;
+            margin: 0;
             border-radius: 4px;
             font-weight: bold;
         }
         .status.running {
-            background: #d4edda;
-            color: #155724;
+            background: rgba(46, 125, 50, 0.2);
+            color: #9be7a1;
         }
         .status.paused {
-            background: #fff3cd;
-            color: #856404;
+            background: rgba(255, 193, 7, 0.15);
+            color: #ffda6a;
         }
         .status.stopped {
-            background: #f8d7da;
-            color: #721c24;
+            background: rgba(220, 53, 69, 0.15);
+            color: #f1aeb5;
         }
         .preview {
             height: 60px;
-            border-radius: 4px;
-            margin: 1rem 0;
+            border-radius: 6px;
+            margin: 8px 0 0;
             transition: background 0.3s;
         }
         .links {
-            text-align: center;
-            margin-top: 2rem;
+            text-align: left;
+            margin-top: 6px;
         }
         .links a {
-            color: #007bff;
+            color: #90caf9;
             text-decoration: none;
             margin: 0 1rem;
         }
