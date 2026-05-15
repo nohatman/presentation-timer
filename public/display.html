@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Timer Display</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #000;
+            color: white;
+            overflow: hidden;
+            height: 100vh;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            padding: 2rem;
+        }
+        .timer-display {
+            font-size: 18vw;
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 2rem;
+            transition: color 0.5s ease, text-shadow 0.3s ease;
+            text-shadow: 0 0 30px currentColor;
+            font-variant-numeric: tabular-nums;
+            letter-spacing: 0.05em;
+        }
+        .clock-display {
+            font-size: 10vw;
+            font-weight: normal;
+            text-align: center;
+            margin-bottom: 1rem;
+            opacity: 0.8;
+        }
+        .status {
+            font-size: 3vw;
+            margin-bottom: 2rem;
+            opacity: 0.8;
+            font-weight: 500;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+        }
+        .controls {
+            position: absolute;
+            top: 2rem;
+            left: 2rem;
+            display: flex;
+            gap: 1rem;
+        }
+        .control-button {
+            padding: 0.5rem 1rem;
+            background: rgba(255,255,255,0.15);
+            color: white;
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1rem;
+            backdrop-filter: blur(10px);
+            transition: all 0.2s;
+            font-weight: 500;
+        }
+        .control-button:hover {
+            background: rgba(255,255,255,0.25);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+        .control-button:active {
+            transform: translateY(0);
+        }
+        .settings {
+            position: absolute;
+            top: 2rem;
+            right: 2rem;
+        }
+        .fullscreen-button {
+            padding: 0.5rem 1rem;
+            background: rgba(255,255,255,0.15);
+            color: white;
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1rem;
+            backdrop-filter: blur(10px);
+            transition: all 0.2s;
+            font-weight: 500;
+        }
+        .fullscreen-button:hover {
+            background: rgba(255,255,255,0.25);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+        .fullscreen-button:active {
+            transform: translateY(0);
+        }
+        /* Color themes */
+        .color-normal {
+            color: #4caf50; /* Bright Green */
+            text-shadow: 0 0 40px rgba(76, 175, 80, 0.6);
+        }
+        .color-amber {
+            color: #ffb300; /* Vibrant Amber */
+            text-shadow: 0 0 40px rgba(255, 179, 0, 0.6);
+        }
+        .color-red {
+            color: #f44336; /* Bright Red */
+            text-shadow: 0 0 40px rgba(244, 67, 54, 0.6);
+            animation: urgentPulse 1s ease-in-out infinite;
+        }
+        .color-finished {
+            color: #9c27b0; /* Purple for finished */
+            text-shadow: 0 0 40px rgba(156, 39, 176, 0.6);
+        }
+        @keyframes urgentPulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+        }
+        .blinking {
+            animation: blink 1s infinite;
+        }
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0.3; }
+        }
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .timer-display {
+                font-size: 20vw;
+            }
+            .clock-display {
+                font-size: 10vw;
+            }
+            .status {
+                font-size: 4vw;
+            }
+        }
+        @media (max-width: 480px) {
+            .timer-display {
+                font-size: 25vw;
+            }
+            .clock-display {
+                font-size: 12vw;
+            }
+            .status {
+                font-size: 5vw;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="settings">
+            <button class="fullscreen-button" onclick="toggleFullscreen()">Fullscreen</button>
+        </div>
+
+        <div id="timerDisplay" class="timer-display color-normal">00:00</div>
+        <div id="clockDisplay" class="clock-display" style="display: none;">00:00:00</div>
+        <div id="status" class="status">Ready</div>
+
+        <div class="controls">
+            <button class="control-button" id="controlBtn" onclick="window.open('/control?room=' + encodeURIComponent(roomId), '_blank')">Control</button>
+            <button class="control-button" onclick="window.open('/', '_blank')">Home</button>
+            <div class="room-badge" style="position: absolute; bottom: 2rem; left: 2rem; background: rgba(255,255,255,0.1); padding: 8px 12px; border-radius: 4px; font-size: 0.9rem; backdrop-filter: blur(10px);">
+                Room: <span style="font-family: monospace; color: #90caf9;" id="roomDisplay"></span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Get room from URL parameter
+        const urlParams = new URLSearchParams(window.location.search);
+        const roomId = urlParams.get('room') || 'default';
+        
+        // Update room display
+        document.getElementById('roomDisplay').textContent = roomId;
+        
+        // Connect socket with room parameter
+        const socket = io({ query: { room: roomId } });
+        let currentState = {};
+        let blinkInterval = null;
+        let displaySeconds = null; // smoothed displayed seconds
+        let lastFrameTime = performance.now();
+
+        socket.on('timerState', (state) => {
+            currentState = state;
+            // On any state update, ensure we refresh immediately
+            updateDisplay(true);
+        });
+
+        function updateDisplay(forceImmediate = false) {
+            const timerEl = document.getElementById('timerDisplay');
+            const clockEl = document.getElementById('clockDisplay');
+            const statusEl = document.getElementById('status');
+
+            if (currentState.showClock) {
+                timerEl.style.display = 'none';
+                clockEl.style.display = 'block';
+                updateClockDisplay();
+            } else {
+                timerEl.style.display = 'block';
+                clockEl.style.display = 'none';
+                updateTimerDisplay(forceImmediate);
+            }
+
+            // Update status
+            statusEl.textContent = getStatusText();
+        }
+
+        function updateTimerDisplay(forceImmediate = false) {
+            const timerEl = document.getElementById('timerDisplay');
+            const { mode, durationMs, startTime, pauseTime, accumulatedPauseMs = 0, speed = 1.0, amberThresholdMs, redThresholdMs, countUp } = currentState;
+
+            let remainingMs = durationMs || 0;
+            let isFinished = false;
+
+            if (startTime) {
+                const now = Date.now();
+                const pausedOffset = pauseTime ? (pauseTime - startTime) - accumulatedPauseMs : (now - startTime) - accumulatedPauseMs;
+                const elapsedMs = Math.max(0, pausedOffset) * speed;
+                remainingMs = durationMs - elapsedMs;
+
+                if (remainingMs <= 0) {
+                    isFinished = true;
+                    if (countUp) {
+                        remainingMs = Math.abs(remainingMs); // elapsed since zero
+                    } else {
+                        remainingMs = 0;
+                    }
+                }
+            }
+
+            // Update color based on remaining time
+            updateTimerColor(timerEl, remainingMs, durationMs, amberThresholdMs, redThresholdMs, isFinished);
+
+            // Format time
+            const targetSeconds = Math.floor(remainingMs / 1000);
+
+            // Initialize or update smoothed displaySeconds
+            if (displaySeconds === null || forceImmediate) {
+                displaySeconds = targetSeconds;
+            } else {
+                // Smoothly approach target, avoid skipping more than 1 per frame
+                if (displaySeconds > targetSeconds) {
+                    displaySeconds = Math.max(targetSeconds, displaySeconds - 1);
+                } else if (displaySeconds < targetSeconds) {
+                    displaySeconds = Math.min(targetSeconds, displaySeconds + 1);
+                }
+            }
+
+            const showSeconds = displaySeconds;
+            const sign = (isFinished && countUp) ? '-' : '';
+            const minutes = Math.floor(showSeconds / 60);
+            const seconds = Math.abs(showSeconds % 60);
+            const timeStr = `${sign}${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+
+            timerEl.textContent = timeStr;
+
+            // Handle blinking for finished state
+            if (isFinished && !countUp) {
+                if (!blinkInterval) {
+                    blinkInterval = setInterval(() => {
+                        timerEl.classList.toggle('blinking');
+                    }, 1000);
+                }
+            } else {
+                if (blinkInterval) {
+                    clearInterval(blinkInterval);
+                    blinkInterval = null;
+                }
+                timerEl.classList.remove('blinking');
+            }
+        }
+
+        function updateClockDisplay() {
+            const clockEl = document.getElementById('clockDisplay');
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString('en-GB', {
+                hour12: false,
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+            clockEl.textContent = timeStr;
+        }
+
+        function updateTimerColor(element, remainingMs, totalMs, amberThresholdMs, redThresholdMs, isFinished) {
+            element.className = 'timer-display';
+
+            if (isFinished) {
+                element.classList.add('color-finished');
+            } else if (remainingMs <= redThresholdMs) {
+                element.classList.add('color-red');
+            } else if (remainingMs <= amberThresholdMs) {
+                element.classList.add('color-amber');
+            } else {
+                element.classList.add('color-normal');
+            }
+        }
+
+        function getStatusText() {
+            const { mode, showClock } = currentState;
+
+            if (showClock) {
+                return 'Clock Mode';
+            }
+
+            switch (mode) {
+                case 'running':
+                    return 'Running';
+                case 'paused':
+                    return 'Paused';
+                case 'stopped':
+                default:
+                    return 'Ready';
+            }
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => {
+                    console.log('Fullscreen request failed:', err);
+                });
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Animation loop to refresh display smoothly
+        function animate() {
+            const now = performance.now();
+            if (!currentState.showClock) {
+                updateTimerDisplay();
+            } else if (now - lastFrameTime > 500) {
+                // update clock twice a second for freshness
+                updateClockDisplay();
+                lastFrameTime = now;
+            }
+            requestAnimationFrame(animate);
+        }
+        requestAnimationFrame(animate);
+
+        // Handle fullscreen change
+        document.addEventListener('fullscreenchange', () => {
+            const button = document.querySelector('.fullscreen-button');
+            if (document.fullscreenElement) {
+                button.textContent = 'Exit Fullscreen';
+            } else {
+                button.textContent = 'Fullscreen';
+            }
+        });
+
+        // Initial display update
+        updateDisplay();
+    </script>
+</body>
+</html>

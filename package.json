@@ -1,0 +1,34 @@
+{
+  "name": "presentation-timer",
+  "version": "1.0.0",
+  "description": "Web-based presentation timer with control and display screens",
+  "main": "server.js",
+  "bin": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "build:portable": "pkg . --targets node18-win-x64 --output portable/presentation-timer.exe"
+  },
+  "pkg": {
+    "assets": [
+      "public/**/*"
+    ],
+    "outputPath": "portable"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "socket.io": "^4.7.2"
+  },
+  "keywords": [
+    "presentation",
+    "timer",
+    "countdown",
+    "websocket"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "pkg": "^5.8.1"
+  }
+}
