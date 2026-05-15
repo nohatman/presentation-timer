@@ -63,6 +63,16 @@
             border-radius: 12px;
             padding: 1.5rem;
             transition: border-color 0.3s, box-shadow 0.3s;
+            cursor: move;
+            position: relative;
+        }
+        .room-card.dragging {
+            opacity: 0.5;
+            transform: scale(0.95);
+        }
+        .room-card.drag-over {
+            border-color: #4caf50;
+            box-shadow: 0 4px 20px rgba(76, 175, 80, 0.4);
         }
         .room-card.running {
             border-color: #4caf50;
@@ -74,6 +84,14 @@
         }
         .room-card.stopped {
             border-color: #666;
+        }
+        .drag-handle {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            font-size: 1.2rem;
+            color: #666;
+            user-select: none;
         }
         .room-header {
             display: flex;
@@ -297,6 +315,47 @@
 
     <script>
         let roomsData = [];
+        let cardOrder = [];
+        let draggedElement = null;
+
+        // Load saved card order from localStorage
+        function loadCardOrder() {
+            const saved = localStorage.getItem('dashboardCardOrder');
+            if (saved) {
+                try {
+                    cardOrder = JSON.parse(saved);
+                } catch (e) {
+                    cardOrder = [];
+                }
+            }
+        }
+
+        // Save card order to localStorage
+        function saveCardOrder() {
+            localStorage.setItem('dashboardCardOrder', JSON.stringify(cardOrder));
+        }
+
+        // Sort rooms by custom order, keeping new rooms at the end
+        function sortRoomsByOrder(rooms) {
+            const roomIds = rooms.map(r => r.id);
+            
+            // Remove deleted rooms from saved order
+            cardOrder = cardOrder.filter(id => roomIds.includes(id));
+            
+            // Add new rooms to the end of the order
+            roomIds.forEach(id => {
+                if (!cardOrder.includes(id)) {
+                    cardOrder.push(id);
+                }
+            });
+            
+            // Sort rooms by the card order
+            return [...rooms].sort((a, b) => {
+                const indexA = cardOrder.indexOf(a.id);
+                const indexB = cardOrder.indexOf(b.id);
+                return indexA - indexB;
+            });
+        }
 
         async function fetchRooms() {
             try {
@@ -331,11 +390,8 @@
                 return;
             }
             
-            // Sort by status (running first, then paused, then stopped)
-            const sortedRooms = [...roomsData].sort((a, b) => {
-                const statusOrder = { running: 0, paused: 1, stopped: 2 };
-                return statusOrder[a.mode] - statusOrder[b.mode];
-            });
+            // Keep rooms in custom order
+            const sortedRooms = sortRoomsByOrder(roomsData);
             
             container.innerHTML = sortedRooms.map(room => {
                 let displayTime;
@@ -369,7 +425,16 @@
                 }
                 
                 return `
-                    <div class="room-card ${room.mode}">
+                    <div class="room-card ${room.mode}" 
+                         draggable="true" 
+                         data-room-id="${escapeHtml(room.id)}"
+                         ondragstart="handleDragStart(event)"
+                         ondragover="handleDragOver(event)"
+                         ondrop="handleDrop(event)"
+                         ondragend="handleDragEnd(event)"
+                         ondragenter="handleDragEnter(event)"
+                         ondragleave="handleDragLeave(event)">
+                        <div class="drag-handle">⋮⋮</div>
                         <div class="room-header">
                             <div class="room-name">${escapeHtml(room.id)}</div>
                             <div class="room-status ${room.mode}">${room.mode}</div>
@@ -436,6 +501,7 @@
         }
 
         // Initial fetch
+        loadCardOrder();
         fetchRooms();
         
         // Auto-refresh every 1 second for live updates
@@ -500,6 +566,78 @@
                 console.error('Error deleting room:', error);
                 alert('❌ Failed to delete room. Please try again.');
             }
+        }
+
+        // Drag and Drop Handlers
+        function handleDragStart(event) {
+            draggedElement = event.target;
+            event.target.classList.add('dragging');
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/html', event.target.innerHTML);
+        }
+
+        function handleDragOver(event) {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'move';
+            return false;
+        }
+
+        function handleDragEnter(event) {
+            const target = event.target.closest('.room-card');
+            if (target && target !== draggedElement) {
+                target.classList.add('drag-over');
+            }
+        }
+
+        function handleDragLeave(event) {
+            const target = event.target.closest('.room-card');
+            if (target) {
+                target.classList.remove('drag-over');
+            }
+        }
+
+        function handleDrop(event) {
+            event.stopPropagation();
+            event.preventDefault();
+            
+            const target = event.target.closest('.room-card');
+            if (!target || target === draggedElement) {
+                return false;
+            }
+            
+            // Get the room IDs
+            const draggedRoomId = draggedElement.dataset.roomId;
+            const targetRoomId = target.dataset.roomId;
+            
+            // Update the card order
+            const draggedIndex = cardOrder.indexOf(draggedRoomId);
+            const targetIndex = cardOrder.indexOf(targetRoomId);
+            
+            if (draggedIndex !== -1 && targetIndex !== -1) {
+                // Remove dragged item from its position
+                cardOrder.splice(draggedIndex, 1);
+                
+                // Insert it at the target position
+                const newTargetIndex = cardOrder.indexOf(targetRoomId);
+                cardOrder.splice(newTargetIndex, 0, draggedRoomId);
+                
+                // Save and update
+                saveCardOrder();
+                updateDashboard();
+            }
+            
+            return false;
+        }
+
+        function handleDragEnd(event) {
+            event.target.classList.remove('dragging');
+            
+            // Remove all drag-over classes
+            document.querySelectorAll('.room-card').forEach(card => {
+                card.classList.remove('drag-over');
+            });
+            
+            draggedElement = null;
         }
     </script>
 </body>
