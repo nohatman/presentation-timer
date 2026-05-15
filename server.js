@@ -320,6 +320,184 @@ app.delete('/api/rooms/:roomId', (req, res) => {
   res.json({ success: true, message: 'Room deleted' });
 });
 
+// ============================================
+// REST API for Bitfocus Companion
+// ============================================
+
+// GET room state (read-only)
+app.get('/api/rooms/:roomId/state', (req, res) => {
+  const { roomId } = req.params;
+  const timerState = getRoomState(roomId);
+  
+  res.json({
+    ok: true,
+    roomId,
+    state: timerState
+  });
+});
+
+// POST start timer
+app.post('/api/rooms/:roomId/start', (req, res) => {
+  const { roomId } = req.params;
+  const timerState = getRoomState(roomId);
+  
+  if (timerState.mode === 'running') {
+    return res.json({
+      ok: false,
+      error: 'Timer is already running'
+    });
+  }
+  
+  // Start timer logic (same as Socket.IO handler)
+  timerState.mode = 'running';
+  timerState.startTime = Date.now();
+  timerState.accumulatedPauseMs = 0;
+  
+  // Broadcast to all clients in the room
+  io.to(roomId).emit('timerState', timerState);
+  
+  res.json({
+    ok: true,
+    roomId,
+    state: timerState
+  });
+});
+
+// POST pause timer
+app.post('/api/rooms/:roomId/pause', (req, res) => {
+  const { roomId } = req.params;
+  const timerState = getRoomState(roomId);
+  
+  if (timerState.mode !== 'running') {
+    return res.json({
+      ok: false,
+      error: 'Timer is not running'
+    });
+  }
+  
+  // Pause timer logic (same as Socket.IO handler)
+  timerState.mode = 'paused';
+  timerState.pauseTime = Date.now();
+  
+  // Broadcast to all clients in the room
+  io.to(roomId).emit('timerState', timerState);
+  
+  res.json({
+    ok: true,
+    roomId,
+    state: timerState
+  });
+});
+
+// POST resume timer
+app.post('/api/rooms/:roomId/resume', (req, res) => {
+  const { roomId } = req.params;
+  const timerState = getRoomState(roomId);
+  
+  if (timerState.mode !== 'paused') {
+    return res.json({
+      ok: false,
+      error: 'Timer is not paused'
+    });
+  }
+  
+  // Resume timer logic (same as Socket.IO handler)
+  const pauseDurationMs = Date.now() - timerState.pauseTime;
+  timerState.accumulatedPauseMs += pauseDurationMs;
+  timerState.mode = 'running';
+  timerState.pauseTime = null;
+  
+  // Broadcast to all clients in the room
+  io.to(roomId).emit('timerState', timerState);
+  
+  res.json({
+    ok: true,
+    roomId,
+    state: timerState
+  });
+});
+
+// POST reset timer
+app.post('/api/rooms/:roomId/reset', (req, res) => {
+  const { roomId } = req.params;
+  const timerState = getRoomState(roomId);
+  
+  // Reset timer logic (same as Socket.IO handler)
+  timerState.mode = 'stopped';
+  timerState.startTime = null;
+  timerState.pauseTime = null;
+  timerState.accumulatedPauseMs = 0;
+  
+  // Broadcast to all clients in the room
+  io.to(roomId).emit('timerState', timerState);
+  
+  res.json({
+    ok: true,
+    roomId,
+    state: timerState
+  });
+});
+
+// POST nudge timer (adjust time by +/- milliseconds)
+app.post('/api/rooms/:roomId/nudge', (req, res) => {
+  const { roomId } = req.params;
+  const { ms } = req.body;
+  
+  if (typeof ms !== 'number') {
+    return res.json({
+      ok: false,
+      error: 'Missing or invalid "ms" in request body'
+    });
+  }
+  
+  const timerState = getRoomState(roomId);
+  
+  // Nudge logic (same as Socket.IO handler)
+  if (timerState.mode === 'running') {
+    timerState.startTime -= ms;
+  } else if (timerState.mode === 'paused') {
+    timerState.pauseTime -= ms;
+  } else {
+    timerState.durationMs = Math.max(0, timerState.durationMs + ms);
+  }
+  
+  // Broadcast to all clients in the room
+  io.to(roomId).emit('timerState', timerState);
+  
+  res.json({
+    ok: true,
+    roomId,
+    state: timerState
+  });
+});
+
+// POST set duration (update preset duration)
+app.post('/api/rooms/:roomId/set-duration', (req, res) => {
+  const { roomId } = req.params;
+  const { durationMs } = req.body;
+  
+  if (typeof durationMs !== 'number' || durationMs < 0) {
+    return res.json({
+      ok: false,
+      error: 'Missing or invalid "durationMs" in request body'
+    });
+  }
+  
+  const timerState = getRoomState(roomId);
+  
+  // Set duration logic
+  timerState.durationMs = durationMs;
+  
+  // Broadcast to all clients in the room
+  io.to(roomId).emit('timerState', timerState);
+  
+  res.json({
+    ok: true,
+    roomId,
+    state: timerState
+  });
+});
+
 // Routes
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
