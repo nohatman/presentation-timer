@@ -597,7 +597,7 @@
             const baseUrl = window.location.origin;
             const controlUrl = `${baseUrl}/control?room=${encodeURIComponent(roomId)}`;
             const displayUrl = `${baseUrl}/display?room=${encodeURIComponent(roomId)}`;
-            const text = `Room: ${roomId}\nControl: ${controlUrl}\nDisplay: ${displayUrl}`;
+            const text = `Foxy's Timer - Room: ${roomId}\n\nControl Panel:\n${controlUrl}\n\nDisplay Screen:\n${displayUrl}`;
             
             // Detect if mobile device or Mac (for AirDrop support)
             const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
