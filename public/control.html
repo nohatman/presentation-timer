@@ -13,11 +13,16 @@
             background: #121212;
             color: #e5e5e5;
         }
+        .wrapper {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
         .container {
             margin: 0;
-            padding: 16px;
+            padding: 0;
             display: grid;
-            grid-template-columns: repeat(3, minmax(280px, 1fr));
+            grid-template-columns: repeat(2, minmax(320px, 1fr));
             grid-auto-rows: minmax(90px, auto);
             gap: 16px;
         }
@@ -54,8 +59,53 @@
             font-weight: 500;
             color: #cfcfcf;
         }
-        input, select {
-            width: 100%;
+        label.radio-label {
+            display: flex;
+            align-items: center;
+            padding: 12px;
+            background: #1a1a1a;
+            border: 2px solid #333;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 1.05rem;
+        }
+        label.radio-label:hover {
+            border-color: #90caf9;
+            background: #202020;
+        }
+        label.radio-label input[type="radio"] {
+            width: 20px;
+            height: 20px;
+            margin-right: 10px;
+            cursor: pointer;
+        }
+        label.checkbox-label {
+            display: flex;
+            align-items: center;
+            padding: 12px;
+            background: #1a1a1a;
+            border: 2px solid #333;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 1.05rem;
+            margin-bottom: 10px;
+        }
+        label.checkbox-label:hover {
+            border-color: #90caf9;
+            background: #202020;
+        }
+        label.checkbox-label input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            margin-right: 10px;
+            cursor: pointer;
+        }
+        input[type="number"],
+        input[type="time"],
+        input[type="text"] {
+            max-width: 100%;
             padding: 12px;
             border: 1px solid #333;
             border-radius: 6px;
@@ -63,6 +113,17 @@
             background: #101010;
             color: #e5e5e5;
             transition: border-color 0.2s, background 0.2s;
+        }
+        input[type="number"],
+        input[type="time"],
+        input.time-text {
+            max-width: 100px;
+        }
+        input[type="time"] {
+            max-width: 140px;
+        }
+        input#speed {
+            max-width: 80px;
         }
         input:focus, select:focus {
             outline: none;
@@ -154,52 +215,117 @@
             transform: translateY(0);
         }
         .status {
-            text-align: left;
-            padding: 16px;
-            margin: 0;
-            border-radius: 6px;
-            font-weight: bold;
-            font-size: 1.1rem;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            transition: all 0.3s;
+            display: none;
         }
-        .status::before {
-            content: '';
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
+        .status-badge {
             display: inline-block;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-left: 10px;
         }
-        .status.running {
-            background: rgba(46, 125, 50, 0.2);
+        .status-badge.running {
+            background: rgba(46, 125, 50, 0.3);
             color: #9be7a1;
-            border: 1px solid rgba(46, 125, 50, 0.3);
         }
-        .status.running::before {
-            background: #9be7a1;
-            animation: pulse 2s infinite;
-        }
-        .status.paused {
-            background: rgba(255, 193, 7, 0.15);
+        .status-badge.paused {
+            background: rgba(255, 193, 7, 0.25);
             color: #ffda6a;
-            border: 1px solid rgba(255, 193, 7, 0.3);
         }
-        .status.paused::before {
-            background: #ffda6a;
-        }
-        .status.stopped {
-            background: rgba(220, 53, 69, 0.15);
+        .status-badge.stopped {
+            background: rgba(220, 53, 69, 0.25);
             color: #f1aeb5;
-            border: 1px solid rgba(220, 53, 69, 0.3);
-        }
-        .status.stopped::before {
-            background: #f1aeb5;
         }
         @keyframes pulse {
             0%, 100% { opacity: 1; }
             50% { opacity: 0.5; }
+        }
+        .timer-preview {
+            font-size: 2.5rem;
+            font-weight: bold;
+            text-align: center;
+            padding: 20px;
+            border-radius: 8px;
+            background: #0a0a0a;
+            color: #4caf50;
+            font-variant-numeric: tabular-nums;
+            transition: color 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .timer-preview.amber { color: #ffb300; }
+        .timer-preview.red { color: #f44336; }
+        .timer-preview.white { color: #e5e5e5; }
+        .timer-control-row {
+            grid-column: 1 / -1;
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            gap: 16px;
+            align-items: stretch;
+        }
+        .timer-control-row .section {
+            margin: 0;
+        }
+        .main-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .mode-button {
+            padding: 8px 12px;
+            background: #2a2a2a;
+            border: 2px solid #3a3a3a;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            color: #e5e5e5;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+        .mode-button:hover {
+            border-color: #90caf9;
+        }
+        .mode-button.active {
+            background: #1565c0;
+            border-color: #1976d2;
+            color: #fff;
+        }
+        .mode-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .threshold-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+        .end-time-display {
+            font-size: 0.9rem;
+            color: #90caf9;
+            font-family: monospace;
+            margin-left: 8px;
+        }
+        .room-header {
+            grid-column: 1 / -1;
+            background: rgba(144, 202, 249, 0.1);
+            border: 2px solid rgba(144, 202, 249, 0.3);
+            padding: 16px 20px;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .room-name-display {
+            font-size: 1.8rem;
+            font-weight: 600;
+            color: #90caf9;
+            font-family: monospace;
         }
         .preview {
             height: 60px;
@@ -222,111 +348,136 @@
     </style>
 </head>
 <body>
+    <div class="wrapper">
     <div class="container">
-        <h1>Timer Control</h1>
+        <div style="grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <h1 style="margin: 0;">Timer Control</h1>
+            <div class="links" style="border: none; padding: 0; text-align: right;">
+                <a href="#" id="displayLink" target="_blank">Open Display Screen</a>
+                <span style="color: #666; margin: 0 8px;">|</span>
+                <a href="/">Home / New Room</a>
+            </div>
+        </div>
 
-        <div class="room-info" id="roomInfo" style="grid-column: 1 / -1; background: rgba(144, 202, 249, 0.1); border: 1px solid rgba(144, 202, 249, 0.3); padding: 12px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center;">
-            <span style="font-size: 0.95rem;">
-                <strong>Room:</strong> <span id="roomName" style="color: #90caf9; font-family: monospace;"></span>
-            </span>
-            <button class="button secondary" style="padding: 8px 12px; font-size: 0.9rem;" onclick="copyRoomLinks()">📋 Copy Links</button>
+        <div class="room-header">
+            <div>
+                <div style="font-size: 0.9rem; color: #999; margin-bottom: 4px;">Room</div>
+                <div class="room-name-display" id="roomName"></div>
+            </div>
+            <button class="button secondary" style="padding: 10px 16px;" onclick="copyRoomLinks()">📋 Copy Links</button>
+        </div>
+
+        <div class="timer-control-row">
+            <div class="section">
+                <h3>Timer Preview <span class="status-badge" id="statusBadge">Stopped</span></h3>
+                <div class="timer-preview" id="timerPreview">00:00</div>
+            </div>
+            <div class="section main-buttons">
+                <button class="button primary" onclick="startTimer()" style="font-size: 1.05rem; padding: 14px; flex: 1;">▶️ Start</button>
+                <div style="display: flex; gap: 10px; flex: 1;">
+                    <button class="button secondary" onclick="pauseTimer()" style="flex: 1;">⏸️ Pause</button>
+                    <button class="button secondary" onclick="resumeTimer()" style="flex: 1;">▶️ Resume</button>
+                    <button class="button danger" onclick="resetTimer()" style="flex: 1;">⏹️ Reset</button>
+                </div>
+                <div style="display: flex; gap: 8px; flex: 1;">
+                    <button class="button secondary" onclick="nudge(-5*60*1000)" style="flex: 1; font-size: 0.85rem; padding: 8px;">-5 min</button>
+                    <button class="button secondary" onclick="nudge(-60*1000)" style="flex: 1; font-size: 0.85rem; padding: 8px;">-1 min</button>
+                    <button class="button secondary" onclick="nudge(60*1000)" style="flex: 1; font-size: 0.85rem; padding: 8px;">+1 min</button>
+                    <button class="button secondary" onclick="nudge(5*60*1000)" style="flex: 1; font-size: 0.85rem; padding: 8px;">+5 min</button>
+                </div>
+            </div>
         </div>
 
         <div class="status" id="status">Loading...</div>
 
         <div class="section">
             <h3>Timer Mode</h3>
-            <div class="form-group">
-                <label>
-                    <input type="radio" name="mode" value="duration" checked> Set Duration
-                </label>
-                <div class="time-input">
-                    <input type="number" id="durationMin" placeholder="30" min="0" max="999"> minutes
-                    <input type="number" id="durationSec" placeholder="0" min="0" max="59"> seconds
-                </div>
+            <div class="mode-row">
+                <button class="mode-button active" id="modeDurationBtn" onclick="setTimerMode('duration')">Duration</button>
+                <input type="text" id="duration" class="time-text" placeholder="0:00" pattern="\d{1,3}:\d{2}" title="Format: MM:SS (e.g., 30:00)" maxlength="6" inputmode="numeric">
             </div>
-            <div class="form-group">
-                <label>
-                    <input type="radio" name="mode" value="endAt"> End At Time
-                </label>
+            <div class="mode-row">
+                <button class="mode-button" id="modeEndAtBtn" onclick="setTimerMode('endAt')" title="Select an end time first">End At</button>
                 <input type="time" id="endAtTime">
-                <small>Timer will end at this clock time (updates live)</small>
+                <span class="end-time-display" id="endTimeCalc"></span>
             </div>
         </div>
 
         <div class="section">
-            <h3>Thresholds & Speed</h3>
-            <div class="form-group">
-                <label for="amberThreshold">Amber Warning (minutes:seconds)</label>
-                <div class="time-input">
-                    <input type="number" id="amberMin" placeholder="5" min="0" max="999"> m
-                    <input type="number" id="amberSec" placeholder="0" min="0" max="59"> s
+            <h3>Quick Presets</h3>
+            <div class="presets" id="presetsGrid"></div>
+            <small style="display: block; margin-top: 8px; color: #999;">Ctrl+Click to save</small>
+        </div>
+
+        <div class="section">
+            <h3>Warning Thresholds</h3>
+            <div class="threshold-row">
+                <div>
+                    <label for="amberThreshold" style="font-size: 0.9rem;">Amber</label>
+                    <input type="text" id="amberThreshold" class="time-text" placeholder="0:00" pattern="\d{1,3}:\d{2}" title="Format: MM:SS" maxlength="6" inputmode="numeric">
                 </div>
-            </div>
-            <div class="form-group">
-                <label for="redThreshold">Red Warning (minutes:seconds)</label>
-                <div class="time-input">
-                    <input type="number" id="redMin" placeholder="2" min="0" max="999"> m
-                    <input type="number" id="redSec" placeholder="0" min="0" max="59"> s
+                <div>
+                    <label for="redThreshold" style="font-size: 0.9rem;">Red</label>
+                    <input type="text" id="redThreshold" class="time-text" placeholder="0:00" pattern="\d{1,3}:\d{2}" title="Format: MM:SS" maxlength="6" inputmode="numeric">
                 </div>
-            </div>
-            <div class="form-group">
-                <label for="speed">Speed Multiplier</label>
-                <input type="number" id="speed" step="0.1" min="0.1" max="5" value="1.0">
-                <small>1.0 = normal speed, 1.5 = 50% faster, 0.5 = half speed</small>
             </div>
         </div>
 
         <div class="section">
             <h3>Display Options</h3>
+            <label class="checkbox-label">
+                <input type="checkbox" id="countUp">
+                <span>Count up after zero</span>
+            </label>
             <div class="form-group">
-                <label>
-                    <input type="checkbox" id="countUp"> Count up after zero
-                </label>
-            </div>
-            <div class="form-group">
-                <label>
-                    <input type="checkbox" id="showClock"> Show clock instead of timer
-                </label>
+                <label style="font-size: 0.9rem;">Output Mode</label>
+                <div class="button-group" style="margin-top: 8px;">
+                    <button class="button" id="modeTimerBtn" onclick="setOutputMode('timer')" style="flex: 1;">⏱️ Timer</button>
+                    <button class="button" id="modeClockBtn" onclick="setOutputMode('clock')" style="flex: 1;">🕐 Time of day</button>
+                </div>
             </div>
         </div>
 
-        <div class="section">
-            <h3>Quick Presets (Ctrl+Click to save)</h3>
-            <div class="presets" id="presetsGrid"></div>
+        <!-- Speed Multiplier - Full Width -->
         </div>
-
-        <div class="section">
-            <h3>Adjust Time</h3>
-            <div class="button-group">
-                <button class="button secondary" onclick="nudge(-5*60*1000)">-5 min</button>
-                <button class="button secondary" onclick="nudge(-60*1000)">-1 min</button>
-                <button class="button secondary" onclick="nudge(60*1000)">+1 min</button>
-                <button class="button secondary" onclick="nudge(5*60*1000)">+5 min</button>
+        <div class="section" style="margin-top: 30px; border-top: 2px solid #333; padding-top: 20px;">
+            <h3>Speed Multiplier</h3>
+            <div style="background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 20px;">
+                <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
+                    <label for="speedSlider" style="font-size: 0.9rem; min-width: 60px;">Speed:</label>
+                    <input type="range" id="speedSlider" min="0.5" max="1.5" step="0.05" value="1.0" 
+                           style="flex: 1; height: 6px; border-radius: 3px; background: #333; accent-color: #4caf50;">
+                    <span id="speedValue" style="min-width: 50px; font-weight: bold; color: #4caf50;">1.0x</span>
+                </div>
+                
+                <div id="speedPreview" style="padding: 15px; background: #0a0a0a; border-radius: 6px; margin-bottom: 15px; min-height: 80px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <div>
+                            <div style="font-size: 0.85rem; color: #999; margin-bottom: 4px;">Real-time Duration</div>
+                            <div id="realTimeDuration" style="font-size: 1.1rem; color: #e5e5e5;">--:-- → --:--</div>
+                        </div>
+                        <div style="text-align: right;">
+                            <div style="font-size: 0.85rem; color: #999; margin-bottom: 4px;">Will End At</div>
+                            <div id="speedEndTime" style="font-size: 1.1rem; color: #e5e5e5;">--:--:--</div>
+                        </div>
+                    </div>
+                    <div style="border-top: 1px solid #333; padding-top: 10px; margin-top: 10px;">
+                        <div style="font-size: 0.85rem; color: #999; margin-bottom: 4px;">Preview Speed</div>
+                        <div id="speedAnimation" style="font-family: monospace; font-size: 1.2rem; color: #4caf50;">0</div>
+                    </div>
+                </div>
+                
+                <button onclick="applySpeed()" class="btn" style="width: 100%; background: #4caf50; color: white; font-weight: bold; padding: 14px;">
+                    Apply Speed Change
+                </button>
             </div>
         </div>
+        <div class="container">
 
-        <div class="section">
-            <h3>Output Mode</h3>
-            <div class="button-group">
-                <button class="button" id="modeTimerBtn" onclick="setOutputMode('timer')">Timer</button>
-                <button class="button" id="modeClockBtn" onclick="setOutputMode('clock')">Clock</button>
-            </div>
-        </div>
 
-        <div class="preview" id="colorPreview"></div>
 
-        <div class="button-group">
-            <button class="button primary" onclick="startTimer()">Start</button>
-            <button class="button secondary" onclick="pauseTimer()">Pause</button>
-            <button class="button secondary" onclick="resumeTimer()">Resume</button>
-            <button class="button danger" onclick="resetTimer()">Reset</button>
-        </div>
 
-        <div class="links">
-            <a href="#" id="displayLink" target="_blank">Open Display Screen</a> |
-            <a href="/">Home / New Room</a>
-        </div>
+    </div>
     </div>
 
     <script>
@@ -340,10 +491,99 @@
         // Update display link with room parameter
         const displayLink = document.getElementById('displayLink');
         displayLink.href = `/display?room=${encodeURIComponent(roomId)}`;
+
+        // Global state
+        let currentState = { mode: 'stopped', durationMs: 0, speed: 1.0 };
+        let currentTimerMode = 'duration'; // 'duration' or 'endAt'
+
+        // Timer mode selection
+        function setTimerMode(mode) {
+            if (mode === 'endAt') {
+                const endAtTime = document.getElementById('endAtTime').value;
+                if (!endAtTime) {
+                    alert('Please select an end time first');
+                    return;
+                }
+            }
+            currentTimerMode = mode;
+            document.getElementById('modeDurationBtn').classList.toggle('active', mode === 'duration');
+            document.getElementById('modeEndAtBtn').classList.toggle('active', mode === 'endAt');
+            updateEndTimeCalc();
+            emitSettings();
+        }
+
+        // Update calculated end time display
+        function updateEndTimeCalc() {
+            const display = document.getElementById('endTimeCalc');
+            if (currentTimerMode === 'duration') {
+                const durationMs = getDurationMs();
+                if (durationMs > 0) {
+                    const endTime = new Date(Date.now() + durationMs);
+                    const hours = endTime.getHours().toString().padStart(2, '0');
+                    const minutes = endTime.getMinutes().toString().padStart(2, '0');
+                    const seconds = endTime.getSeconds().toString().padStart(2, '0');
+                    display.textContent = `→ ends at ${hours}:${minutes}:${seconds}`;
+                } else {
+                    display.textContent = '';
+                }
+            } else {
+                // endAt mode - show the target end time with seconds
+                const endAtTime = document.getElementById('endAtTime').value;
+                if (endAtTime) {
+                    const [h, m] = endAtTime.split(':');
+                    const now = new Date();
+                    const target = new Date(now);
+                    target.setHours(parseInt(h || '0'), parseInt(m || '0'), 0, 0);
+                    if (target <= now) {
+                        target.setDate(target.getDate() + 1);
+                    }
+                    const hours = target.getHours().toString().padStart(2, '0');
+                    const minutes = target.getMinutes().toString().padStart(2, '0');
+                    const seconds = target.getSeconds().toString().padStart(2, '0');
+                    display.textContent = `→ ends at ${hours}:${minutes}:${seconds}`;
+                } else {
+                    display.textContent = '';
+                }
+            }
+        }
+
+        // Update end time calc when duration changes
+        document.getElementById('duration').addEventListener('input', updateEndTimeCalc);
+        document.getElementById('endAtTime').addEventListener('input', updateEndTimeCalc);
+        displayLink.href = `/display?room=${encodeURIComponent(roomId)}`;
         
         // Connect socket with room parameter
         const socket = io({ query: { room: roomId } });
-        let currentState = {};
+
+        // Helper functions for MM:SS format
+        function parseTimeInput(value) {
+            if (!value) return { min: 0, sec: 0 };
+            const parts = value.split(':');
+            const min = parseInt(parts[0]) || 0;
+            const sec = parseInt(parts[1]) || 0;
+            return { min, sec };
+        }
+
+        function formatTimeInput(minutes, seconds) {
+            return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        }
+
+        function validateAndFormatTimeInput(input) {
+            let value = input.value.replace(/[^0-9:]/g, '');
+            const parts = value.split(':');
+            if (parts.length === 2) {
+                const min = parseInt(parts[0]) || 0;
+                let sec = parseInt(parts[1]) || 0;
+                if (sec > 59) sec = 59;
+                input.value = formatTimeInput(min, sec);
+            }
+        }
+
+        // Add blur event listeners for auto-formatting
+        ['duration', 'amberThreshold', 'redThreshold'].forEach(id => {
+            const input = document.getElementById(id);
+            input.addEventListener('blur', () => validateAndFormatTimeInput(input));
+        });
 
         // Copy room links function
         function copyRoomLinks() {
@@ -362,55 +602,85 @@
         socket.on('timerState', (state) => {
             currentState = state;
             updateStatus();
-            updatePreview();
+            updateTimerPreview();
         });
 
         function updateStatus() {
-            const statusEl = document.getElementById('status');
+            const statusBadge = document.getElementById('statusBadge');
             const modeClass = currentState.mode;
-            statusEl.className = `status ${modeClass}`;
-            statusEl.textContent = `Timer: ${modeClass.charAt(0).toUpperCase() + modeClass.slice(1)}`;
+            statusBadge.className = `status-badge ${modeClass}`;
+            statusBadge.textContent = modeClass.charAt(0).toUpperCase() + modeClass.slice(1);
         }
 
-        function updatePreview() {
-            const previewEl = document.getElementById('colorPreview');
-            // This would show the current color based on remaining time
-            previewEl.style.background = getCurrentColor();
+        function updateTimerPreview() {
+            const previewEl = document.getElementById('timerPreview');
+            
+            // If in clock mode, show current time in white
+            if (currentState.showClock) {
+                const now = new Date();
+                const hours = now.getHours().toString().padStart(2, '0');
+                const minutes = now.getMinutes().toString().padStart(2, '0');
+                const seconds = now.getSeconds().toString().padStart(2, '0');
+                previewEl.textContent = `${hours}:${minutes}:${seconds}`;
+                previewEl.className = 'timer-preview white';
+                return;
+            }
+            
+            // Calculate remaining time
+            let remainingMs = 0;
+            if (currentState.mode === 'running' || currentState.mode === 'paused') {
+                const elapsed = currentState.mode === 'running' 
+                    ? (Date.now() - currentState.startTime - currentState.accumulatedPauseMs) * currentState.speed
+                    : (currentState.pauseTime - currentState.startTime - currentState.accumulatedPauseMs) * currentState.speed;
+                remainingMs = Math.max(0, currentState.durationMs - elapsed);
+            } else {
+                remainingMs = currentState.durationMs || 0;
+            }
+
+            // Format time
+            const totalSec = Math.floor(remainingMs / 1000);
+            const min = Math.floor(totalSec / 60);
+            const sec = totalSec % 60;
+            previewEl.textContent = `${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
+
+            // Set color based on thresholds
+            previewEl.className = 'timer-preview';
+            if (remainingMs <= currentState.redThresholdMs) {
+                previewEl.classList.add('red');
+            } else if (remainingMs <= currentState.amberThresholdMs) {
+                previewEl.classList.add('amber');
+            }
         }
 
-        function getCurrentColor() {
-            // Simplified color logic - would be more sophisticated in display
-            if (currentState.mode === 'stopped') return '#f8d7da';
-            if (currentState.mode === 'paused') return '#fff3cd';
-            return '#d4edda'; // running - green
-        }
+        // Update preview every second (always, including for clock mode)
+        setInterval(() => {
+            if (currentState.mode === 'running' || currentState.showClock) {
+                updateTimerPreview();
+            }
+        }, 1000);
 
         function getDurationMs() {
-            const min = parseInt(document.getElementById('durationMin').value) || 0;
-            const sec = parseInt(document.getElementById('durationSec').value) || 0;
+            const { min, sec } = parseTimeInput(document.getElementById('duration').value);
             return (min * 60 + sec) * 1000;
         }
 
         function getAmberThresholdMs() {
-            const min = parseInt(document.getElementById('amberMin').value) || 0;
-            const sec = parseInt(document.getElementById('amberSec').value) || 0;
+            const { min, sec } = parseTimeInput(document.getElementById('amberThreshold').value);
             return (min * 60 + sec) * 1000;
         }
 
         function getRedThresholdMs() {
-            const min = parseInt(document.getElementById('redMin').value) || 0;
-            const sec = parseInt(document.getElementById('redSec').value) || 0;
+            const { min, sec } = parseTimeInput(document.getElementById('redThreshold').value);
             return (min * 60 + sec) * 1000;
         }
 
         function startTimer() {
-            const mode = document.querySelector('input[name="mode"]:checked').value;
+            const mode = currentTimerMode;
             const data = {
                 speed: parseFloat(document.getElementById('speed').value) || 1.0,
                 amberThresholdMs: getAmberThresholdMs(),
                 redThresholdMs: getRedThresholdMs(),
-                countUp: document.getElementById('countUp').checked,
-                showClock: document.getElementById('showClock').checked
+                countUp: document.getElementById('countUp').checked
             };
 
             if (mode === 'duration') {
@@ -488,9 +758,8 @@
         function applyPreset(durationMs) {
             const minutes = Math.floor(durationMs / (60 * 1000));
             const seconds = Math.floor((durationMs % (60 * 1000)) / 1000);
-            document.getElementById('durationMin').value = minutes;
-            document.getElementById('durationSec').value = seconds;
-            document.querySelector('input[name="mode"][value="duration"]').checked = true;
+            document.getElementById('duration').value = formatTimeInput(minutes, seconds);
+            setTimerMode('duration');
             emitSettings();
         }
 
@@ -507,16 +776,95 @@
             document.getElementById('modeClockBtn').classList.toggle('primary', mode==='clock');
         }
 
+        // Speed multiplier preview functions
+        let speedAnimationInterval = null;
+        let speedAnimationCounter = 0;
+
+        function updateSpeedPreview() {
+            const speed = parseFloat(document.getElementById('speedSlider').value);
+            document.getElementById('speedValue').textContent = speed.toFixed(2) + 'x';
+
+            // Calculate real-time duration
+            const durationMs = getDurationMs();
+            const realTimeMs = durationMs / speed;
+            const durationMin = Math.floor(durationMs / 60000);
+            const durationSec = Math.floor((durationMs % 60000) / 1000);
+            const realMin = Math.floor(realTimeMs / 60000);
+            const realSec = Math.floor((realTimeMs % 60000) / 1000);
+            document.getElementById('realTimeDuration').textContent = 
+                `${durationMin}:${durationSec.toString().padStart(2, '0')} → ${realMin}:${realSec.toString().padStart(2, '0')} real-time`;
+
+            // Calculate end time
+            const now = new Date();
+            const endTime = new Date(now.getTime() + realTimeMs);
+            const hours = endTime.getHours().toString().padStart(2, '0');
+            const minutes = endTime.getMinutes().toString().padStart(2, '0');
+            const seconds = endTime.getSeconds().toString().padStart(2, '0');
+            document.getElementById('speedEndTime').textContent = `${hours}:${minutes}:${seconds}`;
+
+            // Update animation speed
+            if (speedAnimationInterval) {
+                clearInterval(speedAnimationInterval);
+            }
+            const baseInterval = 1000; // 1 second base
+            const animInterval = baseInterval / speed;
+            speedAnimationCounter = 0;
+            speedAnimationInterval = setInterval(() => {
+                speedAnimationCounter++;
+                document.getElementById('speedAnimation').textContent = speedAnimationCounter;
+            }, animInterval);
+        }
+
+        function applySpeed() {
+            const speed = parseFloat(document.getElementById('speedSlider').value);
+            
+            // Warning if timer is running
+            if (currentState.mode === 'running') {
+                if (!confirm(`⚠️ Timer is currently running.\n\nApplying speed change (${speed.toFixed(2)}x) will affect the timer immediately.\n\nContinue?`)) {
+                    return;
+                }
+            }
+
+            // Stop animation
+            if (speedAnimationInterval) {
+                clearInterval(speedAnimationInterval);
+                speedAnimationInterval = null;
+            }
+
+            // Apply speed to hidden input for compatibility
+            if (!document.getElementById('speed')) {
+                const hiddenSpeed = document.createElement('input');
+                hiddenSpeed.type = 'hidden';
+                hiddenSpeed.id = 'speed';
+                document.body.appendChild(hiddenSpeed);
+            }
+            document.getElementById('speed').value = speed;
+
+            saveSettings();
+            emitSettings();
+            
+            // Visual feedback
+            const btn = event.target;
+            const originalText = btn.textContent;
+            btn.textContent = '✅ Applied!';
+            btn.style.background = '#388e3c';
+            setTimeout(() => {
+                btn.textContent = originalText;
+                btn.style.background = '#4caf50';
+            }, 2000);
+        }
+
         // Emit live settings to server when inputs change
         function emitSettings() {
-            const mode = document.querySelector('input[name="mode"]:checked').value;
+            const mode = currentTimerMode;
+            const speedInput = document.getElementById('speed');
+            const speedValue = speedInput ? parseFloat(speedInput.value) : parseFloat(document.getElementById('speedSlider').value);
             const payload = {
                 durationMs: getDurationMs(),
-                speed: parseFloat(document.getElementById('speed').value) || 1.0,
+                speed: speedValue || 1.0,
                 amberThresholdMs: getAmberThresholdMs(),
                 redThresholdMs: getRedThresholdMs(),
-                countUp: document.getElementById('countUp').checked,
-                showClock: document.getElementById('showClock').checked
+                countUp: document.getElementById('countUp').checked
             };
             if (mode === 'endAt') {
                 payload.endAtTarget = document.getElementById('endAtTime').value;
@@ -538,23 +886,42 @@
             const saved = localStorage.getItem('timerSettings');
             if (saved) {
                 const settings = JSON.parse(saved);
-                document.getElementById('durationMin').value = settings.durationMin ?? 30;
-                document.getElementById('durationSec').value = settings.durationSec ?? 0;
-                document.getElementById('amberMin').value = settings.amberMin ?? 5;
-                document.getElementById('amberSec').value = settings.amberSec ?? 0;
-                document.getElementById('redMin').value = settings.redMin ?? 2;
-                document.getElementById('redSec').value = settings.redSec ?? 0;
-                document.getElementById('speed').value = settings.speed || 1.0;
+                // Handle both old format (separate min/sec) and new format (MM:SS)
+                if (settings.duration) {
+                    document.getElementById('duration').value = settings.duration;
+                } else {
+                    const dMin = settings.durationMin ?? 30;
+                    const dSec = settings.durationSec ?? 0;
+                    document.getElementById('duration').value = formatTimeInput(dMin, dSec);
+                }
+                if (settings.amberThreshold) {
+                    document.getElementById('amberThreshold').value = settings.amberThreshold;
+                } else {
+                    const aMin = settings.amberMin ?? 5;
+                    const aSec = settings.amberSec ?? 0;
+                    document.getElementById('amberThreshold').value = formatTimeInput(aMin, aSec);
+                }
+                if (settings.redThreshold) {
+                    document.getElementById('redThreshold').value = settings.redThreshold;
+                } else {
+                    const rMin = settings.redMin ?? 2;
+                    const rSec = settings.redSec ?? 0;
+                    document.getElementById('redThreshold').value = formatTimeInput(rMin, rSec);
+                }
+                const speedValue = settings.speed || 1.0;
+                document.getElementById('speedSlider').value = speedValue;
+                if (document.getElementById('speed')) {
+                    document.getElementById('speed').value = speedValue;
+                }
+                updateSpeedPreview();
                 document.getElementById('countUp').checked = settings.countUp || false;
-                document.getElementById('showClock').checked = settings.showClock || false;
             } else {
                 // Set sensible defaults on first load
-                document.getElementById('durationMin').value = 30;
-                document.getElementById('durationSec').value = 0;
-                document.getElementById('amberMin').value = 5;
-                document.getElementById('amberSec').value = 0;
-                document.getElementById('redMin').value = 2;
-                document.getElementById('redSec').value = 0;
+                document.getElementById('duration').value = '30:00';
+                document.getElementById('amberThreshold').value = '5:00';
+                document.getElementById('redThreshold').value = '2:00';
+                document.getElementById('speedSlider').value = 1.0;
+                updateSpeedPreview();
             }
             // Send initial settings to server so thresholds match immediately
             emitSettings();
@@ -562,26 +929,44 @@
             renderPresets();
             // Initialize output mode buttons state
             setOutputMode('timer');
+            // Initialize end time display
+            updateEndTimeCalc();
         });
+
+        // Update end time display every second to keep it current
+        setInterval(() => {
+            updateEndTimeCalc();
+            // Also update speed preview if visible
+            if (document.getElementById('speedSlider')) {
+                const durationMs = getDurationMs();
+                const speed = parseFloat(document.getElementById('speedSlider').value);
+                const realTimeMs = durationMs / speed;
+                const now = new Date();
+                const endTime = new Date(now.getTime() + realTimeMs);
+                const hours = endTime.getHours().toString().padStart(2, '0');
+                const minutes = endTime.getMinutes().toString().padStart(2, '0');
+                const seconds = endTime.getSeconds().toString().padStart(2, '0');
+                document.getElementById('speedEndTime').textContent = `${hours}:${minutes}:${seconds}`;
+            }
+        }, 1000);
 
         // Save settings to localStorage
         function saveSettings() {
             const settings = {
-                durationMin: document.getElementById('durationMin').value,
-                durationSec: document.getElementById('durationSec').value,
-                amberMin: document.getElementById('amberMin').value,
-                amberSec: document.getElementById('amberSec').value,
-                redMin: document.getElementById('redMin').value,
-                redSec: document.getElementById('redSec').value,
-                speed: document.getElementById('speed').value,
-                countUp: document.getElementById('countUp').checked,
-                showClock: document.getElementById('showClock').checked
+                duration: document.getElementById('duration').value,
+                amberThreshold: document.getElementById('amberThreshold').value,
+                redThreshold: document.getElementById('redThreshold').value,
+                speed: document.getElementById('speedSlider').value,
+                countUp: document.getElementById('countUp').checked
             };
             localStorage.setItem('timerSettings', JSON.stringify(settings));
         }
 
         // Auto-save settings when changed and emit live to server
         document.querySelectorAll('input').forEach(input => {
+            // Skip speedSlider - it has its own apply button
+            if (input.id === 'speedSlider') return;
+            
             input.addEventListener('change', () => {
                 saveSettings();
                 emitSettings();
@@ -591,6 +976,9 @@
                 emitSettings();
             });
         });
+
+        // Speed slider only updates preview, doesn't auto-apply
+        document.getElementById('speedSlider').addEventListener('input', updateSpeedPreview);
 
         // Keyboard shortcuts
         document.addEventListener('keydown', (e)=>{
