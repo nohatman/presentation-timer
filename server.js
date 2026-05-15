@@ -61,13 +61,21 @@ function getRoomState(roomId) {
 // Socket.IO connection handling
 io.on('connection', (socket) => {
   const roomId = socket.handshake.query.room || 'default';
+  const clientType = socket.handshake.query.type || 'unknown'; // 'control' or 'display'
   socket.join(roomId);
   
-  console.log(`👤 Client ${socket.id} joined room: ${roomId}`);
+  // Store client type on socket for later reference
+  socket.clientType = clientType;
+  socket.roomId = roomId;
+  
+  console.log(`👤 Client ${socket.id} joined room: ${roomId} as ${clientType}`);
 
   // Send current state to new client
   const timerState = getRoomState(roomId);
   socket.emit('timerState', timerState);
+
+  // Broadcast controller count to all clients in room
+  broadcastControllerCount(roomId);
 
   // Handle control commands from control panel
   socket.on('startTimer', (data) => {
@@ -178,8 +186,66 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     console.log(`👋 Client ${socket.id} disconnected from room: ${roomId}`);
+    // Broadcast updated controller count after disconnect
+    setTimeout(() => {
+      broadcastControllerCount(roomId);
+      checkAndCleanupRoom(roomId);
+    }, 100);
   });
 });
+
+// Helper to broadcast controller count to room
+function broadcastControllerCount(roomId) {
+  const socketsInRoom = io.sockets.adapter.rooms.get(roomId);
+  if (!socketsInRoom) return;
+  
+  let controllerCount = 0;
+  for (const socketId of socketsInRoom) {
+    const socket = io.sockets.sockets.get(socketId);
+    if (socket && socket.clientType === 'control') {
+      controllerCount++;
+    }
+  }
+  
+  // Emit to all clients in room
+  io.to(roomId).emit('controllerCount', { count: controllerCount });
+}
+
+// Cleanup empty rooms after a delay
+const roomCleanupTimers = new Map();
+
+function checkAndCleanupRoom(roomId) {
+  // Clear any existing cleanup timer for this room
+  if (roomCleanupTimers.has(roomId)) {
+    clearTimeout(roomCleanupTimers.get(roomId));
+  }
+  
+  // Check if room is empty
+  const socketsInRoom = io.sockets.adapter.rooms.get(roomId);
+  if (!socketsInRoom || socketsInRoom.size === 0) {
+    // Only cleanup rooms that are in 'stopped' mode
+    // This prevents configured/paused rooms from being deleted
+    const roomState = timerRooms.get(roomId);
+    if (roomState && roomState.mode !== 'stopped') {
+      console.log(`⏸️  Room ${roomId} is empty but not stopped - keeping it`);
+      return;
+    }
+    
+    // Schedule cleanup after 30 minutes of inactivity
+    const timer = setTimeout(() => {
+      // Double-check room is still empty and stopped before deleting
+      const stillEmpty = !io.sockets.adapter.rooms.get(roomId) || io.sockets.adapter.rooms.get(roomId).size === 0;
+      const currentState = timerRooms.get(roomId);
+      if (stillEmpty && currentState && currentState.mode === 'stopped') {
+        timerRooms.delete(roomId);
+        roomCleanupTimers.delete(roomId);
+        console.log(`🗑️  Cleaned up empty room: ${roomId}`);
+      }
+    }, 30 * 60 * 1000); // 30 minutes
+    
+    roomCleanupTimers.set(roomId, timer);
+  }
+}
 
 // Timer tick - send updates every second for all running timers
 setInterval(() => {
@@ -189,6 +255,70 @@ setInterval(() => {
     }
   });
 }, 1000);
+
+// API endpoint to get active rooms
+app.get('/api/rooms', (req, res) => {
+  const rooms = [];
+  for (const [roomId, state] of timerRooms.entries()) {
+    // Get connection count for this room
+    const socketsInRoom = io.sockets.adapter.rooms.get(roomId);
+    const connectionCount = socketsInRoom ? socketsInRoom.size : 0;
+    
+    // Calculate remaining time
+    let remainingMs = 0;
+    if (state.mode === 'running') {
+      const elapsed = (Date.now() - state.startTime - state.accumulatedPauseMs) * state.speed;
+      remainingMs = Math.max(0, state.durationMs - elapsed);
+    } else if (state.mode === 'paused') {
+      const elapsed = (state.pauseTime - state.startTime - state.accumulatedPauseMs) * state.speed;
+      remainingMs = Math.max(0, state.durationMs - elapsed);
+    } else {
+      remainingMs = state.durationMs;
+    }
+    
+    rooms.push({
+      id: roomId,
+      mode: state.mode,
+      connections: connectionCount,
+      remainingMs: Math.floor(remainingMs),
+      outputMode: state.outputMode
+    });
+  }
+  
+  res.json(rooms);
+});
+
+// Delete room endpoint
+app.delete('/api/rooms/:roomId', (req, res) => {
+  const roomId = req.params.roomId;
+  
+  if (!timerRooms.has(roomId)) {
+    return res.status(404).json({ error: 'Room not found' });
+  }
+  
+  // Delete the room state
+  timerRooms.delete(roomId);
+  
+  // Clear any pending cleanup timer
+  if (roomCleanupTimers.has(roomId)) {
+    clearTimeout(roomCleanupTimers.get(roomId));
+    roomCleanupTimers.delete(roomId);
+  }
+  
+  // Disconnect all sockets in the room
+  const socketsInRoom = io.sockets.adapter.rooms.get(roomId);
+  if (socketsInRoom) {
+    for (const socketId of socketsInRoom) {
+      const socket = io.sockets.sockets.get(socketId);
+      if (socket) {
+        socket.disconnect(true);
+      }
+    }
+  }
+  
+  console.log(`🗑️  Manually deleted room: ${roomId}`);
+  res.json({ success: true, message: 'Room deleted' });
+});
 
 // Routes
 app.get('/', (req, res) => {
@@ -203,6 +333,10 @@ app.get('/display', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'display.html'));
 });
 
+app.get('/dashboard', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
+});
+
 // Start server
 const PORT = process.env.PORT || 3000;
 console.log(`Starting server on port ${PORT}...`);
@@ -211,7 +345,8 @@ server.listen(PORT, () => {
   console.log(`\n✅ Presentation Timer server running successfully!`);
   console.log(`📱 Control panel: http://localhost:${PORT}/control`);
   console.log(`🖥️  Display: http://localhost:${PORT}/display`);
-  console.log(`🏠 Home: http://localhost:${PORT}/`);
+  console.log(`� Dashboard: http://localhost:${PORT}/dashboard`);
+  console.log(`�🏠 Home: http://localhost:${PORT}/`);
   console.log(`\n💡 Tip: Add ?room=yourname to create separate timers`);
   console.log(`   Example: http://localhost:${PORT}/control?room=presentation1\n`);
 });

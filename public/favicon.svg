@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Background circle -->
+  <circle cx="50" cy="50" r="48" fill="#2e7d32" stroke="#1b5e20" stroke-width="2"/>
+  
+  <!-- Timer icon - outer ring -->
+  <circle cx="50" cy="50" r="35" fill="none" stroke="#ffffff" stroke-width="4"/>
+  
+  <!-- Timer markings -->
+  <line x1="50" y1="18" x2="50" y2="25" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+  <line x1="82" y1="50" x2="75" y2="50" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+  <line x1="50" y1="82" x2="50" y2="75" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+  <line x1="18" y1="50" x2="25" y2="50" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+  
+  <!-- Clock hands forming "F" shape -->
+  <line x1="50" y1="50" x2="50" y2="28" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+  <line x1="50" y1="50" x2="68" y2="50" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+  
+  <!-- Center dot -->
+  <circle cx="50" cy="50" r="4" fill="#ffffff"/>
+</svg>

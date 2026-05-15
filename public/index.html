@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Presentation Timer</title>
+    <title>Foxy's Presentation Timer</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -107,9 +108,12 @@
         .quick-start {
             margin-top: 1rem;
         }
-        .quick-start .button {
+        .quick-start .button,
+        .quick-start a.button {
             width: 100%;
             margin-bottom: 0.5rem;
+            display: block;
+            box-sizing: border-box;
         }
         .features {
             text-align: left;
@@ -143,11 +147,90 @@
             color: #999;
             margin-top: 0.5rem;
         }
+        .rooms-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        .room-card {
+            background: #101010;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-decoration: none;
+            color: inherit;
+            display: block;
+        }
+        .room-card:hover {
+            border-color: #4caf50;
+            background: #151515;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(76, 175, 80, 0.2);
+        }
+        .room-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+        .room-name {
+            font-weight: 600;
+            font-size: 1.1rem;
+            color: #f5f5f5;
+            word-break: break-word;
+        }
+        .room-status {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .room-status.running {
+            background: #4caf50;
+            color: white;
+        }
+        .room-status.paused {
+            background: #ff9800;
+            color: white;
+        }
+        .room-status.stopped {
+            background: #666;
+            color: white;
+        }
+        .room-timer {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #90caf9;
+            margin: 0.5rem 0;
+            font-family: monospace;
+        }
+        .room-info {
+            font-size: 0.85rem;
+            color: #999;
+            display: flex;
+            gap: 1rem;
+        }
+        .empty-rooms {
+            text-align: center;
+            color: #666;
+            padding: 2rem;
+            font-style: italic;
+        }
+        .loading {
+            text-align: center;
+            color: #999;
+            padding: 1rem;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>⏱️ Presentation Timer</h1>
+        <h1>⏱️ Foxy's Presentation Timer</h1>
         <p class="subtitle">Multi-room countdown timers for presentations</p>
 
         <div class="section">
@@ -161,6 +244,13 @@
             <div id="error" class="error">Please enter a room name</div>
         </div>
 
+        <div class="section" id="activeRoomsSection" style="display: none;">
+            <h2>Active Rooms</h2>
+            <div id="roomsList" class="rooms-list">
+                <div class="loading">Loading rooms...</div>
+            </div>
+        </div>
+
         <div class="section">
             <h2>Quick Start</h2>
             <div class="quick-start">
@@ -170,6 +260,9 @@
                 <button class="button secondary" onclick="joinRoom('default')">
                     📍 Use Default Room
                 </button>
+                <a href="/dashboard" class="button secondary">
+                    🎯 Master Dashboard
+                </a>
             </div>
         </div>
 
@@ -229,6 +322,69 @@
                 joinRoom();
             }
         });
+
+        // Fetch and display active rooms
+        async function fetchActiveRooms() {
+            try {
+                const response = await fetch('/api/rooms');
+                if (!response.ok) throw new Error('Failed to fetch rooms');
+                
+                const rooms = await response.json();
+                displayRooms(rooms);
+            } catch (error) {
+                console.error('Error fetching rooms:', error);
+                document.getElementById('roomsList').innerHTML = 
+                    '<div class="empty-rooms">Unable to load rooms</div>';
+            }
+        }
+
+        function displayRooms(rooms) {
+            const roomsList = document.getElementById('roomsList');
+            const activeRoomsSection = document.getElementById('activeRoomsSection');
+            
+            if (rooms.length === 0) {
+                activeRoomsSection.style.display = 'none';
+                return;
+            }
+            
+            activeRoomsSection.style.display = 'block';
+            
+            roomsList.innerHTML = rooms.map(room => {
+                const minutes = Math.floor(room.remainingMs / 60000);
+                const seconds = Math.floor((room.remainingMs % 60000) / 1000);
+                const timeStr = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                
+                const statusClass = room.mode === 'running' ? 'running' : 
+                                  room.mode === 'paused' ? 'paused' : 'stopped';
+                
+                const modeIcon = room.outputMode === 'clock' ? '🕐' : '⏱️';
+                
+                return `
+                    <a href="/control?room=${encodeURIComponent(room.id)}" class="room-card">
+                        <div class="room-card-header">
+                            <span class="room-name">${escapeHtml(room.id)}</span>
+                            <span class="room-status ${statusClass}">${room.mode}</span>
+                        </div>
+                        <div class="room-timer">${modeIcon} ${timeStr}</div>
+                        <div class="room-info">
+                            <span>👥 ${room.connections} connected</span>
+                        </div>
+                    </a>
+                `;
+            }).join('');
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Initial fetch
+        fetchActiveRooms();
+        
+        // Auto-refresh every 3 seconds
+        setInterval(fetchActiveRooms, 3000);
     </script>
 </body>
 </html>

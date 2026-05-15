@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Timer Display</title>
+    <title>Foxy's Presentation Timer - Display</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <script src="/socket.io/socket.io.js"></script>
     <style>
         body {
@@ -167,9 +168,10 @@
         <div class="controls">
             <button class="control-button" id="controlBtn" onclick="window.open('/control?room=' + encodeURIComponent(roomId), '_blank')">Control</button>
             <button class="control-button" onclick="window.open('/', '_blank')">Home</button>
-            <div class="room-badge" style="position: absolute; bottom: 2rem; left: 2rem; background: rgba(255,255,255,0.1); padding: 8px 12px; border-radius: 4px; font-size: 0.9rem; backdrop-filter: blur(10px);">
-                Room: <span style="font-family: monospace; color: #90caf9;" id="roomDisplay"></span>
-            </div>
+        </div>
+        
+        <div class="room-badge" style="position: absolute; bottom: 2rem; left: 50%; transform: translateX(-50%); background: rgba(255,255,255,0.1); padding: 10px 20px; border-radius: 6px; font-size: 1rem; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2);">
+            <span style="opacity: 0.7;">Room:</span> <span style="font-family: monospace; color: #90caf9; font-weight: 600; font-size: 1.1rem;" id="roomDisplay"></span>
         </div>
     </div>
 
@@ -181,8 +183,8 @@
         // Update room display
         document.getElementById('roomDisplay').textContent = roomId;
         
-        // Connect socket with room parameter
-        const socket = io({ query: { room: roomId } });
+        // Connect socket with room parameter and type
+        const socket = io({ query: { room: roomId, type: 'display' } });
         let currentState = {};
         let blinkInterval = null;
         let displaySeconds = null; // smoothed displayed seconds
@@ -308,7 +310,7 @@
             const { mode, showClock } = currentState;
 
             if (showClock) {
-                return 'Clock Mode';
+                return 'Time of day';
             }
 
             switch (mode) {

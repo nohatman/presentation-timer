@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Foxy's Presentation Timer - Master Dashboard</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0a0a0a;
+            color: #e5e5e5;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        .header {
+            background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+            padding: 2rem;
+            border-radius: 12px;
+            margin-bottom: 2rem;
+            border: 1px solid #333;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+        .header h1 {
+            font-size: 2rem;
+            color: #fafafa;
+        }
+        .header-info {
+            display: flex;
+            gap: 2rem;
+            align-items: center;
+        }
+        .stat {
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #4caf50;
+        }
+        .stat-label {
+            font-size: 0.85rem;
+            color: #999;
+            text-transform: uppercase;
+        }
+        .rooms-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+            gap: 1.5rem;
+        }
+        .room-card {
+            background: linear-gradient(135deg, #1a1a1a 0%, #252525 100%);
+            border: 2px solid #333;
+            border-radius: 12px;
+            padding: 1.5rem;
+            transition: all 0.3s;
+        }
+        .room-card.running {
+            border-color: #4caf50;
+            box-shadow: 0 4px 20px rgba(76, 175, 80, 0.2);
+        }
+        .room-card.paused {
+            border-color: #ff9800;
+            box-shadow: 0 4px 20px rgba(255, 152, 0, 0.2);
+        }
+        .room-card.stopped {
+            border-color: #666;
+        }
+        .room-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid #333;
+        }
+        .room-name {
+            font-size: 1.4rem;
+            font-weight: 600;
+            color: #f5f5f5;
+            word-break: break-word;
+        }
+        .room-status {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .room-status.running {
+            background: #4caf50;
+            color: white;
+        }
+        .room-status.paused {
+            background: #ff9800;
+            color: white;
+        }
+        .room-status.stopped {
+            background: #666;
+            color: white;
+        }
+        .room-timer {
+            text-align: center;
+            margin: 1.5rem 0;
+        }
+        .timer-display {
+            font-size: 3.5rem;
+            font-weight: 700;
+            font-family: 'Courier New', monospace;
+            color: #4caf50;
+            text-shadow: 0 0 20px rgba(76, 175, 80, 0.3);
+        }
+        .timer-display.amber {
+            color: #ffb300;
+            text-shadow: 0 0 20px rgba(255, 179, 0, 0.3);
+        }
+        .timer-display.red {
+            color: #f44336;
+            text-shadow: 0 0 20px rgba(244, 67, 54, 0.3);
+            animation: urgentPulse 1s ease-in-out infinite;
+        }
+        .timer-display.clock {
+            color: #e5e5e5;
+            text-shadow: 0 0 20px rgba(229, 229, 229, 0.2);
+        }
+        @keyframes urgentPulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        .timer-mode {
+            font-size: 0.9rem;
+            color: #999;
+            margin-top: 0.5rem;
+        }
+        .room-info {
+            display: flex;
+            justify-content: space-around;
+            gap: 1rem;
+            margin: 1rem 0;
+            padding: 1rem;
+            background: #0a0a0a;
+            border-radius: 8px;
+        }
+        .info-item {
+            text-align: center;
+        }
+        .info-label {
+            font-size: 0.75rem;
+            color: #999;
+            text-transform: uppercase;
+            margin-bottom: 0.25rem;
+        }
+        .info-value {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #e5e5e5;
+        }
+        .room-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.75rem;
+            margin-top: 1rem;
+        }
+        .action-btn {
+            padding: 10px 16px;
+            border: 1px solid #333;
+            border-radius: 6px;
+            background: #1a1a1a;
+            color: #e5e5e5;
+            text-decoration: none;
+            text-align: center;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+        .action-btn:hover {
+            background: #252525;
+            border-color: #4caf50;
+            transform: translateY(-2px);
+            animation: none !important;
+        }
+        .action-btn.control {
+            background: #1976d2;
+            border-color: #1976d2;
+            color: white;
+        }
+        .action-btn.control:hover {
+            background: #1565c0;
+            border-color: #1565c0;
+        }
+        .action-btn.display {
+            background: #2e7d32;
+            border-color: #2e7d32;
+            color: white;
+        }
+        .action-btn.display:hover {
+            background: #256628;
+            border-color: #256628;
+        }
+        .action-btn.danger {
+            background: #b71c1c;
+            border-color: #b71c1c;
+            color: white;
+        }
+        .action-btn.danger:hover {
+            background: #941616;
+            border-color: #941616;
+        }
+        .action-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+        .action-btn:disabled:hover {
+            background: #4caf50;
+            border-color: #4caf50;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 4rem 2rem;
+            color: #666;
+        }
+        .empty-state-icon {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+        }
+        .empty-state-text {
+            font-size: 1.2rem;
+            margin-bottom: 0.5rem;
+        }
+        .empty-state-hint {
+            font-size: 0.9rem;
+            color: #999;
+        }
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: #999;
+        }
+        .nav-links {
+            display: flex;
+            gap: 1rem;
+        }
+        .nav-link {
+            padding: 8px 16px;
+            border: 1px solid #333;
+            border-radius: 6px;
+            background: #1a1a1a;
+            color: #e5e5e5;
+            text-decoration: none;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+        }
+        .nav-link:hover {
+            background: #252525;
+            border-color: #4caf50;
+        }
+    </style>
+</head>
+<body>
+    <script src="/socket.io/socket.io.js"></script>
+    <div class="header">
+        <div>
+            <h1>🎯 Master Dashboard</h1>
+            <p style="color: #999; margin-top: 0.5rem;">Monitor all active presentation timers</p>
+        </div>
+        <div class="header-info">
+            <div class="stat">
+                <div class="stat-value" id="totalRooms">0</div>
+                <div class="stat-label">Active Rooms</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value" id="totalConnections">0</div>
+                <div class="stat-label">Connections</div>
+            </div>
+            <div class="nav-links">
+                <a href="/" class="nav-link">🏠 Home</a>
+            </div>
+        </div>
+    </div>
+
+    <div id="roomsContainer" class="rooms-grid">
+        <div class="loading">Loading rooms...</div>
+    </div>
+
+    <script>
+        let roomsData = [];
+
+        async function fetchRooms() {
+            try {
+                const response = await fetch('/api/rooms');
+                if (!response.ok) throw new Error('Failed to fetch rooms');
+                
+                roomsData = await response.json();
+                updateDashboard();
+            } catch (error) {
+                console.error('Error fetching rooms:', error);
+                document.getElementById('roomsContainer').innerHTML = 
+                    '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">Unable to load rooms</div></div>';
+            }
+        }
+
+        function updateDashboard() {
+            const container = document.getElementById('roomsContainer');
+            
+            // Update header stats
+            document.getElementById('totalRooms').textContent = roomsData.length;
+            const totalConnections = roomsData.reduce((sum, room) => sum + room.connections, 0);
+            document.getElementById('totalConnections').textContent = totalConnections;
+            
+            if (roomsData.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">⏱️</div>
+                        <div class="empty-state-text">No active rooms</div>
+                        <div class="empty-state-hint">Create a room from the home page to get started</div>
+                    </div>
+                `;
+                return;
+            }
+            
+            // Sort by status (running first, then paused, then stopped)
+            const sortedRooms = [...roomsData].sort((a, b) => {
+                const statusOrder = { running: 0, paused: 1, stopped: 2 };
+                return statusOrder[a.mode] - statusOrder[b.mode];
+            });
+            
+            container.innerHTML = sortedRooms.map(room => {
+                let displayTime;
+                if (room.outputMode === 'clock') {
+                    // Show actual time of day for clock mode
+                    const now = new Date();
+                    const hours = now.getHours().toString().padStart(2, '0');
+                    const minutes = now.getMinutes().toString().padStart(2, '0');
+                    const seconds = now.getSeconds().toString().padStart(2, '0');
+                    displayTime = `${hours}:${minutes}:${seconds}`;
+                } else {
+                    // Show remaining time for timer mode
+                    const minutes = Math.floor(room.remainingMs / 60000);
+                    const seconds = Math.floor((room.remainingMs % 60000) / 1000);
+                    displayTime = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                }
+                
+                const minutes = Math.floor(room.remainingMs / 60000);
+                const seconds = Math.floor((room.remainingMs % 60000) / 1000);
+                const modeIcon = room.outputMode === 'clock' ? '🕐' : '⏱️';
+                const modeText = room.outputMode === 'clock' ? 'Clock Mode' : 'Timer Mode';
+                
+                // Determine color based on remaining time and thresholds
+                let timerClass = 'color-normal';
+                if (room.outputMode === 'clock') {
+                    timerClass = 'clock';
+                } else if (room.remainingMs <= 2 * 60 * 1000) { // 2 min default red
+                    timerClass = 'red';
+                } else if (room.remainingMs <= 5 * 60 * 1000) { // 5 min default amber
+                    timerClass = 'amber';
+                }
+                
+                return `
+                    <div class="room-card ${room.mode}">
+                        <div class="room-header">
+                            <div class="room-name">${escapeHtml(room.id)}</div>
+                            <div class="room-status ${room.mode}">${room.mode}</div>
+                        </div>
+                        
+                        <div class="room-timer">
+                            <div class="timer-display ${timerClass}">${displayTime}</div>
+                            <div class="timer-mode">${modeIcon} ${modeText}</div>
+                        </div>
+                        
+                        <div class="room-info">
+                            <div class="info-item">
+                                <div class="info-label">Connections</div>
+                                <div class="info-value">👥 ${room.connections}</div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-label">Ending At</div>
+                                <div class="info-value">${getEndingTime(room.remainingMs)}</div>
+                            </div>
+                        </div>
+                        
+                        <div class="room-actions">
+                            <button onclick="toggleRoomTimer('${escapeHtml(room.id)}', '${room.mode}')" class="action-btn" style="background: ${room.mode === 'running' ? '#ff9800' : '#4caf50'}; border-color: ${room.mode === 'running' ? '#ff9800' : '#4caf50'}; color: white;">
+                                ${room.mode === 'running' ? '⏸️ Pause' : '▶️ Start'}
+                            </button>
+                            <a href="/control?room=${encodeURIComponent(room.id)}" class="action-btn control" target="_blank">
+                                📱 Control Panel
+                            </a>
+                            <a href="/display?room=${encodeURIComponent(room.id)}" class="action-btn display" target="_blank">
+                                🖥️ Display
+                            </a>
+                            <button onclick="deleteRoom('${escapeHtml(room.id)}')" class="action-btn danger">
+                                🗑️ Delete
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function getEndingTime(remainingMs) {
+            const endTime = new Date(Date.now() + remainingMs);
+            const hours = endTime.getHours().toString().padStart(2, '0');
+            const minutes = endTime.getMinutes().toString().padStart(2, '0');
+            const seconds = endTime.getSeconds().toString().padStart(2, '0');
+            return `${hours}:${minutes}:${seconds}`;
+        }
+
+        // Socket connections for each room
+        const roomSockets = new Map();
+
+        function getOrCreateSocket(roomId) {
+            if (!roomSockets.has(roomId)) {
+                const socket = io({ query: { room: roomId, type: 'dashboard' } });
+                roomSockets.set(roomId, socket);
+            }
+            return roomSockets.get(roomId);
+        }
+
+        // Initial fetch
+        fetchRooms();
+        
+        // Auto-refresh every 1 second for live updates
+        setInterval(fetchRooms, 1000);
+
+        // Function to start timer from dashboard
+        async function toggleRoomTimer(roomId, currentMode) {
+            try {
+                const socket = getOrCreateSocket(roomId);
+                const room = roomsData.find(r => r.id === roomId);
+                
+                if (!room) {
+                    alert('Room not found');
+                    return;
+                }
+                
+                if (currentMode === 'running') {
+                    // Pause the timer
+                    socket.emit('pauseTimer');
+                } else {
+                    // Start the timer
+                    socket.emit('startTimer', {
+                        durationMs: room.remainingMs,
+                        speed: 1.0,
+                        amberThresholdMs: 5 * 60 * 1000,
+                        redThresholdMs: 2 * 60 * 1000,
+                        countUp: false
+                    });
+                }
+                
+                // Immediately refresh the room list
+                await fetchRooms();
+            } catch (error) {
+                console.error('Error toggling timer:', error);
+                alert('Failed to toggle timer. Please use the control panel.');
+            }
+        }
+
+        async function deleteRoom(roomId) {
+            // Confirmation dialog
+            const confirmMsg = `Are you sure you want to delete room "${roomId}"?\n\nThis will:\n• Remove the room permanently\n• Disconnect all connected clients\n• Cannot be undone\n\nDelete this room?`;
+            
+            if (!confirm(confirmMsg)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/rooms/${encodeURIComponent(roomId)}`, {
+                    method: 'DELETE'
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to delete room');
+                }
+                
+                // Immediately refresh the room list
+                await fetchRooms();
+                
+                // Show success message briefly
+                alert(`✅ Room "${roomId}" deleted successfully`);
+            } catch (error) {
+                console.error('Error deleting room:', error);
+                alert('❌ Failed to delete room. Please try again.');
+            }
+        }
+    </script>
+</body>
+</html>
