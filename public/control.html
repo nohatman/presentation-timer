@@ -500,7 +500,7 @@
         displayLink.href = `/display?room=${encodeURIComponent(roomId)}`;
 
         // Global state
-        let currentState = { mode: 'stopped', durationMs: 0, speed: 1.0 };
+        let currentState = { mode: 'stopped', durationMs: 0, speed: 1.0, displayScale: 1.0 };
         let currentTimerMode = 'duration'; // 'duration' or 'endAt'
 
         // Timer mode selection
@@ -640,6 +640,16 @@
             updateStatus();
             updateTimerPreview();
             updatePlayPauseButton();
+            
+            // Update sliders from state
+            if (state.speed !== undefined) {
+                document.getElementById('speedSlider').value = state.speed;
+                updateSpeedPreview();
+            }
+            if (state.displayScale !== undefined) {
+                document.getElementById('displayScaleSlider').value = state.displayScale;
+                updateDisplayScalePreview();
+            }
         });
 
         // Handle controller count updates
@@ -853,6 +863,33 @@
             // also mirror immediate UI feedback
             document.getElementById('modeTimerBtn').classList.toggle('primary', mode==='timer');
             document.getElementById('modeClockBtn').classList.toggle('primary', mode==='clock');
+        }
+
+        // Display scale functions
+        function updateDisplayScalePreview() {
+            const slider = document.getElementById('displayScaleSlider');
+            const valueDisplay = document.getElementById('displayScaleValue');
+            const scale = parseFloat(slider.value);
+            valueDisplay.textContent = scale.toFixed(1) + 'x';
+        }
+
+        function applyDisplayScale() {
+            const scale = parseFloat(document.getElementById('displayScaleSlider').value);
+            
+            // Update the display scale setting
+            socket.emit('updateSettings', {
+                displayScale: scale
+            });
+            
+            // Visual feedback
+            const btn = event.target;
+            const originalText = btn.textContent;
+            btn.textContent = '✓ Applied!';
+            btn.style.background = '#4caf50';
+            setTimeout(() => {
+                btn.textContent = originalText;
+                btn.style.background = '#2196f3';
+            }, 1500);
         }
 
         // Speed multiplier preview functions

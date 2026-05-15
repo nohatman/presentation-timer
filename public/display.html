@@ -29,7 +29,7 @@
             font-weight: bold;
             text-align: center;
             margin-bottom: 2rem;
-            transition: color 0.5s ease, text-shadow 0.3s ease;
+            transition: color 0.5s ease, text-shadow 0.3s ease, font-size 0.3s ease;
             text-shadow: 0 0 30px currentColor;
             font-variant-numeric: tabular-nums;
             letter-spacing: 0.05em;
@@ -194,6 +194,11 @@
             currentState = state;
             // On any state update, ensure we refresh immediately
             updateDisplay(true);
+            
+            // Apply display scale
+            const timerDisplay = document.getElementById('timerDisplay');
+            const scale = state.displayScale || 1.0;
+            timerDisplay.style.fontSize = (18 * scale) + 'vw';
         });
 
         function updateDisplay(forceImmediate = false) {

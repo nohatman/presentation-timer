@@ -45,7 +45,8 @@ function createDefaultTimerState() {
     endAtTarget: null,
     countUp: false,
     showClock: false,
-    outputMode: 'timer' // 'timer' | 'clock'
+    outputMode: 'timer', // 'timer' | 'clock'
+    displayScale: 1.0 // Display size multiplier (0.5 - 2.0)
   };
 }
 
