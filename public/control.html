@@ -415,7 +415,7 @@
         <div class="section">
             <h3>Quick Presets</h3>
             <div class="presets" id="presetsGrid"></div>
-            <small style="display: block; margin-top: 8px; color: #999;">Ctrl+Click to save</small>
+            <small style="display: block; margin-top: 8px; color: #999;">Ctrl+Click to save &nbsp;·&nbsp; While running, applies the full preset minus time already elapsed</small>
         </div>
 
         <div class="section">
@@ -444,6 +444,18 @@
                     <button class="button" id="modeTimerBtn" onclick="setOutputMode('timer')" style="flex: 1;">⏱️ Timer</button>
                     <button class="button" id="modeClockBtn" onclick="setOutputMode('clock')" style="flex: 1;">🕐 Time of day</button>
                 </div>
+            </div>
+            <div class="form-group" style="margin-top: 12px;">
+                <label style="font-size: 0.9rem;">Display Size</label>
+                <div style="display: flex; align-items: center; gap: 12px; margin-top: 8px;">
+                    <input type="range" id="displayScaleSlider" min="0.5" max="2.0" step="0.1" value="1.0"
+                           style="flex: 1; height: 6px; border-radius: 3px; background: #333; accent-color: #90caf9;"
+                           oninput="updateDisplayScalePreview()">
+                    <span id="displayScaleValue" style="min-width: 35px; font-weight: bold; color: #90caf9;">1.0x</span>
+                </div>
+                <button onclick="applyDisplayScale()" class="button" style="width: 100%; margin-top: 8px; background: #2196f3; color: white;">
+                    Apply Display Size
+                </button>
             </div>
         </div>
 
@@ -502,6 +514,7 @@
         // Global state
         let currentState = { mode: 'stopped', durationMs: 0, speed: 1.0, displayScale: 1.0 };
         let currentTimerMode = 'duration'; // 'duration' or 'endAt'
+        let durationInputFocused = false;
 
         // Timer mode selection
         function setTimerMode(mode) {
@@ -635,20 +648,34 @@
             });
         }
 
+        // Sliders are local UI until Apply is clicked — only sync from server on first load
+        let slidersInitialised = false;
+
         socket.on('timerState', (state) => {
             currentState = state;
             updateStatus();
             updateTimerPreview();
             updatePlayPauseButton();
-            
-            // Update sliders from state
-            if (state.speed !== undefined) {
-                document.getElementById('speedSlider').value = state.speed;
-                updateSpeedPreview();
+
+            if (!slidersInitialised) {
+                if (state.speed !== undefined) {
+                    document.getElementById('speedSlider').value = state.speed;
+                    updateSpeedPreview();
+                }
+                if (state.displayScale !== undefined) {
+                    document.getElementById('displayScaleSlider').value = state.displayScale;
+                    updateDisplayScalePreview();
+                }
+                slidersInitialised = true;
             }
-            if (state.displayScale !== undefined) {
-                document.getElementById('displayScaleSlider').value = state.displayScale;
-                updateDisplayScalePreview();
+
+            // Keep duration input in sync with server (e.g. after nudge) so that
+            // changing other settings like countUp doesn't overwrite the nudged value.
+            // Only sync when running/paused and user isn't actively editing the field.
+            if (!durationInputFocused && (state.mode === 'running' || state.mode === 'paused')) {
+                const min = Math.floor(state.durationMs / 60000);
+                const sec = Math.floor((state.durationMs % 60000) / 1000);
+                document.getElementById('duration').value = formatTimeInput(min, sec);
             }
         });
 
@@ -674,41 +701,38 @@
 
         function updateTimerPreview() {
             const previewEl = document.getElementById('timerPreview');
-            
-            // If in clock mode, show current time in white
+
             if (currentState.showClock) {
-                const now = new Date();
-                const hours = now.getHours().toString().padStart(2, '0');
-                const minutes = now.getMinutes().toString().padStart(2, '0');
-                const seconds = now.getSeconds().toString().padStart(2, '0');
-                previewEl.textContent = `${hours}:${minutes}:${seconds}`;
+                previewEl.textContent = new Date().toLocaleTimeString('en-GB');
                 previewEl.className = 'timer-preview white';
                 return;
             }
-            
-            // Calculate remaining time
+
             let remainingMs = 0;
+            let overMs = 0;
             if (currentState.mode === 'running' || currentState.mode === 'paused') {
-                const elapsed = currentState.mode === 'running' 
+                const elapsed = currentState.mode === 'running'
                     ? (Date.now() - currentState.startTime - currentState.accumulatedPauseMs) * currentState.speed
                     : (currentState.pauseTime - currentState.startTime - currentState.accumulatedPauseMs) * currentState.speed;
                 remainingMs = Math.max(0, currentState.durationMs - elapsed);
+                if (currentState.countUp) overMs = Math.max(0, elapsed - currentState.durationMs);
             } else {
                 remainingMs = currentState.durationMs || 0;
             }
 
-            // Format time
-            const totalSec = Math.floor(remainingMs / 1000);
-            const min = Math.floor(totalSec / 60);
-            const sec = totalSec % 60;
-            previewEl.textContent = `${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
-
-            // Set color based on thresholds
-            previewEl.className = 'timer-preview';
-            if (remainingMs <= currentState.redThresholdMs) {
-                previewEl.classList.add('red');
-            } else if (remainingMs <= currentState.amberThresholdMs) {
-                previewEl.classList.add('amber');
+            if (currentState.countUp && overMs > 0) {
+                const s = Math.floor(overMs / 1000);
+                previewEl.textContent = `-${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
+                previewEl.className = 'timer-preview red';
+            } else {
+                const s = Math.floor(remainingMs / 1000);
+                previewEl.textContent = `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
+                previewEl.className = 'timer-preview';
+                if (remainingMs <= currentState.redThresholdMs) {
+                    previewEl.classList.add('red');
+                } else if (remainingMs <= currentState.amberThresholdMs) {
+                    previewEl.classList.add('amber');
+                }
             }
         }
 
@@ -1110,6 +1134,11 @@
 
         // Speed slider only updates preview, doesn't auto-apply
         document.getElementById('speedSlider').addEventListener('input', updateSpeedPreview);
+
+        // Track when user is actively editing the duration field so server syncs don't overwrite it
+        const durationInput = document.getElementById('duration');
+        durationInput.addEventListener('focus', () => durationInputFocused = true);
+        durationInput.addEventListener('blur',  () => durationInputFocused = false);
 
         // Keyboard shortcuts
         document.addEventListener('keydown', (e)=>{

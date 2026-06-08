@@ -288,7 +288,6 @@
     </style>
 </head>
 <body>
-    <script src="/socket.io/socket.io.js"></script>
     <div class="header">
         <div>
             <h1>🎯 Master Dashboard</h1>
@@ -303,8 +302,15 @@
                 <div class="stat-value" id="totalConnections">0</div>
                 <div class="stat-label">Connections</div>
             </div>
-            <div class="nav-links">
-                <a href="/" class="nav-link">🏠 Home</a>
+            <div style="display: flex; flex-direction: column; gap: 0.75rem; align-items: flex-end;">
+                <div class="nav-links">
+                    <a href="/" class="nav-link">🏠 Home</a>
+                </div>
+                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; justify-content: flex-end;">
+                    <button onclick="startAllRooms()" class="nav-link" style="background:#2e7d32;border-color:#2e7d32;color:white;cursor:pointer;">▶ Start All</button>
+                    <button onclick="stopAllRooms()" class="nav-link" style="background:#b71c1c;border-color:#b71c1c;color:white;cursor:pointer;">⏹ Stop All</button>
+                    <button id="startSelectedBtn" onclick="startSelectedRooms()" class="nav-link" style="display:none;background:#1976d2;border-color:#1976d2;color:white;cursor:pointer;">▶ Start Selected (0)</button>
+                </div>
             </div>
         </div>
     </div>
@@ -317,6 +323,7 @@
         let roomsData = [];
         let cardOrder = [];
         let draggedElement = null;
+        const selectedRooms = new Set();
 
         // Load saved card order from localStorage
         function loadCardOrder() {
@@ -373,12 +380,12 @@
 
         function updateDashboard() {
             const container = document.getElementById('roomsContainer');
-            
+
             // Update header stats
             document.getElementById('totalRooms').textContent = roomsData.length;
             const totalConnections = roomsData.reduce((sum, room) => sum + room.connections, 0);
             document.getElementById('totalConnections').textContent = totalConnections;
-            
+
             if (roomsData.length === 0) {
                 container.innerHTML = `
                     <div class="empty-state">
@@ -387,46 +394,61 @@
                         <div class="empty-state-hint">Create a room from the home page to get started</div>
                     </div>
                 `;
+                updateSelectionUI();
                 return;
             }
-            
+
             // Keep rooms in custom order
             const sortedRooms = sortRoomsByOrder(roomsData);
-            
+
             container.innerHTML = sortedRooms.map(room => {
                 let displayTime;
+                let timerClass;
+                let modeIcon;
+                let modeText;
+
                 if (room.outputMode === 'clock') {
-                    // Show actual time of day for clock mode
                     const now = new Date();
-                    const hours = now.getHours().toString().padStart(2, '0');
-                    const minutes = now.getMinutes().toString().padStart(2, '0');
-                    const seconds = now.getSeconds().toString().padStart(2, '0');
-                    displayTime = `${hours}:${minutes}:${seconds}`;
+                    displayTime = now.toLocaleTimeString('en-GB');
+                    timerClass = 'clock';
+                    modeIcon = '🕐';
+                    modeText = 'Clock Mode';
+                } else if (room.countUp && room.overMs > 0) {
+                    // Overtime: timer has passed zero and is counting up
+                    const overMin = Math.floor(room.overMs / 60000);
+                    const overSec = Math.floor((room.overMs % 60000) / 1000);
+                    displayTime = `-${overMin.toString().padStart(2, '0')}:${overSec.toString().padStart(2, '0')}`;
+                    timerClass = 'red';
+                    modeIcon = '⏫';
+                    modeText = 'Overtime';
                 } else {
-                    // Show remaining time for timer mode
                     const minutes = Math.floor(room.remainingMs / 60000);
                     const seconds = Math.floor((room.remainingMs % 60000) / 1000);
                     displayTime = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                    // Use the room's actual thresholds for colour
+                    const amber = room.amberThresholdMs || 5 * 60 * 1000;
+                    const red = room.redThresholdMs || 2 * 60 * 1000;
+                    if (room.remainingMs <= red) {
+                        timerClass = 'red';
+                    } else if (room.remainingMs <= amber) {
+                        timerClass = 'amber';
+                    } else {
+                        timerClass = '';
+                    }
+                    modeIcon = room.countUp ? '⬆️' : '⏱️';
+                    modeText = room.countUp ? 'Count Up' : 'Timer Mode';
                 }
-                
-                const minutes = Math.floor(room.remainingMs / 60000);
-                const seconds = Math.floor((room.remainingMs % 60000) / 1000);
-                const modeIcon = room.outputMode === 'clock' ? '🕐' : '⏱️';
-                const modeText = room.outputMode === 'clock' ? 'Clock Mode' : 'Timer Mode';
-                
-                // Determine color based on remaining time and thresholds
-                let timerClass = 'color-normal';
-                if (room.outputMode === 'clock') {
-                    timerClass = 'clock';
-                } else if (room.remainingMs <= 2 * 60 * 1000) { // 2 min default red
-                    timerClass = 'red';
-                } else if (room.remainingMs <= 5 * 60 * 1000) { // 5 min default amber
-                    timerClass = 'amber';
-                }
-                
+
+                const isSelected = selectedRooms.has(room.id);
+                const pauseBtn = room.mode === 'running'
+                    ? `<button onclick="toggleRoomTimer('${escapeHtml(room.id)}', 'running')" class="action-btn" style="background:#ff9800;border-color:#ff9800;color:white;">⏸️ Pause</button>`
+                    : room.mode === 'paused'
+                        ? `<button onclick="toggleRoomTimer('${escapeHtml(room.id)}', 'paused')" class="action-btn" style="background:#4caf50;border-color:#4caf50;color:white;">▶️ Resume</button>`
+                        : `<button onclick="toggleRoomTimer('${escapeHtml(room.id)}', 'stopped')" class="action-btn" style="background:#4caf50;border-color:#4caf50;color:white;">▶️ Start</button>`;
+
                 return `
-                    <div class="room-card ${room.mode}" 
-                         draggable="true" 
+                    <div class="room-card ${room.mode}"
+                         draggable="true"
                          data-room-id="${escapeHtml(room.id)}"
                          ondragstart="handleDragStart(event)"
                          ondragover="handleDragOver(event)"
@@ -436,15 +458,23 @@
                          ondragleave="handleDragLeave(event)">
                         <div class="drag-handle">⋮⋮</div>
                         <div class="room-header">
-                            <div class="room-name">${escapeHtml(room.id)}</div>
+                            <div style="display:flex;align-items:center;gap:8px;">
+                                <input type="checkbox" class="room-checkbox"
+                                       data-room-id="${escapeHtml(room.id)}"
+                                       ${isSelected ? 'checked' : ''}
+                                       onchange="onCheckboxChange(this)"
+                                       style="width:16px;height:16px;cursor:pointer;accent-color:#4caf50;"
+                                       onclick="event.stopPropagation()">
+                                <div class="room-name">${escapeHtml(room.id)}</div>
+                            </div>
                             <div class="room-status ${room.mode}">${room.mode}</div>
                         </div>
-                        
+
                         <div class="room-timer">
                             <div class="timer-display ${timerClass}">${displayTime}</div>
                             <div class="timer-mode">${modeIcon} ${modeText}</div>
                         </div>
-                        
+
                         <div class="room-info">
                             <div class="info-item">
                                 <div class="info-label">Connections</div>
@@ -452,14 +482,12 @@
                             </div>
                             <div class="info-item">
                                 <div class="info-label">Ending At</div>
-                                <div class="info-value">${getEndingTime(room.remainingMs)}</div>
+                                <div class="info-value">${room.mode === 'running' ? getEndingTime(room.remainingMs) : '—'}</div>
                             </div>
                         </div>
-                        
+
                         <div class="room-actions">
-                            <button onclick="toggleRoomTimer('${escapeHtml(room.id)}', '${room.mode}')" class="action-btn" style="background: ${room.mode === 'running' ? '#ff9800' : '#4caf50'}; border-color: ${room.mode === 'running' ? '#ff9800' : '#4caf50'}; color: white;">
-                                ${room.mode === 'running' ? '⏸️ Pause' : '▶️ Start'}
-                            </button>
+                            ${pauseBtn}
                             <a href="/control?room=${encodeURIComponent(room.id)}" class="action-btn control" target="_blank">
                                 📱 Control Panel
                             </a>
@@ -473,6 +501,8 @@
                     </div>
                 `;
             }).join('');
+
+            updateSelectionUI();
         }
 
         function escapeHtml(text) {
@@ -489,17 +519,6 @@
             return `${hours}:${minutes}:${seconds}`;
         }
 
-        // Socket connections for each room
-        const roomSockets = new Map();
-
-        function getOrCreateSocket(roomId) {
-            if (!roomSockets.has(roomId)) {
-                const socket = io({ query: { room: roomId, type: 'dashboard' } });
-                roomSockets.set(roomId, socket);
-            }
-            return roomSockets.get(roomId);
-        }
-
         // Initial fetch
         loadCardOrder();
         fetchRooms();
@@ -507,36 +526,77 @@
         // Auto-refresh every 1 second for live updates
         setInterval(fetchRooms, 1000);
 
-        // Function to start timer from dashboard
+        // Toggle a single room's timer via REST API
         async function toggleRoomTimer(roomId, currentMode) {
             try {
-                const socket = getOrCreateSocket(roomId);
-                const room = roomsData.find(r => r.id === roomId);
-                
-                if (!room) {
-                    alert('Room not found');
-                    return;
-                }
-                
+                let endpoint;
                 if (currentMode === 'running') {
-                    // Pause the timer
-                    socket.emit('pauseTimer');
+                    endpoint = 'pause';
+                } else if (currentMode === 'paused') {
+                    endpoint = 'resume';
                 } else {
-                    // Start the timer
-                    socket.emit('startTimer', {
-                        durationMs: room.remainingMs,
-                        speed: 1.0,
-                        amberThresholdMs: 5 * 60 * 1000,
-                        redThresholdMs: 2 * 60 * 1000,
-                        countUp: false
-                    });
+                    endpoint = 'start';
                 }
-                
-                // Immediately refresh the room list
+                await fetch(`/api/rooms/${encodeURIComponent(roomId)}/${endpoint}`, { method: 'POST' });
                 await fetchRooms();
             } catch (error) {
                 console.error('Error toggling timer:', error);
-                alert('Failed to toggle timer. Please use the control panel.');
+            }
+        }
+
+        // Start all stopped/paused rooms simultaneously
+        async function startAllRooms() {
+            const targets = roomsData.filter(r => r.mode !== 'running');
+            if (targets.length === 0) return;
+            await Promise.all(targets.map(r => {
+                const endpoint = r.mode === 'paused' ? 'resume' : 'start';
+                return fetch(`/api/rooms/${encodeURIComponent(r.id)}/${endpoint}`, { method: 'POST' });
+            }));
+            await fetchRooms();
+        }
+
+        // Stop (pause) all running rooms simultaneously
+        async function stopAllRooms() {
+            const targets = roomsData.filter(r => r.mode === 'running');
+            if (targets.length === 0) return;
+            await Promise.all(targets.map(r =>
+                fetch(`/api/rooms/${encodeURIComponent(r.id)}/pause`, { method: 'POST' })
+            ));
+            await fetchRooms();
+        }
+
+        // Start selected rooms
+        async function startSelectedRooms() {
+            const targets = roomsData.filter(r => selectedRooms.has(r.id) && r.mode !== 'running');
+            if (targets.length === 0) return;
+            await Promise.all(targets.map(r => {
+                const endpoint = r.mode === 'paused' ? 'resume' : 'start';
+                return fetch(`/api/rooms/${encodeURIComponent(r.id)}/${endpoint}`, { method: 'POST' });
+            }));
+            await fetchRooms();
+        }
+
+        // Update checkbox-driven selection state and header button
+        function onCheckboxChange(checkbox) {
+            const roomId = checkbox.dataset.roomId;
+            if (checkbox.checked) selectedRooms.add(roomId);
+            else selectedRooms.delete(roomId);
+            updateSelectionUI();
+        }
+
+        function updateSelectionUI() {
+            // Prune selected rooms that no longer exist
+            const existingIds = new Set(roomsData.map(r => r.id));
+            for (const id of selectedRooms) {
+                if (!existingIds.has(id)) selectedRooms.delete(id);
+            }
+            const btn = document.getElementById('startSelectedBtn');
+            if (!btn) return;
+            if (selectedRooms.size > 0) {
+                btn.style.display = 'inline-block';
+                btn.textContent = `▶ Start Selected (${selectedRooms.size})`;
+            } else {
+                btn.style.display = 'none';
             }
         }
 

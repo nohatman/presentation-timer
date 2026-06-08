@@ -3,6 +3,7 @@ const http = require('http');
 const socketIo = require('socket.io');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 
 const app = express();
 const server = http.createServer(app);
@@ -31,6 +32,51 @@ app.use(express.static(path.join(__dirname, 'public'), {
 
 // Timer state - Multi-room support
 const timerRooms = new Map();
+
+// ============================================
+// Persistence - save/load room state to disk
+// ============================================
+
+const PERSISTENCE_FILE = path.join(__dirname, 'rooms.json');
+let saveTimeout = null;
+
+function scheduleSave() {
+  clearTimeout(saveTimeout);
+  saveTimeout = setTimeout(persistRooms, 500);
+}
+
+function persistRooms() {
+  try {
+    const data = {};
+    for (const [roomId, state] of timerRooms.entries()) {
+      data[roomId] = { ...state };
+    }
+    fs.writeFileSync(PERSISTENCE_FILE, JSON.stringify(data, null, 2));
+  } catch (err) {
+    console.error('⚠️  Failed to save rooms state:', err.message);
+  }
+}
+
+function loadRooms() {
+  try {
+    if (fs.existsSync(PERSISTENCE_FILE)) {
+      const raw = fs.readFileSync(PERSISTENCE_FILE, 'utf8');
+      const data = JSON.parse(raw);
+      let count = 0;
+      for (const [roomId, state] of Object.entries(data)) {
+        // Merge with defaults so any new fields added later are present
+        timerRooms.set(roomId, { ...createDefaultTimerState(), ...state });
+        console.log(`📂 Restored room: ${roomId} (${state.mode})`);
+        count++;
+      }
+      if (count > 0) console.log(`✅ Loaded ${count} room(s) from disk`);
+    }
+  } catch (err) {
+    console.error('⚠️  Failed to load rooms state (starting fresh):', err.message);
+  }
+}
+
+// ============================================
 
 function createDefaultTimerState() {
   return {
@@ -64,11 +110,11 @@ io.on('connection', (socket) => {
   const roomId = socket.handshake.query.room || 'default';
   const clientType = socket.handshake.query.type || 'unknown'; // 'control' or 'display'
   socket.join(roomId);
-  
+
   // Store client type on socket for later reference
   socket.clientType = clientType;
   socket.roomId = roomId;
-  
+
   console.log(`👤 Client ${socket.id} joined room: ${roomId} as ${clientType}`);
 
   // Send current state to new client
@@ -105,6 +151,7 @@ io.on('connection', (socket) => {
     if (data.showClock !== undefined) timerState.showClock = data.showClock;
 
     io.to(roomId).emit('timerState', timerState);
+    scheduleSave();
   });
 
   // Explicit output mode control (overrides showClock convenience)
@@ -115,6 +162,7 @@ io.on('connection', (socket) => {
       // mirror to showClock for backward compatibility on clients
       timerState.showClock = (mode === 'clock');
       io.to(roomId).emit('timerState', timerState);
+      scheduleSave();
     }
   });
 
@@ -126,6 +174,7 @@ io.on('connection', (socket) => {
     const newDuration = Math.max(0, (timerState.durationMs || 0) + Math.trunc(deltaMs));
     timerState.durationMs = newDuration;
     io.to(roomId).emit('timerState', timerState);
+    scheduleSave();
   });
 
   socket.on('pauseTimer', () => {
@@ -134,6 +183,7 @@ io.on('connection', (socket) => {
       timerState.mode = 'paused';
       timerState.pauseTime = Date.now();
       io.to(roomId).emit('timerState', timerState);
+      scheduleSave();
     }
   });
 
@@ -147,6 +197,7 @@ io.on('connection', (socket) => {
       }
       timerState.pauseTime = null;
       io.to(roomId).emit('timerState', timerState);
+      scheduleSave();
     }
   });
 
@@ -158,6 +209,7 @@ io.on('connection', (socket) => {
     timerState.accumulatedPauseMs = 0;
     timerState.endAtTarget = null;
     io.to(roomId).emit('timerState', timerState);
+    scheduleSave();
   });
 
   socket.on('updateSettings', (data) => {
@@ -168,6 +220,7 @@ io.on('connection', (socket) => {
     if (data.redThresholdMs !== undefined) timerState.redThresholdMs = data.redThresholdMs;
     if (data.countUp !== undefined) timerState.countUp = data.countUp;
     if (data.showClock !== undefined) timerState.showClock = data.showClock;
+    if (data.displayScale !== undefined) timerState.displayScale = data.displayScale;
 
     // If setting end-at time, calculate duration (supports next day)
     if (data.durationMs === undefined && data.endAtTarget) {
@@ -183,6 +236,7 @@ io.on('connection', (socket) => {
     }
 
     io.to(roomId).emit('timerState', timerState);
+    scheduleSave();
   });
 
   socket.on('disconnect', () => {
@@ -199,7 +253,7 @@ io.on('connection', (socket) => {
 function broadcastControllerCount(roomId) {
   const socketsInRoom = io.sockets.adapter.rooms.get(roomId);
   if (!socketsInRoom) return;
-  
+
   let controllerCount = 0;
   for (const socketId of socketsInRoom) {
     const socket = io.sockets.sockets.get(socketId);
@@ -207,7 +261,7 @@ function broadcastControllerCount(roomId) {
       controllerCount++;
     }
   }
-  
+
   // Emit to all clients in room
   io.to(roomId).emit('controllerCount', { count: controllerCount });
 }
@@ -220,7 +274,7 @@ function checkAndCleanupRoom(roomId) {
   if (roomCleanupTimers.has(roomId)) {
     clearTimeout(roomCleanupTimers.get(roomId));
   }
-  
+
   // Check if room is empty
   const socketsInRoom = io.sockets.adapter.rooms.get(roomId);
   if (!socketsInRoom || socketsInRoom.size === 0) {
@@ -231,7 +285,7 @@ function checkAndCleanupRoom(roomId) {
       console.log(`⏸️  Room ${roomId} is empty but not stopped - keeping it`);
       return;
     }
-    
+
     // Schedule cleanup after 30 minutes of inactivity
     const timer = setTimeout(() => {
       // Double-check room is still empty and stopped before deleting
@@ -241,9 +295,10 @@ function checkAndCleanupRoom(roomId) {
         timerRooms.delete(roomId);
         roomCleanupTimers.delete(roomId);
         console.log(`🗑️  Cleaned up empty room: ${roomId}`);
+        scheduleSave();
       }
     }, 30 * 60 * 1000); // 30 minutes
-    
+
     roomCleanupTimers.set(roomId, timer);
   }
 }
@@ -264,48 +319,55 @@ app.get('/api/rooms', (req, res) => {
     // Get connection count for this room
     const socketsInRoom = io.sockets.adapter.rooms.get(roomId);
     const connectionCount = socketsInRoom ? socketsInRoom.size : 0;
-    
-    // Calculate remaining time
+
+    // Calculate remaining time and overtime
     let remainingMs = 0;
+    let overMs = 0;
     if (state.mode === 'running') {
       const elapsed = (Date.now() - state.startTime - state.accumulatedPauseMs) * state.speed;
       remainingMs = Math.max(0, state.durationMs - elapsed);
+      if (state.countUp) overMs = Math.max(0, elapsed - state.durationMs);
     } else if (state.mode === 'paused') {
       const elapsed = (state.pauseTime - state.startTime - state.accumulatedPauseMs) * state.speed;
       remainingMs = Math.max(0, state.durationMs - elapsed);
+      if (state.countUp) overMs = Math.max(0, elapsed - state.durationMs);
     } else {
       remainingMs = state.durationMs;
     }
-    
+
     rooms.push({
       id: roomId,
       mode: state.mode,
       connections: connectionCount,
       remainingMs: Math.floor(remainingMs),
-      outputMode: state.outputMode
+      overMs: Math.floor(overMs),
+      outputMode: state.outputMode,
+      countUp: state.countUp || false,
+      amberThresholdMs: state.amberThresholdMs,
+      redThresholdMs: state.redThresholdMs
     });
   }
-  
+
   res.json(rooms);
 });
 
 // Delete room endpoint
 app.delete('/api/rooms/:roomId', (req, res) => {
   const roomId = req.params.roomId;
-  
+
   if (!timerRooms.has(roomId)) {
     return res.status(404).json({ error: 'Room not found' });
   }
-  
+
   // Delete the room state
   timerRooms.delete(roomId);
-  
+
   // Clear any pending cleanup timer
   if (roomCleanupTimers.has(roomId)) {
     clearTimeout(roomCleanupTimers.get(roomId));
     roomCleanupTimers.delete(roomId);
   }
-  
+
   // Disconnect all sockets in the room
   const socketsInRoom = io.sockets.adapter.rooms.get(roomId);
   if (socketsInRoom) {
@@ -316,8 +378,9 @@ app.delete('/api/rooms/:roomId', (req, res) => {
       }
     }
   }
-  
+
   console.log(`🗑️  Manually deleted room: ${roomId}`);
+  scheduleSave();
   res.json({ success: true, message: 'Room deleted' });
 });
 
@@ -329,7 +392,7 @@ app.delete('/api/rooms/:roomId', (req, res) => {
 app.get('/api/rooms/:roomId/state', (req, res) => {
   const { roomId } = req.params;
   const timerState = getRoomState(roomId);
-  
+
   res.json({
     ok: true,
     roomId,
@@ -341,22 +404,23 @@ app.get('/api/rooms/:roomId/state', (req, res) => {
 app.post('/api/rooms/:roomId/start', (req, res) => {
   const { roomId } = req.params;
   const timerState = getRoomState(roomId);
-  
+
   if (timerState.mode === 'running') {
     return res.json({
       ok: false,
       error: 'Timer is already running'
     });
   }
-  
+
   // Start timer logic (same as Socket.IO handler)
   timerState.mode = 'running';
   timerState.startTime = Date.now();
   timerState.accumulatedPauseMs = 0;
-  
+
   // Broadcast to all clients in the room
   io.to(roomId).emit('timerState', timerState);
-  
+  scheduleSave();
+
   res.json({
     ok: true,
     roomId,
@@ -368,21 +432,22 @@ app.post('/api/rooms/:roomId/start', (req, res) => {
 app.post('/api/rooms/:roomId/pause', (req, res) => {
   const { roomId } = req.params;
   const timerState = getRoomState(roomId);
-  
+
   if (timerState.mode !== 'running') {
     return res.json({
       ok: false,
       error: 'Timer is not running'
     });
   }
-  
+
   // Pause timer logic (same as Socket.IO handler)
   timerState.mode = 'paused';
   timerState.pauseTime = Date.now();
-  
+
   // Broadcast to all clients in the room
   io.to(roomId).emit('timerState', timerState);
-  
+  scheduleSave();
+
   res.json({
     ok: true,
     roomId,
@@ -394,23 +459,24 @@ app.post('/api/rooms/:roomId/pause', (req, res) => {
 app.post('/api/rooms/:roomId/resume', (req, res) => {
   const { roomId } = req.params;
   const timerState = getRoomState(roomId);
-  
+
   if (timerState.mode !== 'paused') {
     return res.json({
       ok: false,
       error: 'Timer is not paused'
     });
   }
-  
+
   // Resume timer logic (same as Socket.IO handler)
   const pauseDurationMs = Date.now() - timerState.pauseTime;
   timerState.accumulatedPauseMs += pauseDurationMs;
   timerState.mode = 'running';
   timerState.pauseTime = null;
-  
+
   // Broadcast to all clients in the room
   io.to(roomId).emit('timerState', timerState);
-  
+  scheduleSave();
+
   res.json({
     ok: true,
     roomId,
@@ -422,16 +488,17 @@ app.post('/api/rooms/:roomId/resume', (req, res) => {
 app.post('/api/rooms/:roomId/reset', (req, res) => {
   const { roomId } = req.params;
   const timerState = getRoomState(roomId);
-  
+
   // Reset timer logic (same as Socket.IO handler)
   timerState.mode = 'stopped';
   timerState.startTime = null;
   timerState.pauseTime = null;
   timerState.accumulatedPauseMs = 0;
-  
+
   // Broadcast to all clients in the room
   io.to(roomId).emit('timerState', timerState);
-  
+  scheduleSave();
+
   res.json({
     ok: true,
     roomId,
@@ -443,16 +510,16 @@ app.post('/api/rooms/:roomId/reset', (req, res) => {
 app.post('/api/rooms/:roomId/nudge', (req, res) => {
   const { roomId } = req.params;
   const { ms } = req.body;
-  
+
   if (typeof ms !== 'number') {
     return res.json({
       ok: false,
       error: 'Missing or invalid "ms" in request body'
     });
   }
-  
+
   const timerState = getRoomState(roomId);
-  
+
   // Nudge logic (same as Socket.IO handler)
   if (timerState.mode === 'running') {
     timerState.startTime -= ms;
@@ -461,10 +528,11 @@ app.post('/api/rooms/:roomId/nudge', (req, res) => {
   } else {
     timerState.durationMs = Math.max(0, timerState.durationMs + ms);
   }
-  
+
   // Broadcast to all clients in the room
   io.to(roomId).emit('timerState', timerState);
-  
+  scheduleSave();
+
   res.json({
     ok: true,
     roomId,
@@ -476,22 +544,23 @@ app.post('/api/rooms/:roomId/nudge', (req, res) => {
 app.post('/api/rooms/:roomId/set-duration', (req, res) => {
   const { roomId } = req.params;
   const { durationMs } = req.body;
-  
+
   if (typeof durationMs !== 'number' || durationMs < 0) {
     return res.json({
       ok: false,
       error: 'Missing or invalid "durationMs" in request body'
     });
   }
-  
+
   const timerState = getRoomState(roomId);
-  
+
   // Set duration logic
   timerState.durationMs = durationMs;
-  
+
   // Broadcast to all clients in the room
   io.to(roomId).emit('timerState', timerState);
-  
+  scheduleSave();
+
   res.json({
     ok: true,
     roomId,
@@ -516,6 +585,9 @@ app.get('/dashboard', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
 });
 
+// Load persisted rooms before starting
+loadRooms();
+
 // Start server
 const PORT = process.env.PORT || 3000;
 console.log(`Starting server on port ${PORT}...`);
@@ -524,8 +596,8 @@ server.listen(PORT, () => {
   console.log(`\n✅ Presentation Timer server running successfully!`);
   console.log(`📱 Control panel: http://localhost:${PORT}/control`);
   console.log(`🖥️  Display: http://localhost:${PORT}/display`);
-  console.log(`� Dashboard: http://localhost:${PORT}/dashboard`);
-  console.log(`�🏠 Home: http://localhost:${PORT}/`);
+  console.log(`📊 Dashboard: http://localhost:${PORT}/dashboard`);
+  console.log(`🏠 Home: http://localhost:${PORT}/`);
   console.log(`\n💡 Tip: Add ?room=yourname to create separate timers`);
   console.log(`   Example: http://localhost:${PORT}/control?room=presentation1\n`);
 });
@@ -545,19 +617,15 @@ server.on('error', (err) => {
   }
 });
 
-// Graceful shutdown
-process.on('SIGINT', () => {
+// Graceful shutdown - save state before exit
+function shutdown() {
   console.log(`\n\n👋 Shutting down server gracefully...`);
+  persistRooms(); // synchronous final save
   server.close(() => {
     console.log('✅ Server closed');
     process.exit(0);
   });
-});
+}
 
-process.on('SIGTERM', () => {
-  console.log(`\n\n👋 Shutting down server gracefully...`);
-  server.close(() => {
-    console.log('✅ Server closed');
-    process.exit(0);
-  });
-});
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);

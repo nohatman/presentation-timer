@@ -5,3 +5,4 @@ portable/
 .env
 .vscode/
 package-lock.json
+rooms.json
