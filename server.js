@@ -491,6 +491,8 @@ app.get('/api/rooms/:roomId/companion', (req, res) => {
     speaker,
     nextSpeaker,
     rundownPos,
+    rundownIndex:  idx,
+    rundown:       rundown.map(item => ({ name: item.name || '' })),
     // Clock mode
     outputMode:    s.outputMode
   });
