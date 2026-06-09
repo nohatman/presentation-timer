@@ -196,112 +196,122 @@ Delete a room and disconnect all its clients.
 
 ---
 
+---
+
+### GET /api/rooms/:roomId/companion
+**Purpose-built for Companion button feedback.** Returns pre-computed, display-ready values so you do not have to calculate remaining time yourself.
+
+**Example URL**: `http://localhost:3000/api/rooms/swift-timer-042/companion`
+
+**Response**:
+```json
+{
+  "ok": true,
+  "roomId": "swift-timer-042",
+  "mode": "running",
+  "modeLabel": "RUNNING",
+  "timeDisplay": "15:32",
+  "isOvertime": false,
+  "remainingMs": 932000,
+  "color": "green",
+  "colorHex": "#4caf50",
+  "amberWarning": false,
+  "redWarning": false,
+  "speaker": "James Bielby",
+  "nextSpeaker": "Katherine Morgan",
+  "rundownPos": "3/8",
+  "outputMode": "timer"
+}
+```
+
+**`color` values** (use for button background):
+
+| color | when |
+|-------|------|
+| `stopped` | timer is stopped / ready |
+| `paused` | timer is paused |
+| `green` | running, time remaining |
+| `amber` | running, within amber threshold |
+| `red` | running, within red threshold |
+| `overtime` | running, past zero (countUp mode) |
+
+**`timeDisplay`** is always formatted as `MM:SS`. In overtime it shows `-MM:SS`.
+
+---
+
+## Stream Deck Button Feedback Setup (Companion v3)
+
+### Step 1 — Add the HTTP connection
+
+1. In Companion, open **Connections** → search for **Generic: HTTP**
+2. Add it and set **Base URL** to your server (e.g. `https://presentation-timer-production.up.railway.app`)
+
+### Step 2 — Create a polling variable feed
+
+1. In the HTTP connection's settings, add a **Variable** with:
+   - **URL path**: `/api/rooms/swift-timer-042/companion`
+   - **Poll interval**: `1000` ms (every second)
+2. Map JSON fields to variable names, for example:
+
+| JSON field | Variable name |
+|------------|--------------|
+| `timeDisplay` | `time` |
+| `speaker` | `speaker` |
+| `nextSpeaker` | `next_speaker` |
+| `modeLabel` | `mode` |
+| `color` | `color` |
+| `rundownPos` | `position` |
+
+Variables become available as `$(generic-http:time)`, `$(generic-http:speaker)`, etc.
+
+### Step 3 — Build button titles using variables
+
+Example 4-line button title for a "now playing" status button:
+```
+$(generic-http:speaker)
+$(generic-http:time)
+$(generic-http:mode)
+↑ $(generic-http:next_speaker)
+```
+
+This would display on the Stream Deck as:
+```
+James Bielby
+15:32
+RUNNING
+↑ Katherine Morgan
+```
+
+### Step 4 — Button background colour feedback
+
+In the button's **Feedback** tab, add a **Generic: HTTP — Variable equals value** condition:
+
+| Condition | Background colour |
+|-----------|-----------------|
+| `$(generic-http:color)` equals `green` | Green |
+| `$(generic-http:color)` equals `amber` | Amber/orange |
+| `$(generic-http:color)` equals `red` | Red |
+| `$(generic-http:color)` equals `paused` | Grey/blue |
+| `$(generic-http:color)` equals `overtime` | Purple |
+
+### Suggested button layout
+
+| Button | Title template | Action |
+|--------|---------------|--------|
+| Status/Now | `$(generic-http:speaker)\n$(generic-http:time)` | — (feedback only) |
+| Next | `↑ $(generic-http:next_speaker)\n$(generic-http:position)` | — (feedback only) |
+| Start | `▶ START\n$(generic-http:time)` | POST `/api/rooms/ROOM/start` |
+| Pause | `⏸ PAUSE` | POST `/api/rooms/ROOM/pause` |
+| Resume | `▶ RESUME` | POST `/api/rooms/ROOM/resume` |
+| Reset | `↺ RESET` | POST `/api/rooms/ROOM/reset` |
+| +1 min | `+1 MIN` | POST `/api/rooms/ROOM/nudge` → `{"ms":60000}` |
+| −1 min | `−1 MIN` | POST `/api/rooms/ROOM/nudge` → `{"ms":-60000}` |
+
+---
+
 ## Programme / Rundown Note
 
 The Programme/Rundown feature (ordered list of speakers with auto-load) is controlled via the browser control panel — there are no REST API endpoints for navigating the rundown. Use the control panel's ↑↓ keys, Prev/Next buttons, and Take button to advance through the programme during a live event.
-
----
-
-## Companion Button Examples
-
-### Setup in Companion
-
-1. **Add Connection**: In Companion, add a **Generic HTTP** module
-2. **Configure Base URL**: Set the base URL to your server (e.g., `http://localhost:3000`)
-3. **Create Buttons**: Use the examples below for each button
-
-### Example Button: Start Timer
-
-**Action**: Generic HTTP: POST
-- **URL**: `/api/rooms/YOUR-ROOM-ID/start`
-- **Method**: POST
-- **Headers**: `Content-Type: application/json`
-- **Body**: (leave empty)
-
-**Button Text**: ▶️ START
-
----
-
-### Example Button: Pause Timer
-
-**Action**: Generic HTTP: POST
-- **URL**: `/api/rooms/YOUR-ROOM-ID/pause`
-- **Method**: POST
-- **Headers**: `Content-Type: application/json`
-- **Body**: (leave empty)
-
-**Button Text**: ⏸️ PAUSE
-
----
-
-### Example Button: Resume Timer
-
-**Action**: Generic HTTP: POST
-- **URL**: `/api/rooms/YOUR-ROOM-ID/resume`
-- **Method**: POST
-- **Headers**: `Content-Type: application/json`
-- **Body**: (leave empty)
-
-**Button Text**: ▶️ RESUME
-
----
-
-### Example Button: Reset Timer
-
-**Action**: Generic HTTP: POST
-- **URL**: `/api/rooms/YOUR-ROOM-ID/reset`
-- **Method**: POST
-- **Headers**: `Content-Type: application/json`
-- **Body**: (leave empty)
-
-**Button Text**: 🔄 RESET
-
----
-
-### Example Button: Add 1 Minute
-
-**Action**: Generic HTTP: POST
-- **URL**: `/api/rooms/YOUR-ROOM-ID/nudge`
-- **Method**: POST
-- **Headers**: `Content-Type: application/json`
-- **Body**: 
-```json
-{"ms": 60000}
-```
-
-**Button Text**: +1 MIN
-
----
-
-### Example Button: Subtract 30 Seconds
-
-**Action**: Generic HTTP: POST
-- **URL**: `/api/rooms/YOUR-ROOM-ID/nudge`
-- **Method**: POST
-- **Headers**: `Content-Type: application/json`
-- **Body**: 
-```json
-{"ms": -30000}
-```
-
-**Button Text**: -30 SEC
-
----
-
-### Example Button: Set 15 Minute Preset
-
-**Action**: Generic HTTP: POST
-- **URL**: `/api/rooms/YOUR-ROOM-ID/set-duration`
-- **Method**: POST
-- **Headers**: `Content-Type: application/json`
-- **Body**: 
-```json
-{"durationMs": 900000}
-```
-
-**Button Text**: 15:00
-
----
 
 ## Multi-Room Setup
 

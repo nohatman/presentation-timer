@@ -426,6 +426,76 @@ app.delete('/api/rooms/:roomId', (req, res) => {
 // REST API for Bitfocus Companion
 // ============================================
 
+// GET pre-computed display values optimised for Companion button feedback
+app.get('/api/rooms/:roomId/companion', (req, res) => {
+  const { roomId } = req.params;
+  const s = getRoomState(roomId);
+
+  // Compute remaining time (mirrors the display.html logic)
+  let remainingMs = s.durationMs || 0;
+  let isOvertime = false;
+
+  if (s.startTime) {
+    const now = Date.now();
+    const elapsed = s.pauseTime
+      ? ((s.pauseTime - s.startTime) - (s.accumulatedPauseMs || 0)) * (s.speed || 1.0)
+      : ((now - s.startTime) - (s.accumulatedPauseMs || 0)) * (s.speed || 1.0);
+    remainingMs = s.durationMs - elapsed;
+    if (remainingMs < 0) {
+      isOvertime = true;
+      remainingMs = s.countUp ? Math.abs(remainingMs) : 0;
+    }
+  }
+
+  const totalSec = Math.floor(Math.max(0, remainingMs) / 1000);
+  const min = Math.floor(totalSec / 60);
+  const sec = totalSec % 60;
+  const sign = isOvertime && s.countUp ? '-' : '';
+  const timeDisplay = `${sign}${String(min).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+
+  // Colour: matches display screen thresholds
+  let color = 'green';
+  if (s.mode === 'stopped')                          color = 'stopped';
+  else if (s.mode === 'paused')                      color = 'paused';
+  else if (isOvertime)                               color = 'overtime';
+  else if (remainingMs <= s.redThresholdMs)          color = 'red';
+  else if (remainingMs <= s.amberThresholdMs)        color = 'amber';
+
+  const colorHex = {
+    stopped: '#555555', paused: '#607d8b', green: '#4caf50',
+    amber: '#ff9800', red: '#f44336', overtime: '#9c27b0'
+  }[color];
+
+  // Rundown info
+  const rundown = s.rundown || [];
+  const idx = s.rundownIndex;
+  const speaker     = (idx >= 0 && idx < rundown.length)     ? (rundown[idx].name || '')     : '';
+  const nextSpeaker = (idx >= 0 && idx + 1 < rundown.length) ? (rundown[idx+1].name || '') : '';
+  const rundownPos  = (idx >= 0 && rundown.length > 0) ? `${idx+1}/${rundown.length}` : '';
+
+  res.json({
+    ok: true,
+    roomId,
+    // Timer
+    mode:          s.mode,
+    modeLabel:     s.mode.toUpperCase(),
+    timeDisplay,
+    isOvertime,
+    remainingMs:   Math.round(remainingMs),
+    // Colour feedback
+    color,
+    colorHex,
+    amberWarning:  !isOvertime && remainingMs <= s.amberThresholdMs && s.mode === 'running',
+    redWarning:    !isOvertime && remainingMs <= s.redThresholdMs   && s.mode === 'running',
+    // Programme
+    speaker,
+    nextSpeaker,
+    rundownPos,
+    // Clock mode
+    outputMode:    s.outputMode
+  });
+});
+
 // GET room state (read-only)
 app.get('/api/rooms/:roomId/state', (req, res) => {
   const { roomId } = req.params;
