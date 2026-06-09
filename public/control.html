@@ -567,6 +567,7 @@
         let lastRundownHash = null;
         let dragRundownIndex = null;
         let rundownEditMode = false;
+        let pendingTakeUpdate = false; // set by takeCurrentRundownItem so timerState handler syncs duration
 
         // Timer mode selection
         function setTimerMode(mode) {
@@ -721,14 +722,19 @@
                 slidersInitialised = true;
             }
 
-            // Keep duration input in sync with server (nudge, or rundown navigation).
-            // Sync when running/paused, or when the rundown item just changed.
+            // Keep duration input in sync with server (nudge, running/paused tick, or Take).
             if (!durationInputFocused) {
+                const wasTake = pendingTakeUpdate;
+                pendingTakeUpdate = false;
                 const rundownNavigated = state.rundownIndex >= 0 && state.rundownIndex !== currentRundownIndex;
-                if (state.mode === 'running' || state.mode === 'paused' || rundownNavigated) {
+                if (state.mode === 'running' || state.mode === 'paused' || rundownNavigated || wasTake) {
                     const min = Math.floor(state.durationMs / 60000);
                     const sec = Math.floor((state.durationMs % 60000) / 1000);
                     document.getElementById('duration').value = formatTimeInput(min, sec);
+                    if (wasTake) {
+                        // Switch to duration mode so the field is visible and End At can use it
+                        setTimerMode('duration');
+                    }
                 }
             }
 
@@ -1096,12 +1102,9 @@
 
         function takeCurrentRundownItem() {
             if (currentRundownIndex >= 0 && currentRundownIndex < rundownItems.length) {
+                // Flag the timerState handler to update #duration from the server's authoritative durationMs
+                pendingTakeUpdate = true;
                 goToRundownItem(currentRundownIndex);
-                // Sync the duration input so that Start / spacebar uses this item's duration
-                const item = rundownItems[currentRundownIndex];
-                const min = Math.floor(item.durationMs / 60000);
-                const sec = Math.floor((item.durationMs % 60000) / 1000);
-                document.getElementById('duration').value = formatTimeInput(min, sec);
             }
         }
 
