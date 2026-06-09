@@ -399,6 +399,53 @@
 
         <div class="status" id="status">Loading...</div>
 
+        <!-- Programme / Rundown - Full Width -->
+        <div class="section" style="grid-column:1/-1;">
+            <h3 onclick="toggleRundownPanel()"
+                style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:10px;">
+                <span id="rundownToggleIcon" style="font-size:0.8rem;color:#999;">▶</span>
+                Programme / Rundown
+                <span id="rundownItemCount" style="font-size:0.8rem;color:#999;font-weight:normal;"></span>
+            </h3>
+            <div id="rundownPanel" style="display:none;margin-top:16px;">
+                <!-- Navigation controls -->
+                <div style="background:#1a1a1a;border:1px solid #333;border-radius:8px;padding:12px;margin-bottom:10px;">
+                    <div style="display:flex;gap:8px;margin-bottom:10px;">
+                        <button onclick="rundownPrev()" class="button secondary" style="flex:1;">◀ Prev</button>
+                        <button onclick="takeCurrentRundownItem()" class="button primary"
+                                style="flex:2;background:#2e7d32;border-color:#2e7d32;">▶ Take</button>
+                        <button onclick="rundownNext()" class="button secondary" style="flex:1;">Next ▶</button>
+                    </div>
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.9rem;color:#ccc;">
+                        <input type="checkbox" id="rundownAutoStart" style="width:16px;height:16px;">
+                        Auto-start when taking
+                    </label>
+                    <small style="display:block;margin-top:6px;color:#666;">↑↓ or Prev/Next to browse · Take or Enter to load to display · Space starts/pauses</small>
+                </div>
+                <!-- Scrollable speaker list -->
+                <div id="rundownList" style="max-height:260px;overflow-y:auto;margin-bottom:8px;"></div>
+                <!-- Add / Import / Edit toggle -->
+                <div style="display:flex;gap:8px;margin-bottom:8px;">
+                    <button onclick="addRundownItem()" class="button secondary" style="flex:1;">+ Add</button>
+                    <button onclick="toggleImportPanel()" class="button secondary" style="flex:1;">📋 Paste</button>
+                    <button id="rundownEditBtn" onclick="toggleRundownEditMode()" class="button secondary" style="flex:1;">✏️ Edit</button>
+                </div>
+                <!-- Import panel -->
+                <div id="rundownImportPanel" style="display:none;border:1px solid #444;border-radius:6px;padding:12px;background:#111;margin-bottom:4px;">
+                    <div style="font-size:0.85rem;color:#999;margin-bottom:8px;">
+                        One speaker per line. Optional: add comma + duration (e.g. <code style="color:#90caf9;">Jane Smith, 20:00</code> or <code style="color:#90caf9;">Jane Smith, 20</code> for minutes)
+                    </div>
+                    <textarea id="rundownImportText"
+                              style="width:100%;height:110px;background:#1a1a1a;border:1px solid #333;color:#e5e5e5;border-radius:4px;padding:8px;font-size:0.9rem;resize:vertical;"
+                              placeholder="Jane Smith, 20:00&#10;Panel Discussion, 45:00&#10;Andrew Fox, 30:00"></textarea>
+                    <div style="display:flex;gap:8px;margin-top:8px;">
+                        <button onclick="importRundownList()" class="button primary" style="flex:1;">Import (append)</button>
+                        <button onclick="toggleImportPanel()" class="button secondary" style="flex:1;">Cancel</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="section">
             <h3>Timer Mode</h3>
             <div class="mode-row">
@@ -494,8 +541,6 @@
         </div>
 
 
-
-
     </div>
     </div>
 
@@ -515,6 +560,13 @@
         let currentState = { mode: 'stopped', durationMs: 0, speed: 1.0, displayScale: 1.0 };
         let currentTimerMode = 'duration'; // 'duration' or 'endAt'
         let durationInputFocused = false;
+
+        // Rundown state
+        let rundownItems = [];
+        let currentRundownIndex = -1;
+        let lastRundownHash = null;
+        let dragRundownIndex = null;
+        let rundownEditMode = false;
 
         // Timer mode selection
         function setTimerMode(mode) {
@@ -669,13 +721,28 @@
                 slidersInitialised = true;
             }
 
-            // Keep duration input in sync with server (e.g. after nudge) so that
-            // changing other settings like countUp doesn't overwrite the nudged value.
-            // Only sync when running/paused and user isn't actively editing the field.
-            if (!durationInputFocused && (state.mode === 'running' || state.mode === 'paused')) {
-                const min = Math.floor(state.durationMs / 60000);
-                const sec = Math.floor((state.durationMs % 60000) / 1000);
-                document.getElementById('duration').value = formatTimeInput(min, sec);
+            // Keep duration input in sync with server (nudge, or rundown navigation).
+            // Sync when running/paused, or when the rundown item just changed.
+            if (!durationInputFocused) {
+                const rundownNavigated = state.rundownIndex >= 0 && state.rundownIndex !== currentRundownIndex;
+                if (state.mode === 'running' || state.mode === 'paused' || rundownNavigated) {
+                    const min = Math.floor(state.durationMs / 60000);
+                    const sec = Math.floor((state.durationMs % 60000) / 1000);
+                    document.getElementById('duration').value = formatTimeInput(min, sec);
+                }
+            }
+
+            // Sync rundown state — only re-render when data actually changed,
+            // and never while an input inside the rundown list has focus (would
+            // destroy the cursor position) or while a drag is in progress.
+            const incomingRundownHash = JSON.stringify([state.rundown, state.rundownIndex]);
+            if (incomingRundownHash !== lastRundownHash) {
+                lastRundownHash = incomingRundownHash;
+                if (state.rundown !== undefined) rundownItems = state.rundown;
+                if (state.rundownIndex !== undefined) currentRundownIndex = state.rundownIndex;
+                if (!rundownHasFocus() && !isRundownDragging()) {
+                    renderRundownList();
+                }
             }
         });
 
@@ -916,6 +983,226 @@
             }, 1500);
         }
 
+        // ============================================================
+        // Rundown / Programme
+        // ============================================================
+
+        function toggleRundownPanel() {
+            const panel = document.getElementById('rundownPanel');
+            const icon  = document.getElementById('rundownToggleIcon');
+            const open  = panel.style.display !== 'none';
+            panel.style.display = open ? 'none' : 'block';
+            icon.textContent = open ? '▶' : '▼';
+        }
+
+        function escapeAttr(str) {
+            return (str || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+        }
+
+        function escapeHtml(str) {
+            return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        function rundownHasFocus() {
+            const list = document.getElementById('rundownList');
+            return !!(list && list.contains(document.activeElement) && document.activeElement !== document.body);
+        }
+
+        function isRundownDragging() {
+            return dragRundownIndex !== null;
+        }
+
+        function renderRundownList() {
+            const list    = document.getElementById('rundownList');
+            const countEl = document.getElementById('rundownItemCount');
+            if (!list) return;
+            countEl.textContent = rundownItems.length ? `(${rundownItems.length} items)` : '';
+            if (rundownItems.length === 0) {
+                list.innerHTML = '<div style="color:#666;font-style:italic;padding:10px 0;text-align:center;">No items yet — click ✏️ Edit to add speakers</div>';
+                return;
+            }
+            list.innerHTML = rundownItems.map((item, idx) => {
+                const cur = idx === currentRundownIndex;
+                const rowStyle = `display:flex;gap:6px;align-items:center;padding:8px 10px;margin-bottom:4px;border-radius:6px;cursor:pointer;
+                                  background:${cur ? 'rgba(144,202,249,0.12)' : '#1a1a1a'};
+                                  border:1px solid ${cur ? '#90caf9' : '#333'};`;
+                if (rundownEditMode) {
+                    // Edit mode: draggable rows, editable inputs, remove button
+                    return `<div style="${rowStyle}" draggable="true"
+                                 onclick="handleRowClick(event,${idx})"
+                                 ondragstart="rundownDragStart(event,${idx})"
+                                 ondragover="rundownDragOver(event,${idx})"
+                                 ondragleave="rundownDragLeave(event,${idx})"
+                                 ondrop="rundownDrop(event,${idx})"
+                                 ondragend="rundownDragEnd(event)"
+                                 title="Drag to reorder">
+                        <span style="cursor:grab;color:#555;font-size:1.1rem;user-select:none;flex-shrink:0;padding:0 2px;"
+                              onclick="event.stopPropagation()">⠿</span>
+                        <span style="color:#666;font-size:0.8rem;min-width:18px;flex-shrink:0;">${idx + 1}.</span>
+                        <input type="text" draggable="false" value="${escapeAttr(item.name)}" placeholder="Speaker / session name"
+                               class="rundown-name-input"
+                               style="flex:1;background:transparent;border:none;color:#e5e5e5;font-size:0.9rem;outline:none;min-width:0;"
+                               onchange="updateRundownItem(${idx},'name',this.value)"
+                               onkeydown="handleRundownKeydown(event,${idx})">
+                        <input type="text" draggable="false" value="${msToLabel(item.durationMs)}" placeholder="MM:SS"
+                               style="width:52px;background:transparent;border:none;color:#90caf9;font-family:monospace;font-size:0.85rem;text-align:right;outline:none;flex-shrink:0;"
+                               onchange="updateRundownItem(${idx},'duration',this.value)">
+                        <button onclick="removeRundownItem(${idx});event.stopPropagation();" title="Remove"
+                                style="padding:3px 7px;background:transparent;border:1px solid #555;color:#f44336;border-radius:3px;cursor:pointer;font-size:0.8rem;flex-shrink:0;">✕</button>
+                    </div>`;
+                }
+                // Navigate mode: plain text, click to select only
+                return `<div style="${rowStyle}" onclick="handleRowClick(event,${idx})" title="Click to select · Enter or Take to load">
+                    <span style="color:#666;font-size:0.8rem;min-width:18px;flex-shrink:0;">${idx + 1}.</span>
+                    <span style="flex:1;color:#e5e5e5;font-size:0.9rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(item.name) || '<em style="color:#555">—</em>'}</span>
+                    <span style="width:52px;color:#90caf9;font-family:monospace;font-size:0.85rem;text-align:right;flex-shrink:0;">${msToLabel(item.durationMs)}</span>
+                </div>`;
+            }).join('');
+        }
+
+        function toggleRundownEditMode() {
+            rundownEditMode = !rundownEditMode;
+            const btn = document.getElementById('rundownEditBtn');
+            if (btn) {
+                btn.textContent = rundownEditMode ? '🔒 Lock' : '✏️ Edit';
+                btn.style.color        = rundownEditMode ? '#ff9800' : '';
+                btn.style.borderColor  = rundownEditMode ? '#ff9800' : '';
+            }
+            renderRundownList();
+        }
+
+        function handleRowClick(event, idx) {
+            if (event.target.closest('button')) return;
+            // In edit mode, let the browser handle clicks on inputs naturally
+            if (rundownEditMode && event.target.closest('input')) return;
+            // All other clicks: select the row (no auto-load — use Take or Enter)
+            currentRundownIndex = idx;
+            renderRundownList();
+        }
+
+        function navigateRundown(dir) {
+            if (rundownItems.length === 0) return;
+            if (currentRundownIndex < 0) {
+                currentRundownIndex = dir > 0 ? 0 : rundownItems.length - 1;
+            } else {
+                const next = currentRundownIndex + dir;
+                if (next < 0 || next >= rundownItems.length) return;
+                currentRundownIndex = next;
+            }
+            renderRundownList();
+            const rows = document.querySelectorAll('#rundownList > div');
+            if (rows[currentRundownIndex]) rows[currentRundownIndex].scrollIntoView({ block: 'nearest' });
+        }
+
+        function takeCurrentRundownItem() {
+            if (currentRundownIndex >= 0 && currentRundownIndex < rundownItems.length) {
+                goToRundownItem(currentRundownIndex);
+            }
+        }
+
+        function handleRundownKeydown(event, idx) {
+            if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                const inputs = document.querySelectorAll('.rundown-name-input');
+                if (inputs[idx + 1]) inputs[idx + 1].focus();
+            } else if (event.key === 'ArrowUp') {
+                event.preventDefault();
+                const inputs = document.querySelectorAll('.rundown-name-input');
+                if (inputs[idx - 1]) inputs[idx - 1].focus();
+            }
+        }
+
+        function rundownDragStart(event, idx) {
+            dragRundownIndex = idx;
+            event.dataTransfer.effectAllowed = 'move';
+            // Defer opacity change so browser can snapshot the element first
+            setTimeout(() => { if (event.target) event.target.style.opacity = '0.4'; }, 0);
+        }
+
+        function rundownDragOver(event, idx) {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'move';
+            if (idx !== dragRundownIndex) {
+                event.currentTarget.style.borderColor = '#90caf9';
+            }
+        }
+
+        function rundownDragLeave(event, idx) {
+            event.currentTarget.style.borderColor = idx === currentRundownIndex ? '#90caf9' : '#333';
+        }
+
+        function rundownDrop(event, idx) {
+            event.preventDefault();
+            if (dragRundownIndex === null || dragRundownIndex === idx) return;
+            const item = rundownItems.splice(dragRundownIndex, 1)[0];
+            rundownItems.splice(idx, 0, item);
+            dragRundownIndex = null;
+            socket.emit('setRundown', rundownItems);
+        }
+
+        function rundownDragEnd(event) {
+            event.currentTarget.style.opacity = '1';
+            dragRundownIndex = null;
+            renderRundownList();
+        }
+
+        function addRundownItem() {
+            if (!rundownEditMode) toggleRundownEditMode();
+            rundownItems.push({ name: '', durationMs: 30 * 60 * 1000 });
+            socket.emit('setRundown', rundownItems);
+        }
+
+        function removeRundownItem(idx) {
+            rundownItems.splice(idx, 1);
+            socket.emit('setRundown', rundownItems);
+        }
+
+        function updateRundownItem(idx, field, value) {
+            if (field === 'name') {
+                rundownItems[idx].name = value;
+            } else if (field === 'duration') {
+                const { min, sec } = parseTimeInput(value);
+                rundownItems[idx].durationMs = (min * 60 + sec) * 1000;
+            }
+            socket.emit('setRundown', rundownItems);
+        }
+
+        function goToRundownItem(idx) {
+            socket.emit('goToRundown', { index: idx, autoStart: document.getElementById('rundownAutoStart').checked });
+        }
+
+        function rundownNext() { navigateRundown(1); }
+        function rundownPrev() { navigateRundown(-1); }
+
+        function toggleImportPanel() {
+            const panel = document.getElementById('rundownImportPanel');
+            panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+        }
+
+        function importRundownList() {
+            const text = document.getElementById('rundownImportText').value.trim();
+            if (!text) return;
+            const newItems = text.split('\n').map(l => l.trim()).filter(l => l).map(line => {
+                const comma = line.lastIndexOf(',');
+                if (comma === -1) return { name: line, durationMs: 30 * 60 * 1000 };
+                const name    = line.slice(0, comma).trim();
+                const timeStr = line.slice(comma + 1).trim();
+                let durationMs = 30 * 60 * 1000;
+                if (timeStr.includes(':')) {
+                    const { min, sec } = parseTimeInput(timeStr);
+                    durationMs = (min * 60 + sec) * 1000;
+                } else {
+                    const mins = parseFloat(timeStr);
+                    if (!isNaN(mins) && mins > 0) durationMs = mins * 60 * 1000;
+                }
+                return { name, durationMs };
+            });
+            rundownItems = [...rundownItems, ...newItems];
+            socket.emit('setRundown', rundownItems);
+            document.getElementById('rundownImportText').value = '';
+            toggleImportPanel();
+        }
+
         // Speed multiplier preview functions
         let speedAnimationInterval = null;
         let speedAnimationCounter = 0;
@@ -1119,8 +1406,10 @@
 
         // Auto-save settings when changed and emit live to server
         document.querySelectorAll('input').forEach(input => {
-            // Skip speedSlider - it has its own apply button
+            // These have their own apply buttons or their own handlers
             if (input.id === 'speedSlider') return;
+            if (input.id === 'displayScaleSlider') return;
+            if (input.id === 'rundownAutoStart') return;
             
             input.addEventListener('change', () => {
                 saveSettings();
@@ -1140,7 +1429,7 @@
         durationInput.addEventListener('focus', () => durationInputFocused = true);
         durationInput.addEventListener('blur',  () => durationInputFocused = false);
 
-        // Keyboard shortcuts
+        // Keyboard shortcuts — all suppressed when an input/textarea has focus
         document.addEventListener('keydown', (e)=>{
             if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
             if (e.code === 'Space') { e.preventDefault();
@@ -1149,6 +1438,13 @@
             if (e.key.toLowerCase() === 'r') { e.preventDefault(); resetTimer(); }
             if (e.key === '+' || e.key === '=') { e.preventDefault(); nudge(e.shiftKey? 5*60*1000 : 60*1000); }
             if (e.key === '-' || e.key === '_') { e.preventDefault(); nudge(e.shiftKey? -5*60*1000 : -60*1000); }
+            // Arrow keys and Enter operate the rundown when the panel is open
+            const panel = document.getElementById('rundownPanel');
+            if (panel && panel.style.display !== 'none' && rundownItems.length > 0) {
+                if (e.key === 'ArrowDown') { e.preventDefault(); navigateRundown(1); }
+                if (e.key === 'ArrowUp')   { e.preventDefault(); navigateRundown(-1); }
+                if (e.key === 'Enter')     { e.preventDefault(); takeCurrentRundownItem(); }
+            }
         });
     </script>
 </body>

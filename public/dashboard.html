@@ -414,18 +414,17 @@
                     modeIcon = '🕐';
                     modeText = 'Clock Mode';
                 } else if (room.countUp && room.overMs > 0) {
-                    // Overtime: timer has passed zero and is counting up
+                    // Overtime: timer has passed zero, showing elapsed over time
                     const overMin = Math.floor(room.overMs / 60000);
                     const overSec = Math.floor((room.overMs % 60000) / 1000);
                     displayTime = `-${overMin.toString().padStart(2, '0')}:${overSec.toString().padStart(2, '0')}`;
                     timerClass = 'red';
-                    modeIcon = '⏫';
+                    modeIcon = '⏱️';
                     modeText = 'Overtime';
                 } else {
                     const minutes = Math.floor(room.remainingMs / 60000);
                     const seconds = Math.floor((room.remainingMs % 60000) / 1000);
                     displayTime = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-                    // Use the room's actual thresholds for colour
                     const amber = room.amberThresholdMs || 5 * 60 * 1000;
                     const red = room.redThresholdMs || 2 * 60 * 1000;
                     if (room.remainingMs <= red) {
@@ -435,8 +434,8 @@
                     } else {
                         timerClass = '';
                     }
-                    modeIcon = room.countUp ? '⬆️' : '⏱️';
-                    modeText = room.countUp ? 'Count Up' : 'Timer Mode';
+                    modeIcon = '⏱️';
+                    modeText = 'Timer Mode';
                 }
 
                 const isSelected = selectedRooms.has(room.id);

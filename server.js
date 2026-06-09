@@ -92,7 +92,9 @@ function createDefaultTimerState() {
     countUp: false,
     showClock: false,
     outputMode: 'timer', // 'timer' | 'clock'
-    displayScale: 1.0 // Display size multiplier (0.5 - 2.0)
+    displayScale: 1.0, // Display size multiplier (0.5 - 2.0)
+    rundown: [],       // [{name, durationMs}] programme list
+    rundownIndex: -1   // -1 = not in rundown mode
   };
 }
 
@@ -235,6 +237,42 @@ io.on('connection', (socket) => {
       timerState.endAtTarget = data.endAtTarget;
     }
 
+    io.to(roomId).emit('timerState', timerState);
+    scheduleSave();
+  });
+
+  socket.on('setRundown', (items) => {
+    const timerState = getRoomState(roomId);
+    if (!Array.isArray(items)) return;
+    timerState.rundown = items.map(item => ({
+      name: String(item.name || '').slice(0, 100),
+      durationMs: Math.max(0, Math.floor(Number(item.durationMs) || 0))
+    }));
+    // Clamp index if items were removed
+    if (timerState.rundownIndex >= timerState.rundown.length) {
+      timerState.rundownIndex = timerState.rundown.length - 1;
+    }
+    io.to(roomId).emit('timerState', timerState);
+    scheduleSave();
+  });
+
+  socket.on('goToRundown', (data) => {
+    const timerState = getRoomState(roomId);
+    const index = parseInt(data.index);
+    if (index < 0 || index >= timerState.rundown.length) return;
+    timerState.rundownIndex = index;
+    timerState.durationMs = timerState.rundown[index].durationMs;
+    // Always reset timer state when loading a rundown item
+    timerState.startTime = null;
+    timerState.pauseTime = null;
+    timerState.accumulatedPauseMs = 0;
+    timerState.endAtTarget = null;
+    if (data.autoStart) {
+      timerState.mode = 'running';
+      timerState.startTime = Date.now();
+    } else {
+      timerState.mode = 'stopped';
+    }
     io.to(roomId).emit('timerState', timerState);
     scheduleSave();
   });

@@ -28,11 +28,12 @@
             font-size: 18vw;
             font-weight: bold;
             text-align: center;
-            margin-bottom: 2rem;
+            margin-bottom: 1.5rem;
             transition: color 0.5s ease, text-shadow 0.3s ease, font-size 0.3s ease;
             text-shadow: 0 0 30px currentColor;
             font-variant-numeric: tabular-nums;
             letter-spacing: 0.05em;
+            line-height: 0.9;
         }
         .clock-display {
             font-size: 10vw;
@@ -130,6 +131,22 @@
             0%, 50% { opacity: 1; }
             51%, 100% { opacity: 0.3; }
         }
+        .speaker-name {
+            font-size: 4vw;
+            font-weight: 500;
+            text-align: center;
+            opacity: 0.85;
+            margin-bottom: 1rem;
+            letter-spacing: 0.04em;
+        }
+        .up-next {
+            font-size: 1.8vw;
+            text-align: center;
+            opacity: 0.45;
+            margin-top: 0.5rem;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
         /* Responsive adjustments */
         @media (max-width: 768px) {
             .timer-display {
@@ -161,9 +178,11 @@
             <button class="fullscreen-button" onclick="toggleFullscreen()">Fullscreen</button>
         </div>
 
+        <div id="speakerName" class="speaker-name" style="display:none;"></div>
         <div id="timerDisplay" class="timer-display color-normal">00:00</div>
         <div id="clockDisplay" class="clock-display" style="display: none;">00:00:00</div>
         <div id="status" class="status">Ready</div>
+        <div id="upNext" class="up-next" style="display:none;"></div>
 
         <div class="controls">
             <button class="control-button" id="controlBtn" onclick="window.open('/control?room=' + encodeURIComponent(roomId), '_blank')">Control</button>
@@ -192,13 +211,33 @@
 
         socket.on('timerState', (state) => {
             currentState = state;
-            // On any state update, ensure we refresh immediately
             updateDisplay(true);
-            
-            // Apply display scale
-            const timerDisplay = document.getElementById('timerDisplay');
+
+            // Apply display scale - timer only; speaker/up-next use CSS vw sizes.
+            // min() caps height so other elements aren't pushed off-screen at large scales.
             const scale = state.displayScale || 1.0;
-            timerDisplay.style.fontSize = (18 * scale) + 'vw';
+            document.getElementById('timerDisplay').style.fontSize =
+                `min(${(scale * 18).toFixed(2)}vw, calc(100vh - 230px))`;
+
+            // Show speaker name and "up next" when a rundown item is active
+            const speakerEl = document.getElementById('speakerName');
+            const upNextEl  = document.getElementById('upNext');
+            const idx = state.rundownIndex;
+            if (state.rundown && idx >= 0 && idx < state.rundown.length) {
+                const current = state.rundown[idx];
+                speakerEl.textContent = current.name || '';
+                speakerEl.style.display = current.name ? 'block' : 'none';
+                const next = state.rundown[idx + 1];
+                if (next && next.name) {
+                    upNextEl.textContent = `Up next: ${next.name}`;
+                    upNextEl.style.display = 'block';
+                } else {
+                    upNextEl.style.display = 'none';
+                }
+            } else {
+                speakerEl.style.display = 'none';
+                upNextEl.style.display  = 'none';
+            }
         });
 
         function updateDisplay(forceImmediate = false) {
