@@ -92,7 +92,7 @@ function createDefaultTimerState() {
     countUp: false,
     showClock: false,
     outputMode: 'timer', // 'timer' | 'clock'
-    displayScale: 1.0, // Display size multiplier (0.5 - 2.0)
+    displayScale: 1.5, // Display size multiplier (0.5 - 2.0)
     rundown: [],       // [{name, durationMs}] programme list
     rundownIndex: -1   // -1 = not in rundown mode
   };

@@ -1097,6 +1097,11 @@
         function takeCurrentRundownItem() {
             if (currentRundownIndex >= 0 && currentRundownIndex < rundownItems.length) {
                 goToRundownItem(currentRundownIndex);
+                // Sync the duration input so that Start / spacebar uses this item's duration
+                const item = rundownItems[currentRundownIndex];
+                const min = Math.floor(item.durationMs / 60000);
+                const sec = Math.floor((item.durationMs % 60000) / 1000);
+                document.getElementById('duration').value = formatTimeInput(min, sec);
             }
         }
 

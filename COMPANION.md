@@ -8,20 +8,29 @@ All endpoints use the base URL of your deployed app:
 - **Local**: `http://localhost:3000`
 - **Production**: `https://presentation-timer-production.up.railway.app`
 
-Each timer room has its own isolated state. Use `default` as the room ID for a single timer, or create named rooms (e.g., `stage1`, `greenroom`, etc.).
+Each timer room has its own isolated state. Room IDs are the short slugs shown in the room header on the control panel (e.g. `swift-timer-042`, `bright-clock-187`). You can also type any custom name when creating a room. Room IDs are case-sensitive.
 
 ## API Endpoints
 
-### GET /api/rooms/:roomId/state
-Get current timer state (read-only).
+### GET /api/rooms
+List all active rooms with their current state summary. Useful for polling multiple rooms at once.
 
-**Example URL**: `http://localhost:3000/api/rooms/default/state`
+**Example URL**: `http://localhost:3000/api/rooms`
+
+**Response**: array of room summaries including `id`, `mode`, `durationMs`, `remainingMs`, `overMs`, `countUp`, `outputMode`, `displayScale`, `amberThresholdMs`, `redThresholdMs`.
+
+---
+
+### GET /api/rooms/:roomId/state
+Get full timer state for a single room (read-only).
+
+**Example URL**: `http://localhost:3000/api/rooms/swift-timer-042/state`
 
 **Response**:
 ```json
 {
   "ok": true,
-  "roomId": "default",
+  "roomId": "swift-timer-042",
   "state": {
     "mode": "stopped",
     "durationMs": 1800000,
@@ -34,17 +43,30 @@ Get current timer state (read-only).
     "endAtTarget": null,
     "countUp": false,
     "showClock": false,
-    "outputMode": "timer"
+    "outputMode": "timer",
+    "displayScale": 1.5,
+    "rundown": [],
+    "rundownIndex": -1
   }
 }
 ```
+
+Key state fields for Companion feedback:
+
+| Field | Description |
+|-------|-------------|
+| `mode` | `"stopped"` / `"running"` / `"paused"` |
+| `remainingMs` | Milliseconds remaining (computed — not in raw state, use `/api/rooms` list) |
+| `overMs` | Milliseconds past zero when counting up after zero (from `/api/rooms` list) |
+| `outputMode` | `"timer"` or `"clock"` |
+| `rundownIndex` | Index of active programme item, `-1` if none |
 
 ---
 
 ### POST /api/rooms/:roomId/start
 Start the timer from the preset duration.
 
-**Example URL**: `http://localhost:3000/api/rooms/default/start`
+**Example URL**: `http://localhost:3000/api/rooms/swift-timer-042/start`
 
 **Request Body**: None
 
@@ -62,7 +84,7 @@ Start the timer from the preset duration.
 ### POST /api/rooms/:roomId/pause
 Pause a running timer.
 
-**Example URL**: `http://localhost:3000/api/rooms/default/pause`
+**Example URL**: `http://localhost:3000/api/rooms/swift-timer-042/pause`
 
 **Request Body**: None
 
@@ -80,7 +102,7 @@ Pause a running timer.
 ### POST /api/rooms/:roomId/resume
 Resume a paused timer.
 
-**Example URL**: `http://localhost:3000/api/rooms/default/resume`
+**Example URL**: `http://localhost:3000/api/rooms/swift-timer-042/resume`
 
 **Request Body**: None
 
@@ -98,7 +120,7 @@ Resume a paused timer.
 ### POST /api/rooms/:roomId/reset
 Reset the timer to stopped state with preset duration.
 
-**Example URL**: `http://localhost:3000/api/rooms/default/reset`
+**Example URL**: `http://localhost:3000/api/rooms/swift-timer-042/reset`
 
 **Request Body**: None
 
@@ -116,7 +138,7 @@ Reset the timer to stopped state with preset duration.
 ### POST /api/rooms/:roomId/nudge
 Adjust the timer by adding or subtracting milliseconds.
 
-**Example URL**: `http://localhost:3000/api/rooms/default/nudge`
+**Example URL**: `http://localhost:3000/api/rooms/swift-timer-042/nudge`
 
 **Request Body**:
 ```json
@@ -142,7 +164,7 @@ Use positive values to add time, negative to subtract.
 ### POST /api/rooms/:roomId/set-duration
 Set the preset timer duration (in milliseconds).
 
-**Example URL**: `http://localhost:3000/api/rooms/default/set-duration`
+**Example URL**: `http://localhost:3000/api/rooms/swift-timer-042/set-duration`
 
 **Request Body**:
 ```json
@@ -167,6 +189,19 @@ Example durations:
 
 ---
 
+### DELETE /api/rooms/:roomId
+Delete a room and disconnect all its clients.
+
+**Example URL**: `DELETE http://localhost:3000/api/rooms/swift-timer-042`
+
+---
+
+## Programme / Rundown Note
+
+The Programme/Rundown feature (ordered list of speakers with auto-load) is controlled via the browser control panel — there are no REST API endpoints for navigating the rundown. Use the control panel's ↑↓ keys, Prev/Next buttons, and Take button to advance through the programme during a live event.
+
+---
+
 ## Companion Button Examples
 
 ### Setup in Companion
@@ -178,7 +213,7 @@ Example durations:
 ### Example Button: Start Timer
 
 **Action**: Generic HTTP: POST
-- **URL**: `/api/rooms/default/start`
+- **URL**: `/api/rooms/YOUR-ROOM-ID/start`
 - **Method**: POST
 - **Headers**: `Content-Type: application/json`
 - **Body**: (leave empty)
@@ -190,7 +225,7 @@ Example durations:
 ### Example Button: Pause Timer
 
 **Action**: Generic HTTP: POST
-- **URL**: `/api/rooms/default/pause`
+- **URL**: `/api/rooms/YOUR-ROOM-ID/pause`
 - **Method**: POST
 - **Headers**: `Content-Type: application/json`
 - **Body**: (leave empty)
@@ -202,7 +237,7 @@ Example durations:
 ### Example Button: Resume Timer
 
 **Action**: Generic HTTP: POST
-- **URL**: `/api/rooms/default/resume`
+- **URL**: `/api/rooms/YOUR-ROOM-ID/resume`
 - **Method**: POST
 - **Headers**: `Content-Type: application/json`
 - **Body**: (leave empty)
@@ -214,7 +249,7 @@ Example durations:
 ### Example Button: Reset Timer
 
 **Action**: Generic HTTP: POST
-- **URL**: `/api/rooms/default/reset`
+- **URL**: `/api/rooms/YOUR-ROOM-ID/reset`
 - **Method**: POST
 - **Headers**: `Content-Type: application/json`
 - **Body**: (leave empty)
@@ -226,7 +261,7 @@ Example durations:
 ### Example Button: Add 1 Minute
 
 **Action**: Generic HTTP: POST
-- **URL**: `/api/rooms/default/nudge`
+- **URL**: `/api/rooms/YOUR-ROOM-ID/nudge`
 - **Method**: POST
 - **Headers**: `Content-Type: application/json`
 - **Body**: 
@@ -241,7 +276,7 @@ Example durations:
 ### Example Button: Subtract 30 Seconds
 
 **Action**: Generic HTTP: POST
-- **URL**: `/api/rooms/default/nudge`
+- **URL**: `/api/rooms/YOUR-ROOM-ID/nudge`
 - **Method**: POST
 - **Headers**: `Content-Type: application/json`
 - **Body**: 
@@ -256,7 +291,7 @@ Example durations:
 ### Example Button: Set 15 Minute Preset
 
 **Action**: Generic HTTP: POST
-- **URL**: `/api/rooms/default/set-duration`
+- **URL**: `/api/rooms/YOUR-ROOM-ID/set-duration`
 - **Method**: POST
 - **Headers**: `Content-Type: application/json`
 - **Body**: 
@@ -290,25 +325,30 @@ Each room maintains completely independent timer state.
 
 Test endpoints from command line:
 
+Replace `swift-timer-042` with your actual room ID (shown in the room header on the control panel).
+
 ```bash
+# List all active rooms
+curl http://localhost:3000/api/rooms
+
 # Start timer
-curl -X POST http://localhost:3000/api/rooms/default/start
+curl -X POST http://localhost:3000/api/rooms/swift-timer-042/start
 
 # Pause timer
-curl -X POST http://localhost:3000/api/rooms/default/pause
+curl -X POST http://localhost:3000/api/rooms/swift-timer-042/pause
 
 # Add 1 minute
-curl -X POST http://localhost:3000/api/rooms/default/nudge \
+curl -X POST http://localhost:3000/api/rooms/swift-timer-042/nudge \
   -H "Content-Type: application/json" \
   -d '{"ms": 60000}'
 
 # Set 30 minute duration
-curl -X POST http://localhost:3000/api/rooms/default/set-duration \
+curl -X POST http://localhost:3000/api/rooms/swift-timer-042/set-duration \
   -H "Content-Type: application/json" \
   -d '{"durationMs": 1800000}'
 
 # Get current state
-curl http://localhost:3000/api/rooms/default/state
+curl http://localhost:3000/api/rooms/swift-timer-042/state
 ```
 
 ---
