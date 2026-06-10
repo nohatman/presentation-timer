@@ -260,19 +260,7 @@ io.on('connection', (socket) => {
     const timerState = getRoomState(roomId);
     const index = parseInt(data.index);
     if (index < 0 || index >= timerState.rundown.length) return;
-    timerState.rundownIndex = index;
-    timerState.durationMs = timerState.rundown[index].durationMs;
-    // Always reset timer state when loading a rundown item
-    timerState.startTime = null;
-    timerState.pauseTime = null;
-    timerState.accumulatedPauseMs = 0;
-    timerState.endAtTarget = null;
-    if (data.autoStart) {
-      timerState.mode = 'running';
-      timerState.startTime = Date.now();
-    } else {
-      timerState.mode = 'stopped';
-    }
+    loadRundownItem(timerState, index, !!data.autoStart);
     io.to(roomId).emit('timerState', timerState);
     scheduleSave();
   });
@@ -676,6 +664,73 @@ app.post('/api/rooms/:roomId/set-duration', (req, res) => {
     roomId,
     state: timerState
   });
+});
+
+// ============================================
+// REST API — Rundown navigation
+// ============================================
+
+function loadRundownItem(s, index, autoStart) {
+  s.rundownIndex = index;
+  s.durationMs   = s.rundown[index].durationMs;
+  s.startTime    = autoStart ? Date.now() : null;
+  s.pauseTime    = null;
+  s.accumulatedPauseMs = 0;
+  s.endAtTarget  = null;
+  s.mode         = autoStart ? 'running' : 'stopped';
+}
+
+// POST /api/rooms/:roomId/rundown/prev — load previous item (stops timer)
+app.post('/api/rooms/:roomId/rundown/prev', (req, res) => {
+  const { roomId } = req.params;
+  const s = getRoomState(roomId);
+  if (!s.rundown.length) return res.json({ ok: false, error: 'No rundown configured' });
+  const idx = s.rundownIndex <= 0 ? 0 : s.rundownIndex - 1;
+  if (idx === s.rundownIndex && s.rundownIndex === 0) return res.json({ ok: false, error: 'Already at first item' });
+  loadRundownItem(s, idx, false);
+  io.to(roomId).emit('timerState', s);
+  scheduleSave();
+  res.json({ ok: true, roomId, rundownIndex: idx });
+});
+
+// POST /api/rooms/:roomId/rundown/next — load next item (stops timer)
+app.post('/api/rooms/:roomId/rundown/next', (req, res) => {
+  const { roomId } = req.params;
+  const s = getRoomState(roomId);
+  if (!s.rundown.length) return res.json({ ok: false, error: 'No rundown configured' });
+  const idx = s.rundownIndex < 0 ? 0 : s.rundownIndex + 1;
+  if (idx >= s.rundown.length) return res.json({ ok: false, error: 'Already at last item' });
+  loadRundownItem(s, idx, false);
+  io.to(roomId).emit('timerState', s);
+  scheduleSave();
+  res.json({ ok: true, roomId, rundownIndex: idx });
+});
+
+// POST /api/rooms/:roomId/rundown/take — start the currently loaded item
+// If no item is loaded (rundownIndex === -1), loads and starts the first item.
+app.post('/api/rooms/:roomId/rundown/take', (req, res) => {
+  const { roomId } = req.params;
+  const s = getRoomState(roomId);
+  if (!s.rundown.length) return res.json({ ok: false, error: 'No rundown configured' });
+  const idx = s.rundownIndex < 0 ? 0 : s.rundownIndex;
+  loadRundownItem(s, idx, true);
+  io.to(roomId).emit('timerState', s);
+  scheduleSave();
+  res.json({ ok: true, roomId, rundownIndex: idx });
+});
+
+// POST /api/rooms/:roomId/rundown/goto — load a specific item by 0-based index
+// Body: { index: number, autoStart?: boolean }
+app.post('/api/rooms/:roomId/rundown/goto', (req, res) => {
+  const { roomId } = req.params;
+  const { index, autoStart = false } = req.body;
+  if (!Number.isInteger(index)) return res.json({ ok: false, error: 'Missing or invalid "index" (0-based integer)' });
+  const s = getRoomState(roomId);
+  if (index < 0 || index >= s.rundown.length) return res.json({ ok: false, error: `Index out of range (0–${s.rundown.length - 1})` });
+  loadRundownItem(s, index, autoStart);
+  io.to(roomId).emit('timerState', s);
+  scheduleSave();
+  res.json({ ok: true, roomId, rundownIndex: index });
 });
 
 // Routes
