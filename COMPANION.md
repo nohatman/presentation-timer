@@ -239,7 +239,7 @@ Delete a room and disconnect all its clients.
 
 ---
 
-## Stream Deck Button Feedback Setup (Companion v3)
+## Stream Deck Button Feedback Setup (Companion 4 — Generic HTTP)
 
 ### Step 1 — Add the HTTP connection
 
