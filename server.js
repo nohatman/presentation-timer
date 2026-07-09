@@ -3,7 +3,7 @@ const http = require('http');
 const socketIo = require('socket.io');
 const cors = require('cors');
 const path = require('path');
-const fs = require('fs');
+const db = require('./db');
 
 const app = express();
 const server = http.createServer(app);
@@ -34,10 +34,13 @@ app.use(express.static(path.join(__dirname, 'public'), {
 const timerRooms = new Map();
 
 // ============================================
-// Persistence - save/load room state to disk
+// Persistence - save/load room state via SQLite (db.js)
+//
+// The in-memory Map below remains the live source of truth for the running
+// timer engine; this is purely load-at-boot / save-on-change persistence,
+// same debounce as before. See db.js for storage details.
 // ============================================
 
-const PERSISTENCE_FILE = path.join(__dirname, 'rooms.json');
 let saveTimeout = null;
 
 function scheduleSave() {
@@ -47,11 +50,7 @@ function scheduleSave() {
 
 function persistRooms() {
   try {
-    const data = {};
-    for (const [roomId, state] of timerRooms.entries()) {
-      data[roomId] = { ...state };
-    }
-    fs.writeFileSync(PERSISTENCE_FILE, JSON.stringify(data, null, 2));
+    db.saveRoomStates(timerRooms);
   } catch (err) {
     console.error('⚠️  Failed to save rooms state:', err.message);
   }
@@ -59,18 +58,15 @@ function persistRooms() {
 
 function loadRooms() {
   try {
-    if (fs.existsSync(PERSISTENCE_FILE)) {
-      const raw = fs.readFileSync(PERSISTENCE_FILE, 'utf8');
-      const data = JSON.parse(raw);
-      let count = 0;
-      for (const [roomId, state] of Object.entries(data)) {
-        // Merge with defaults so any new fields added later are present
-        timerRooms.set(roomId, { ...createDefaultTimerState(), ...state });
-        console.log(`📂 Restored room: ${roomId} (${state.mode})`);
-        count++;
-      }
-      if (count > 0) console.log(`✅ Loaded ${count} room(s) from disk`);
+    const loaded = db.loadAllRoomStates();
+    let count = 0;
+    for (const [roomId, state] of loaded.entries()) {
+      // Merge with defaults so any new fields added later are present
+      timerRooms.set(roomId, { ...createDefaultTimerState(), ...state });
+      console.log(`📂 Restored room: ${roomId} (${state.mode})`);
+      count++;
     }
+    if (count > 0) console.log(`✅ Loaded ${count} room(s) from database`);
   } catch (err) {
     console.error('⚠️  Failed to load rooms state (starting fresh):', err.message);
   }
@@ -94,7 +90,10 @@ function createDefaultTimerState() {
     outputMode: 'timer', // 'timer' | 'clock'
     displayScale: 1.5, // Display size multiplier (0.5 - 2.0)
     rundown: [],       // [{name, durationMs}] programme list
-    rundownIndex: -1   // -1 = not in rundown mode
+    rundownIndex: -1,  // -1 = not in rundown mode
+    message: '',
+    messageMode: 'none', // 'none' | 'overlay' | 'ticker'
+    messageTickerSpeed: 1.0 // multiplier: 0.5=slow, 1.0=normal, 2.0=fast
   };
 }
 
@@ -105,6 +104,12 @@ function getRoomState(roomId) {
     console.log(`📦 Created new room: ${roomId}`);
   }
   return timerRooms.get(roomId);
+}
+
+// Emit timer state to a room, always including the server's current timestamp so
+// clients can correct for clock skew when computing elapsed time.
+function emitState(roomId, timerState) {
+  io.to(roomId).emit('timerState', { ...timerState, serverNow: Date.now() });
 }
 
 // Socket.IO connection handling
@@ -121,7 +126,7 @@ io.on('connection', (socket) => {
 
   // Send current state to new client
   const timerState = getRoomState(roomId);
-  socket.emit('timerState', timerState);
+  socket.emit('timerState', { ...timerState, serverNow: Date.now() });
 
   // Broadcast controller count to all clients in room
   broadcastControllerCount(roomId);
@@ -152,7 +157,7 @@ io.on('connection', (socket) => {
     if (data.countUp !== undefined) timerState.countUp = data.countUp;
     if (data.showClock !== undefined) timerState.showClock = data.showClock;
 
-    io.to(roomId).emit('timerState', timerState);
+    emitState(roomId, timerState);
     scheduleSave();
   });
 
@@ -163,7 +168,7 @@ io.on('connection', (socket) => {
       timerState.outputMode = mode;
       // mirror to showClock for backward compatibility on clients
       timerState.showClock = (mode === 'clock');
-      io.to(roomId).emit('timerState', timerState);
+      emitState(roomId, timerState);
       scheduleSave();
     }
   });
@@ -175,7 +180,7 @@ io.on('connection', (socket) => {
     // Adjust duration, which effectively adjusts remaining for all modes
     const newDuration = Math.max(0, (timerState.durationMs || 0) + Math.trunc(deltaMs));
     timerState.durationMs = newDuration;
-    io.to(roomId).emit('timerState', timerState);
+    emitState(roomId, timerState);
     scheduleSave();
   });
 
@@ -184,7 +189,7 @@ io.on('connection', (socket) => {
     if (timerState.mode === 'running') {
       timerState.mode = 'paused';
       timerState.pauseTime = Date.now();
-      io.to(roomId).emit('timerState', timerState);
+      emitState(roomId, timerState);
       scheduleSave();
     }
   });
@@ -198,7 +203,7 @@ io.on('connection', (socket) => {
         timerState.accumulatedPauseMs += Date.now() - timerState.pauseTime;
       }
       timerState.pauseTime = null;
-      io.to(roomId).emit('timerState', timerState);
+      emitState(roomId, timerState);
       scheduleSave();
     }
   });
@@ -210,7 +215,7 @@ io.on('connection', (socket) => {
     timerState.pauseTime = null;
     timerState.accumulatedPauseMs = 0;
     timerState.endAtTarget = null;
-    io.to(roomId).emit('timerState', timerState);
+    emitState(roomId, timerState);
     scheduleSave();
   });
 
@@ -237,7 +242,7 @@ io.on('connection', (socket) => {
       timerState.endAtTarget = data.endAtTarget;
     }
 
-    io.to(roomId).emit('timerState', timerState);
+    emitState(roomId, timerState);
     scheduleSave();
   });
 
@@ -252,7 +257,7 @@ io.on('connection', (socket) => {
     if (timerState.rundownIndex >= timerState.rundown.length) {
       timerState.rundownIndex = timerState.rundown.length - 1;
     }
-    io.to(roomId).emit('timerState', timerState);
+    emitState(roomId, timerState);
     scheduleSave();
   });
 
@@ -261,7 +266,16 @@ io.on('connection', (socket) => {
     const index = parseInt(data.index);
     if (index < 0 || index >= timerState.rundown.length) return;
     loadRundownItem(timerState, index, !!data.autoStart);
-    io.to(roomId).emit('timerState', timerState);
+    emitState(roomId, timerState);
+    scheduleSave();
+  });
+
+  socket.on('setMessage', (data) => {
+    const timerState = getRoomState(roomId);
+    timerState.message = String(data.text || '').slice(0, 500);
+    timerState.messageMode = ['none', 'overlay', 'ticker'].includes(data.mode) ? data.mode : 'none';
+    if (typeof data.speed === 'number' && data.speed > 0) timerState.messageTickerSpeed = data.speed;
+    emitState(roomId, timerState);
     scheduleSave();
   });
 
@@ -319,9 +333,9 @@ function checkAndCleanupRoom(roomId) {
       const currentState = timerRooms.get(roomId);
       if (stillEmpty && currentState && currentState.mode === 'stopped') {
         timerRooms.delete(roomId);
+        db.deleteRoom(roomId);
         roomCleanupTimers.delete(roomId);
         console.log(`🗑️  Cleaned up empty room: ${roomId}`);
-        scheduleSave();
       }
     }, 30 * 60 * 1000); // 30 minutes
 
@@ -333,7 +347,7 @@ function checkAndCleanupRoom(roomId) {
 setInterval(() => {
   timerRooms.forEach((timerState, roomId) => {
     if (timerState.mode === 'running') {
-      io.to(roomId).emit('timerState', timerState);
+      emitState(roomId, timerState);
     }
   });
 }, 1000);
@@ -387,6 +401,7 @@ app.delete('/api/rooms/:roomId', (req, res) => {
 
   // Delete the room state
   timerRooms.delete(roomId);
+  db.deleteRoom(roomId);
 
   // Clear any pending cleanup timer
   if (roomCleanupTimers.has(roomId)) {
@@ -688,7 +703,7 @@ app.post('/api/rooms/:roomId/rundown/prev', (req, res) => {
   const idx = s.rundownIndex <= 0 ? 0 : s.rundownIndex - 1;
   if (idx === s.rundownIndex && s.rundownIndex === 0) return res.json({ ok: false, error: 'Already at first item' });
   loadRundownItem(s, idx, false);
-  io.to(roomId).emit('timerState', s);
+  emitState(roomId, s);
   scheduleSave();
   res.json({ ok: true, roomId, rundownIndex: idx });
 });
@@ -701,7 +716,7 @@ app.post('/api/rooms/:roomId/rundown/next', (req, res) => {
   const idx = s.rundownIndex < 0 ? 0 : s.rundownIndex + 1;
   if (idx >= s.rundown.length) return res.json({ ok: false, error: 'Already at last item' });
   loadRundownItem(s, idx, false);
-  io.to(roomId).emit('timerState', s);
+  emitState(roomId, s);
   scheduleSave();
   res.json({ ok: true, roomId, rundownIndex: idx });
 });
@@ -714,7 +729,7 @@ app.post('/api/rooms/:roomId/rundown/take', (req, res) => {
   if (!s.rundown.length) return res.json({ ok: false, error: 'No rundown configured' });
   const idx = s.rundownIndex < 0 ? 0 : s.rundownIndex;
   loadRundownItem(s, idx, true);
-  io.to(roomId).emit('timerState', s);
+  emitState(roomId, s);
   scheduleSave();
   res.json({ ok: true, roomId, rundownIndex: idx });
 });
@@ -728,9 +743,26 @@ app.post('/api/rooms/:roomId/rundown/goto', (req, res) => {
   const s = getRoomState(roomId);
   if (index < 0 || index >= s.rundown.length) return res.json({ ok: false, error: `Index out of range (0–${s.rundown.length - 1})` });
   loadRundownItem(s, index, autoStart);
-  io.to(roomId).emit('timerState', s);
+  emitState(roomId, s);
   scheduleSave();
   res.json({ ok: true, roomId, rundownIndex: index });
+});
+
+// POST set message on the display screen
+// Body: { text: string, mode: 'none' | 'overlay' | 'ticker' }
+app.post('/api/rooms/:roomId/message', (req, res) => {
+  const { roomId } = req.params;
+  const { text = '', mode = 'none', speed } = req.body;
+  if (!['none', 'overlay', 'ticker'].includes(mode)) {
+    return res.json({ ok: false, error: 'mode must be "none", "overlay", or "ticker"' });
+  }
+  const timerState = getRoomState(roomId);
+  timerState.message = String(text).slice(0, 500);
+  timerState.messageMode = mode;
+  if (typeof speed === 'number' && speed > 0) timerState.messageTickerSpeed = speed;
+  emitState(roomId, timerState);
+  scheduleSave();
+  res.json({ ok: true, roomId });
 });
 
 // Routes

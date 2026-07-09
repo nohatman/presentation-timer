@@ -6,3 +6,8 @@ portable/
 .vscode/
 package-lock.json
 rooms.json
+data/
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
