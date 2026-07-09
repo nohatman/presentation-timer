@@ -39,6 +39,18 @@ app.use(express.static(path.join(__dirname, 'public'), {
 // are not safe as a cross-client lookup key - see db.js for details.
 const timerRooms = new Map();
 
+// Phase 4: which control-token socket is the "active controller" for a room
+// (Map<roomId, socketId>). In-memory/ephemeral only - a live-session concept,
+// not persisted, and reset on server restart (the next control connection just
+// claims the slot fresh). This governs browser control-token sessions only -
+// REST/dashboard/Companion actions authenticate via client API key, a separate,
+// higher trust tier, and are deliberately exempt from this entirely.
+const roomControllers = new Map();
+
+function broadcastControllerStatus(roomId) {
+  io.to(roomId).emit('controllerStatus', { activeControllerSocketId: roomControllers.get(roomId) || null });
+}
+
 // ============================================
 // Persistence - save/load room state via SQLite (db.js)
 //
@@ -165,14 +177,46 @@ io.on('connection', (socket) => {
   // Broadcast controller count to all clients in room
   broadcastControllerCount(roomId);
 
-  // Display-role sockets may only ever read - every mutation handler below checks this.
-  function isController() {
-    return socket.clientType === 'control';
+  // Phase 4: claim active-controller status if the slot is empty or its previous
+  // holder is no longer connected; otherwise this socket is an observer - it gets
+  // told the current status directly rather than triggering a room-wide broadcast,
+  // since nothing changed for the sockets already connected.
+  if (role === 'control') {
+    const currentHolder = roomControllers.get(roomId);
+    const holderStillConnected = currentHolder && io.sockets.sockets.get(currentHolder);
+    if (!holderStillConnected) {
+      roomControllers.set(roomId, socket.id);
+      broadcastControllerStatus(roomId);
+    } else {
+      socket.emit('controllerStatus', { activeControllerSocketId: currentHolder });
+    }
   }
+
+  // Display-role sockets may only ever read. Control-role sockets that aren't the
+  // current active controller (observers) are rejected too, with a reason sent
+  // back so their UI can explain why nothing happened - every mutation handler
+  // below uses this instead of a bare role check.
+  function requireActiveController() {
+    if (socket.clientType !== 'control') return false;
+    if (roomControllers.get(roomId) !== socket.id) {
+      socket.emit('controlRejected', { message: 'You are in observer mode - another operator is currently in control. Use Take Over to gain control.' });
+      return false;
+    }
+    return true;
+  }
+
+  // Any control-token holder can take over at any time - no approval step, no
+  // hard lock. A stuck/disconnected "active controller" must never be able to
+  // block a legitimate operator during a live event.
+  socket.on('requestControl', () => {
+    if (socket.clientType !== 'control') return;
+    roomControllers.set(roomId, socket.id);
+    broadcastControllerStatus(roomId);
+  });
 
   // Handle control commands from control panel
   socket.on('startTimer', (data) => {
-    if (!isController()) return;
+    if (!requireActiveController()) return;
     const timerState = getRoomState(roomId);
     if (!timerState) return;
     timerState.mode = 'running';
@@ -204,7 +248,7 @@ io.on('connection', (socket) => {
 
   // Explicit output mode control (overrides showClock convenience)
   socket.on('setOutputMode', (mode) => {
-    if (!isController()) return;
+    if (!requireActiveController()) return;
     const timerState = getRoomState(roomId);
     if (!timerState) return;
     if (mode === 'timer' || mode === 'clock') {
@@ -218,7 +262,7 @@ io.on('connection', (socket) => {
 
   // Nudge timer by deltaMs (positive to add time, negative to subtract)
   socket.on('nudgeTimer', (deltaMs) => {
-    if (!isController()) return;
+    if (!requireActiveController()) return;
     const timerState = getRoomState(roomId);
     if (!timerState) return;
     if (typeof deltaMs !== 'number' || !isFinite(deltaMs)) return;
@@ -230,7 +274,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('pauseTimer', () => {
-    if (!isController()) return;
+    if (!requireActiveController()) return;
     const timerState = getRoomState(roomId);
     if (!timerState) return;
     if (timerState.mode === 'running') {
@@ -242,7 +286,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('resumeTimer', () => {
-    if (!isController()) return;
+    if (!requireActiveController()) return;
     const timerState = getRoomState(roomId);
     if (!timerState) return;
     if (timerState.mode === 'paused') {
@@ -258,7 +302,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('resetTimer', () => {
-    if (!isController()) return;
+    if (!requireActiveController()) return;
     const timerState = getRoomState(roomId);
     if (!timerState) return;
     timerState.mode = 'stopped';
@@ -271,7 +315,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('updateSettings', (data) => {
-    if (!isController()) return;
+    if (!requireActiveController()) return;
     const timerState = getRoomState(roomId);
     if (!timerState) return;
     if (data.durationMs !== undefined) timerState.durationMs = data.durationMs;
@@ -300,7 +344,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('setRundown', (items) => {
-    if (!isController()) return;
+    if (!requireActiveController()) return;
     const timerState = getRoomState(roomId);
     if (!timerState) return;
     if (!Array.isArray(items)) return;
@@ -317,7 +361,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('goToRundown', (data) => {
-    if (!isController()) return;
+    if (!requireActiveController()) return;
     const timerState = getRoomState(roomId);
     if (!timerState) return;
     const index = parseInt(data.index);
@@ -328,7 +372,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('setMessage', (data) => {
-    if (!isController()) return;
+    if (!requireActiveController()) return;
     const timerState = getRoomState(roomId);
     if (!timerState) return;
     timerState.message = String(data.text || '').slice(0, 500);
@@ -340,6 +384,31 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     console.log(`👋 Client ${socket.id} disconnected from room: ${roomId}`);
+
+    // If the departing socket was the active controller, promote another
+    // connected control-role socket in this room if one exists, else clear the
+    // slot so the next control connection claims it fresh.
+    if (socket.clientType === 'control' && roomControllers.get(roomId) === socket.id) {
+      let promoted = null;
+      const socketsInRoom = io.sockets.adapter.rooms.get(roomId);
+      if (socketsInRoom) {
+        for (const socketId of socketsInRoom) {
+          if (socketId === socket.id) continue;
+          const other = io.sockets.sockets.get(socketId);
+          if (other && other.clientType === 'control') {
+            promoted = socketId;
+            break;
+          }
+        }
+      }
+      if (promoted) {
+        roomControllers.set(roomId, promoted);
+      } else {
+        roomControllers.delete(roomId);
+      }
+      broadcastControllerStatus(roomId);
+    }
+
     // Broadcast updated controller count after disconnect
     setTimeout(() => {
       broadcastControllerCount(roomId);
@@ -392,6 +461,7 @@ function checkAndCleanupRoom(roomId) {
       const currentState = timerRooms.get(roomId);
       if (stillEmpty && currentState && currentState.mode === 'stopped') {
         timerRooms.delete(roomId);
+        roomControllers.delete(roomId);
         db.deleteRoom(Number(roomId));
         roomCleanupTimers.delete(roomId);
         console.log(`🗑️  Cleaned up empty room: ${roomId}`);
@@ -509,6 +579,7 @@ app.delete('/api/rooms/:roomId', auth.requireClientAuth, auth.resolveOwnedRoom, 
   const { roomId, room } = req;
 
   timerRooms.delete(roomId);
+  roomControllers.delete(roomId);
   db.deleteRoom(room.id);
 
   if (roomCleanupTimers.has(roomId)) {
@@ -615,6 +686,7 @@ app.delete('/api/admin/rooms/:id', auth.requireClientAuth, auth.requirePlatformA
   const { roomId, room } = req;
 
   timerRooms.delete(roomId);
+  roomControllers.delete(roomId);
   db.deleteRoom(room.id);
 
   if (roomCleanupTimers.has(roomId)) {
