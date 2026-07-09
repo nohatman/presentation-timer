@@ -4,8 +4,12 @@ const socketIo = require('socket.io');
 const cors = require('cors');
 const path = require('path');
 const db = require('./db');
+const auth = require('./auth');
+const { buildRoomLinks } = require('./urls');
 
 const app = express();
+app.set('trust proxy', true); // needed behind Railway's proxy so req.protocol is https, not http
+
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
@@ -30,7 +34,9 @@ app.use(express.static(path.join(__dirname, 'public'), {
   }
 }));
 
-// Timer state - Multi-room support
+// Timer state - keyed by the room's database id (as a string), NEVER by the
+// operator-chosen slug. Slugs are only unique within one client's rooms, so they
+// are not safe as a cross-client lookup key - see db.js for details.
 const timerRooms = new Map();
 
 // ============================================
@@ -63,7 +69,6 @@ function loadRooms() {
     for (const [roomId, state] of loaded.entries()) {
       // Merge with defaults so any new fields added later are present
       timerRooms.set(roomId, { ...createDefaultTimerState(), ...state });
-      console.log(`📂 Restored room: ${roomId} (${state.mode})`);
       count++;
     }
     if (count > 0) console.log(`✅ Loaded ${count} room(s) from database`);
@@ -97,12 +102,9 @@ function createDefaultTimerState() {
   };
 }
 
-// Helper to get or create room state
+// Rooms are never created implicitly anymore - only via POST /api/rooms (authenticated)
+// or at boot from the database. This just reads whatever's already there.
 function getRoomState(roomId) {
-  if (!timerRooms.has(roomId)) {
-    timerRooms.set(roomId, createDefaultTimerState());
-    console.log(`📦 Created new room: ${roomId}`);
-  }
   return timerRooms.get(roomId);
 }
 
@@ -112,28 +114,67 @@ function emitState(roomId, timerState) {
   io.to(roomId).emit('timerState', { ...timerState, serverNow: Date.now() });
 }
 
-// Socket.IO connection handling
-io.on('connection', (socket) => {
-  const roomId = socket.handshake.query.room || 'default';
-  const clientType = socket.handshake.query.type || 'unknown'; // 'control' or 'display'
-  socket.join(roomId);
+// Express middleware (chained after auth.resolveOwnedRoom) - attaches the live
+// in-memory state for req.roomId. A miss here means the DB and the in-memory Map
+// have gone out of sync, which should never happen; treated as a hard error rather
+// than silently recreating a room.
+function attachTimerState(req, res, next) {
+  const timerState = timerRooms.get(req.roomId);
+  if (!timerState) {
+    return res.status(500).json({ ok: false, error: 'Room exists in database but not in memory' });
+  }
+  req.timerState = timerState;
+  next();
+}
 
-  // Store client type on socket for later reference
-  socket.clientType = clientType;
+// Socket.IO connection handling - identity comes ONLY from a server-issued token
+// (control or display), resolved against the database. Nothing client-declared
+// (room name, "type" param) is ever trusted.
+io.on('connection', (socket) => {
+  const token = (socket.handshake.auth && socket.handshake.auth.token) || socket.handshake.query.token;
+  const access = auth.resolveSocketAccess(token);
+
+  if (!access) {
+    socket.emit('authError', { message: 'Invalid or expired link. Ask the room owner for a fresh control/display link.' });
+    socket.disconnect(true);
+    return;
+  }
+
+  const { roomId, role } = access; // role: 'control' | 'display', derived server-side
+  socket.join(roomId);
+  socket.clientType = role;
   socket.roomId = roomId;
 
-  console.log(`👤 Client ${socket.id} joined room: ${roomId} as ${clientType}`);
+  console.log(`👤 Client ${socket.id} joined room: ${roomId} as ${role}`);
 
-  // Send current state to new client
-  const timerState = getRoomState(roomId);
-  socket.emit('timerState', { ...timerState, serverNow: Date.now() });
+  // Send current state to new client, plus a one-time roomInfo. Every role gets
+  // the slug (just a label, not a secret). Only control-role sockets also get
+  // both links - a control token grants no way to learn the room's separate
+  // display token other than the server telling it. This must NEVER go out via
+  // the shared emitState() broadcast (io.to(roomId)), since that reaches
+  // display-role sockets too, who must never see the control link.
+  const initialState = getRoomState(roomId);
+  let roomInfo = { slug: access.room.slug };
+  if (role === 'control') {
+    const proto = socket.handshake.headers['x-forwarded-proto'] || (socket.handshake.secure ? 'https' : 'http');
+    const baseUrl = `${proto}://${socket.handshake.headers.host}`;
+    roomInfo = { ...roomInfo, ...buildRoomLinks(baseUrl, access.room) };
+  }
+  socket.emit('timerState', { ...initialState, serverNow: Date.now(), ...(roomInfo ? { roomInfo } : {}) });
 
   // Broadcast controller count to all clients in room
   broadcastControllerCount(roomId);
 
+  // Display-role sockets may only ever read - every mutation handler below checks this.
+  function isController() {
+    return socket.clientType === 'control';
+  }
+
   // Handle control commands from control panel
   socket.on('startTimer', (data) => {
+    if (!isController()) return;
     const timerState = getRoomState(roomId);
+    if (!timerState) return;
     timerState.mode = 'running';
     timerState.startTime = Date.now();
     timerState.pauseTime = null;
@@ -163,7 +204,9 @@ io.on('connection', (socket) => {
 
   // Explicit output mode control (overrides showClock convenience)
   socket.on('setOutputMode', (mode) => {
+    if (!isController()) return;
     const timerState = getRoomState(roomId);
+    if (!timerState) return;
     if (mode === 'timer' || mode === 'clock') {
       timerState.outputMode = mode;
       // mirror to showClock for backward compatibility on clients
@@ -175,7 +218,9 @@ io.on('connection', (socket) => {
 
   // Nudge timer by deltaMs (positive to add time, negative to subtract)
   socket.on('nudgeTimer', (deltaMs) => {
+    if (!isController()) return;
     const timerState = getRoomState(roomId);
+    if (!timerState) return;
     if (typeof deltaMs !== 'number' || !isFinite(deltaMs)) return;
     // Adjust duration, which effectively adjusts remaining for all modes
     const newDuration = Math.max(0, (timerState.durationMs || 0) + Math.trunc(deltaMs));
@@ -185,7 +230,9 @@ io.on('connection', (socket) => {
   });
 
   socket.on('pauseTimer', () => {
+    if (!isController()) return;
     const timerState = getRoomState(roomId);
+    if (!timerState) return;
     if (timerState.mode === 'running') {
       timerState.mode = 'paused';
       timerState.pauseTime = Date.now();
@@ -195,7 +242,9 @@ io.on('connection', (socket) => {
   });
 
   socket.on('resumeTimer', () => {
+    if (!isController()) return;
     const timerState = getRoomState(roomId);
+    if (!timerState) return;
     if (timerState.mode === 'paused') {
       timerState.mode = 'running';
       // Accumulate paused duration so elapsed accounts for pauses
@@ -209,7 +258,9 @@ io.on('connection', (socket) => {
   });
 
   socket.on('resetTimer', () => {
+    if (!isController()) return;
     const timerState = getRoomState(roomId);
+    if (!timerState) return;
     timerState.mode = 'stopped';
     timerState.startTime = null;
     timerState.pauseTime = null;
@@ -220,7 +271,9 @@ io.on('connection', (socket) => {
   });
 
   socket.on('updateSettings', (data) => {
+    if (!isController()) return;
     const timerState = getRoomState(roomId);
+    if (!timerState) return;
     if (data.durationMs !== undefined) timerState.durationMs = data.durationMs;
     if (data.speed !== undefined) timerState.speed = data.speed;
     if (data.amberThresholdMs !== undefined) timerState.amberThresholdMs = data.amberThresholdMs;
@@ -247,7 +300,9 @@ io.on('connection', (socket) => {
   });
 
   socket.on('setRundown', (items) => {
+    if (!isController()) return;
     const timerState = getRoomState(roomId);
+    if (!timerState) return;
     if (!Array.isArray(items)) return;
     timerState.rundown = items.map(item => ({
       name: String(item.name || '').slice(0, 100),
@@ -262,7 +317,9 @@ io.on('connection', (socket) => {
   });
 
   socket.on('goToRundown', (data) => {
+    if (!isController()) return;
     const timerState = getRoomState(roomId);
+    if (!timerState) return;
     const index = parseInt(data.index);
     if (index < 0 || index >= timerState.rundown.length) return;
     loadRundownItem(timerState, index, !!data.autoStart);
@@ -271,7 +328,9 @@ io.on('connection', (socket) => {
   });
 
   socket.on('setMessage', (data) => {
+    if (!isController()) return;
     const timerState = getRoomState(roomId);
+    if (!timerState) return;
     timerState.message = String(data.text || '').slice(0, 500);
     timerState.messageMode = ['none', 'overlay', 'ticker'].includes(data.mode) ? data.mode : 'none';
     if (typeof data.speed === 'number' && data.speed > 0) timerState.messageTickerSpeed = data.speed;
@@ -333,7 +392,7 @@ function checkAndCleanupRoom(roomId) {
       const currentState = timerRooms.get(roomId);
       if (stillEmpty && currentState && currentState.mode === 'stopped') {
         timerRooms.delete(roomId);
-        db.deleteRoom(roomId);
+        db.deleteRoom(Number(roomId));
         roomCleanupTimers.delete(roomId);
         console.log(`🗑️  Cleaned up empty room: ${roomId}`);
       }
@@ -352,15 +411,20 @@ setInterval(() => {
   });
 }, 1000);
 
-// API endpoint to get active rooms
-app.get('/api/rooms', (req, res) => {
-  const rooms = [];
-  for (const [roomId, state] of timerRooms.entries()) {
-    // Get connection count for this room
+// ============================================
+// REST API - client-authenticated room management (dashboard, provisioning)
+// ============================================
+
+// GET all rooms belonging to the authenticated client (was: unauthenticated/global)
+app.get('/api/rooms', auth.requireClientAuth, (req, res) => {
+  const rows = db.getRoomsForClient(req.client.id);
+
+  const rooms = rows.map((row) => {
+    const roomId = String(row.id);
+    const state = timerRooms.get(roomId) || createDefaultTimerState();
     const socketsInRoom = io.sockets.adapter.rooms.get(roomId);
     const connectionCount = socketsInRoom ? socketsInRoom.size : 0;
 
-    // Calculate remaining time and overtime
     let remainingMs = 0;
     let overMs = 0;
     if (state.mode === 'running') {
@@ -375,8 +439,12 @@ app.get('/api/rooms', (req, res) => {
       remainingMs = state.durationMs;
     }
 
-    rooms.push({
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const links = buildRoomLinks(baseUrl, row);
+
+    return {
       id: roomId,
+      slug: row.slug,
       mode: state.mode,
       connections: connectionCount,
       remainingMs: Math.floor(remainingMs),
@@ -384,55 +452,100 @@ app.get('/api/rooms', (req, res) => {
       outputMode: state.outputMode,
       countUp: state.countUp || false,
       amberThresholdMs: state.amberThresholdMs,
-      redThresholdMs: state.redThresholdMs
-    });
-  }
+      redThresholdMs: state.redThresholdMs,
+      controlUrl: links.controlUrl,
+      displayUrl: links.displayUrl
+    };
+  });
 
   res.json(rooms);
 });
 
-// Delete room endpoint
-app.delete('/api/rooms/:roomId', (req, res) => {
-  const roomId = req.params.roomId;
+// POST create a new room under the authenticated client (was: implicit on first connect)
+app.post('/api/rooms', auth.requireClientAuth, (req, res) => {
+  const { slug } = req.body || {};
+  if (typeof slug !== 'string' || !slug.trim()) {
+    return res.status(400).json({ ok: false, error: 'Missing or invalid "slug" in request body' });
+  }
+  const cleanSlug = slug.trim().slice(0, 100);
 
-  if (!timerRooms.has(roomId)) {
-    return res.status(404).json({ error: 'Room not found' });
+  let room;
+  try {
+    room = db.createRoom(req.client.id, cleanSlug);
+  } catch (err) {
+    return res.status(409).json({ ok: false, error: err.message });
   }
 
-  // Delete the room state
-  timerRooms.delete(roomId);
-  db.deleteRoom(roomId);
+  const defaultState = createDefaultTimerState();
+  timerRooms.set(String(room.id), defaultState);
+  db.writeRoomState(room.id, defaultState);
 
-  // Clear any pending cleanup timer
+  console.log(`📦 Created room "${cleanSlug}" (id=${room.id}) for client "${req.client.name}"`);
+
+  const baseUrl = `${req.protocol}://${req.get('host')}`;
+  const links = buildRoomLinks(baseUrl, room);
+  res.json({ ok: true, roomId: String(room.id), slug: cleanSlug, ...links });
+});
+
+// Delete room endpoint
+app.delete('/api/rooms/:roomId', auth.requireClientAuth, auth.resolveOwnedRoom, (req, res) => {
+  const { roomId, room } = req;
+
+  timerRooms.delete(roomId);
+  db.deleteRoom(room.id);
+
   if (roomCleanupTimers.has(roomId)) {
     clearTimeout(roomCleanupTimers.get(roomId));
     roomCleanupTimers.delete(roomId);
   }
 
-  // Disconnect all sockets in the room
   const socketsInRoom = io.sockets.adapter.rooms.get(roomId);
   if (socketsInRoom) {
     for (const socketId of socketsInRoom) {
       const socket = io.sockets.sockets.get(socketId);
-      if (socket) {
-        socket.disconnect(true);
-      }
+      if (socket) socket.disconnect(true);
     }
   }
 
-  console.log(`🗑️  Manually deleted room: ${roomId}`);
-  scheduleSave();
+  console.log(`🗑️  Manually deleted room: ${room.slug} (id=${roomId})`);
   res.json({ success: true, message: 'Room deleted' });
+});
+
+// POST issue fresh control/display links for a room, invalidating the old ones.
+// This is the operator-facing recovery path for "a link leaked" or "cutover broke
+// my old bookmarked links" - see also scripts/list-room-links.js for a CLI version.
+app.post('/api/rooms/:roomId/regenerate-tokens', auth.requireClientAuth, auth.resolveOwnedRoom, (req, res) => {
+  const updated = db.regenerateRoomTokens(req.client.id, req.room.slug);
+  if (!updated) return res.status(404).json({ ok: false, error: 'Room not found' });
+
+  // Old links stop working immediately - disconnect anyone still using them.
+  const socketsInRoom = io.sockets.adapter.rooms.get(req.roomId);
+  if (socketsInRoom) {
+    for (const socketId of socketsInRoom) {
+      const socket = io.sockets.sockets.get(socketId);
+      if (socket) socket.disconnect(true);
+    }
+  }
+
+  const baseUrl = `${req.protocol}://${req.get('host')}`;
+  const links = buildRoomLinks(baseUrl, updated);
+  res.json({ ok: true, roomId: req.roomId, ...links });
 });
 
 // ============================================
 // REST API for Bitfocus Companion
+//
+// Addressing is unchanged (roomId in the URL is still the human slug); the only
+// change is that every call now requires Authorization: Bearer <clientApiKey>,
+// and the slug is resolved only within that client's own rooms.
 // ============================================
 
+const roomAuth = [auth.requireClientAuth, auth.resolveOwnedRoom, attachTimerState];
+
 // GET pre-computed display values optimised for Companion button feedback
-app.get('/api/rooms/:roomId/companion', (req, res) => {
-  const { roomId } = req.params;
-  const s = getRoomState(roomId);
+app.get('/api/rooms/:roomId/companion', ...roomAuth, (req, res) => {
+  const s = req.timerState;
+  const roomId = req.params.roomId;
 
   // Compute remaining time (mirrors the display.html logic)
   let remainingMs = s.durationMs || 0;
@@ -502,138 +615,97 @@ app.get('/api/rooms/:roomId/companion', (req, res) => {
 });
 
 // GET room state (read-only)
-app.get('/api/rooms/:roomId/state', (req, res) => {
-  const { roomId } = req.params;
-  const timerState = getRoomState(roomId);
-
+app.get('/api/rooms/:roomId/state', ...roomAuth, (req, res) => {
   res.json({
     ok: true,
-    roomId,
-    state: timerState
+    roomId: req.params.roomId,
+    state: req.timerState
   });
 });
 
 // POST start timer
-app.post('/api/rooms/:roomId/start', (req, res) => {
-  const { roomId } = req.params;
-  const timerState = getRoomState(roomId);
+app.post('/api/rooms/:roomId/start', ...roomAuth, (req, res) => {
+  const { roomId } = req; // internal numeric id, for io/timerRooms
+  const timerState = req.timerState;
 
   if (timerState.mode === 'running') {
-    return res.json({
-      ok: false,
-      error: 'Timer is already running'
-    });
+    return res.json({ ok: false, error: 'Timer is already running' });
   }
 
-  // Start timer logic (same as Socket.IO handler)
   timerState.mode = 'running';
   timerState.startTime = Date.now();
   timerState.accumulatedPauseMs = 0;
 
-  // Broadcast to all clients in the room
   io.to(roomId).emit('timerState', timerState);
   scheduleSave();
 
-  res.json({
-    ok: true,
-    roomId,
-    state: timerState
-  });
+  res.json({ ok: true, roomId: req.params.roomId, state: timerState });
 });
 
 // POST pause timer
-app.post('/api/rooms/:roomId/pause', (req, res) => {
-  const { roomId } = req.params;
-  const timerState = getRoomState(roomId);
+app.post('/api/rooms/:roomId/pause', ...roomAuth, (req, res) => {
+  const { roomId } = req;
+  const timerState = req.timerState;
 
   if (timerState.mode !== 'running') {
-    return res.json({
-      ok: false,
-      error: 'Timer is not running'
-    });
+    return res.json({ ok: false, error: 'Timer is not running' });
   }
 
-  // Pause timer logic (same as Socket.IO handler)
   timerState.mode = 'paused';
   timerState.pauseTime = Date.now();
 
-  // Broadcast to all clients in the room
   io.to(roomId).emit('timerState', timerState);
   scheduleSave();
 
-  res.json({
-    ok: true,
-    roomId,
-    state: timerState
-  });
+  res.json({ ok: true, roomId: req.params.roomId, state: timerState });
 });
 
 // POST resume timer
-app.post('/api/rooms/:roomId/resume', (req, res) => {
-  const { roomId } = req.params;
-  const timerState = getRoomState(roomId);
+app.post('/api/rooms/:roomId/resume', ...roomAuth, (req, res) => {
+  const { roomId } = req;
+  const timerState = req.timerState;
 
   if (timerState.mode !== 'paused') {
-    return res.json({
-      ok: false,
-      error: 'Timer is not paused'
-    });
+    return res.json({ ok: false, error: 'Timer is not paused' });
   }
 
-  // Resume timer logic (same as Socket.IO handler)
   const pauseDurationMs = Date.now() - timerState.pauseTime;
   timerState.accumulatedPauseMs += pauseDurationMs;
   timerState.mode = 'running';
   timerState.pauseTime = null;
 
-  // Broadcast to all clients in the room
   io.to(roomId).emit('timerState', timerState);
   scheduleSave();
 
-  res.json({
-    ok: true,
-    roomId,
-    state: timerState
-  });
+  res.json({ ok: true, roomId: req.params.roomId, state: timerState });
 });
 
 // POST reset timer
-app.post('/api/rooms/:roomId/reset', (req, res) => {
-  const { roomId } = req.params;
-  const timerState = getRoomState(roomId);
+app.post('/api/rooms/:roomId/reset', ...roomAuth, (req, res) => {
+  const { roomId } = req;
+  const timerState = req.timerState;
 
-  // Reset timer logic (same as Socket.IO handler)
   timerState.mode = 'stopped';
   timerState.startTime = null;
   timerState.pauseTime = null;
   timerState.accumulatedPauseMs = 0;
 
-  // Broadcast to all clients in the room
   io.to(roomId).emit('timerState', timerState);
   scheduleSave();
 
-  res.json({
-    ok: true,
-    roomId,
-    state: timerState
-  });
+  res.json({ ok: true, roomId: req.params.roomId, state: timerState });
 });
 
 // POST nudge timer (adjust time by +/- milliseconds)
-app.post('/api/rooms/:roomId/nudge', (req, res) => {
-  const { roomId } = req.params;
+app.post('/api/rooms/:roomId/nudge', ...roomAuth, (req, res) => {
   const { ms } = req.body;
-
   if (typeof ms !== 'number') {
-    return res.json({
-      ok: false,
-      error: 'Missing or invalid "ms" in request body'
-    });
+    return res.json({ ok: false, error: 'Missing or invalid "ms" in request body' });
   }
 
-  const timerState = getRoomState(roomId);
+  const { roomId } = req;
+  const timerState = req.timerState;
 
-  // Nudge logic (same as Socket.IO handler)
   if (timerState.mode === 'running') {
     timerState.startTime -= ms;
   } else if (timerState.mode === 'paused') {
@@ -642,43 +714,27 @@ app.post('/api/rooms/:roomId/nudge', (req, res) => {
     timerState.durationMs = Math.max(0, timerState.durationMs + ms);
   }
 
-  // Broadcast to all clients in the room
   io.to(roomId).emit('timerState', timerState);
   scheduleSave();
 
-  res.json({
-    ok: true,
-    roomId,
-    state: timerState
-  });
+  res.json({ ok: true, roomId: req.params.roomId, state: timerState });
 });
 
 // POST set duration (update preset duration)
-app.post('/api/rooms/:roomId/set-duration', (req, res) => {
-  const { roomId } = req.params;
+app.post('/api/rooms/:roomId/set-duration', ...roomAuth, (req, res) => {
   const { durationMs } = req.body;
-
   if (typeof durationMs !== 'number' || durationMs < 0) {
-    return res.json({
-      ok: false,
-      error: 'Missing or invalid "durationMs" in request body'
-    });
+    return res.json({ ok: false, error: 'Missing or invalid "durationMs" in request body' });
   }
 
-  const timerState = getRoomState(roomId);
-
-  // Set duration logic
+  const { roomId } = req;
+  const timerState = req.timerState;
   timerState.durationMs = durationMs;
 
-  // Broadcast to all clients in the room
   io.to(roomId).emit('timerState', timerState);
   scheduleSave();
 
-  res.json({
-    ok: true,
-    roomId,
-    state: timerState
-  });
+  res.json({ ok: true, roomId: req.params.roomId, state: timerState });
 });
 
 // ============================================
@@ -696,73 +752,73 @@ function loadRundownItem(s, index, autoStart) {
 }
 
 // POST /api/rooms/:roomId/rundown/prev — load previous item (stops timer)
-app.post('/api/rooms/:roomId/rundown/prev', (req, res) => {
-  const { roomId } = req.params;
-  const s = getRoomState(roomId);
+app.post('/api/rooms/:roomId/rundown/prev', ...roomAuth, (req, res) => {
+  const { roomId } = req;
+  const s = req.timerState;
   if (!s.rundown.length) return res.json({ ok: false, error: 'No rundown configured' });
   const idx = s.rundownIndex <= 0 ? 0 : s.rundownIndex - 1;
   if (idx === s.rundownIndex && s.rundownIndex === 0) return res.json({ ok: false, error: 'Already at first item' });
   loadRundownItem(s, idx, false);
   emitState(roomId, s);
   scheduleSave();
-  res.json({ ok: true, roomId, rundownIndex: idx });
+  res.json({ ok: true, roomId: req.params.roomId, rundownIndex: idx });
 });
 
 // POST /api/rooms/:roomId/rundown/next — load next item (stops timer)
-app.post('/api/rooms/:roomId/rundown/next', (req, res) => {
-  const { roomId } = req.params;
-  const s = getRoomState(roomId);
+app.post('/api/rooms/:roomId/rundown/next', ...roomAuth, (req, res) => {
+  const { roomId } = req;
+  const s = req.timerState;
   if (!s.rundown.length) return res.json({ ok: false, error: 'No rundown configured' });
   const idx = s.rundownIndex < 0 ? 0 : s.rundownIndex + 1;
   if (idx >= s.rundown.length) return res.json({ ok: false, error: 'Already at last item' });
   loadRundownItem(s, idx, false);
   emitState(roomId, s);
   scheduleSave();
-  res.json({ ok: true, roomId, rundownIndex: idx });
+  res.json({ ok: true, roomId: req.params.roomId, rundownIndex: idx });
 });
 
 // POST /api/rooms/:roomId/rundown/take — start the currently loaded item
 // If no item is loaded (rundownIndex === -1), loads and starts the first item.
-app.post('/api/rooms/:roomId/rundown/take', (req, res) => {
-  const { roomId } = req.params;
-  const s = getRoomState(roomId);
+app.post('/api/rooms/:roomId/rundown/take', ...roomAuth, (req, res) => {
+  const { roomId } = req;
+  const s = req.timerState;
   if (!s.rundown.length) return res.json({ ok: false, error: 'No rundown configured' });
   const idx = s.rundownIndex < 0 ? 0 : s.rundownIndex;
   loadRundownItem(s, idx, true);
   emitState(roomId, s);
   scheduleSave();
-  res.json({ ok: true, roomId, rundownIndex: idx });
+  res.json({ ok: true, roomId: req.params.roomId, rundownIndex: idx });
 });
 
 // POST /api/rooms/:roomId/rundown/goto — load a specific item by 0-based index
 // Body: { index: number, autoStart?: boolean }
-app.post('/api/rooms/:roomId/rundown/goto', (req, res) => {
-  const { roomId } = req.params;
+app.post('/api/rooms/:roomId/rundown/goto', ...roomAuth, (req, res) => {
   const { index, autoStart = false } = req.body;
   if (!Number.isInteger(index)) return res.json({ ok: false, error: 'Missing or invalid "index" (0-based integer)' });
-  const s = getRoomState(roomId);
+  const { roomId } = req;
+  const s = req.timerState;
   if (index < 0 || index >= s.rundown.length) return res.json({ ok: false, error: `Index out of range (0–${s.rundown.length - 1})` });
   loadRundownItem(s, index, autoStart);
   emitState(roomId, s);
   scheduleSave();
-  res.json({ ok: true, roomId, rundownIndex: index });
+  res.json({ ok: true, roomId: req.params.roomId, rundownIndex: index });
 });
 
 // POST set message on the display screen
 // Body: { text: string, mode: 'none' | 'overlay' | 'ticker' }
-app.post('/api/rooms/:roomId/message', (req, res) => {
-  const { roomId } = req.params;
+app.post('/api/rooms/:roomId/message', ...roomAuth, (req, res) => {
   const { text = '', mode = 'none', speed } = req.body;
   if (!['none', 'overlay', 'ticker'].includes(mode)) {
     return res.json({ ok: false, error: 'mode must be "none", "overlay", or "ticker"' });
   }
-  const timerState = getRoomState(roomId);
+  const { roomId } = req;
+  const timerState = req.timerState;
   timerState.message = String(text).slice(0, 500);
   timerState.messageMode = mode;
   if (typeof speed === 'number' && speed > 0) timerState.messageTickerSpeed = speed;
   emitState(roomId, timerState);
   scheduleSave();
-  res.json({ ok: true, roomId });
+  res.json({ ok: true, roomId: req.params.roomId });
 });
 
 // Routes
@@ -791,12 +847,10 @@ console.log(`Starting server on port ${PORT}...`);
 
 server.listen(PORT, () => {
   console.log(`\n✅ Presentation Timer server running successfully!`);
-  console.log(`📱 Control panel: http://localhost:${PORT}/control`);
-  console.log(`🖥️  Display: http://localhost:${PORT}/display`);
-  console.log(`📊 Dashboard: http://localhost:${PORT}/dashboard`);
   console.log(`🏠 Home: http://localhost:${PORT}/`);
-  console.log(`\n💡 Tip: Add ?room=yourname to create separate timers`);
-  console.log(`   Example: http://localhost:${PORT}/control?room=presentation1\n`);
+  console.log(`📊 Dashboard: http://localhost:${PORT}/dashboard (needs a client API key)`);
+  console.log(`\n💡 Control/display links are now issued per-room via POST /api/rooms`);
+  console.log(`   (see scripts/create-client.js and scripts/list-room-links.js)\n`);
 });
 
 // Handle port in use error

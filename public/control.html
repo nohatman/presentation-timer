@@ -265,7 +265,7 @@
         .timer-control-row {
             grid-column: 1 / -1;
             display: grid;
-            grid-template-columns: 280px 1fr;
+            grid-template-columns: 185px 155px 1fr;
             gap: 16px;
             align-items: stretch;
         }
@@ -378,21 +378,43 @@
         </div>
 
         <div class="timer-control-row">
-            <div class="section">
-                <h3>Timer Preview <span class="status-badge" id="statusBadge">Stopped</span></h3>
-                <div class="timer-preview" id="timerPreview">00:00</div>
-            </div>
-            <div class="section main-buttons">
-                <button class="button primary" id="playPauseBtn" onclick="togglePlayPause()" style="font-size: 1.05rem; padding: 14px; flex: 1;">▶️ Start</button>
-                <div style="display: flex; gap: 10px; flex: 1;">
-                    <button class="button danger" onclick="resetTimer()" style="flex: 1;">⏹️ Reset</button>
+            <!-- Col 1: Timer preview + ends-at info -->
+            <div class="section" style="display:flex;flex-direction:column;align-items:center;justify-content:center;">
+                <div style="align-self:flex-start;width:100%;display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                    <span style="font-size:0.85rem;color:#999;font-weight:500;">Preview</span>
+                    <span class="status-badge" id="statusBadge">Stopped</span>
                 </div>
-                <small style="color: #999; text-align: center; margin-top: 4px;">ℹ️ Reset returns to preset duration</small>
-                <div style="display: flex; gap: 8px; flex: 1; margin-top: 8px;">
-                    <button class="button secondary" onclick="nudge(-5*60*1000)" style="flex: 1; font-size: 0.85rem; padding: 8px;">-5 min</button>
-                    <button class="button secondary" onclick="nudge(-60*1000)" style="flex: 1; font-size: 0.85rem; padding: 8px;">-1 min</button>
-                    <button class="button secondary" onclick="nudge(60*1000)" style="flex: 1; font-size: 0.85rem; padding: 8px;">+1 min</button>
-                    <button class="button secondary" onclick="nudge(5*60*1000)" style="flex: 1; font-size: 0.85rem; padding: 8px;">+5 min</button>
+                <div class="timer-preview" id="timerPreview">00:00</div>
+                <div id="endsAtDisplay" style="margin-top:8px;font-size:0.78rem;color:#90caf9;text-align:center;min-height:2.5em;line-height:1.5;width:100%;"></div>
+            </div>
+            <!-- Col 2: Compact controls -->
+            <div class="section main-buttons">
+                <button class="button primary" id="playPauseBtn" onclick="togglePlayPause()" style="font-size:1rem;padding:12px;flex:1;">▶️ Start</button>
+                <button class="button danger" onclick="resetTimer()" style="flex:1;padding:10px;">⏹️ Reset</button>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;flex:1;">
+                    <button class="button secondary" onclick="nudge(-5*60*1000)" style="font-size:0.8rem;padding:8px;">−5 min</button>
+                    <button class="button secondary" onclick="nudge(60*1000)" style="font-size:0.8rem;padding:8px;">+1 min</button>
+                    <button class="button secondary" onclick="nudge(-60*1000)" style="font-size:0.8rem;padding:8px;">−1 min</button>
+                    <button class="button secondary" onclick="nudge(5*60*1000)" style="font-size:0.8rem;padding:8px;">+5 min</button>
+                </div>
+            </div>
+            <!-- Col 3: Timer mode + quick presets -->
+            <div class="section" style="display:flex;flex-direction:column;gap:10px;">
+                <div>
+                    <div style="font-size:0.8rem;color:#999;margin-bottom:6px;font-weight:500;text-transform:uppercase;letter-spacing:0.05em;">Timer Mode</div>
+                    <div class="mode-row">
+                        <button class="mode-button active" id="modeDurationBtn" onclick="setTimerMode('duration')">Duration</button>
+                        <input type="text" id="duration" class="time-text" placeholder="0:00" pattern="\d{1,3}:\d{2}" title="Format: MM:SS" maxlength="6" inputmode="numeric">
+                        <span class="end-time-display" id="endTimeCalc"></span>
+                    </div>
+                    <div class="mode-row" style="margin-top:6px;">
+                        <button class="mode-button" id="modeEndAtBtn" onclick="setTimerMode('endAt')" title="Select an end time first">End At</button>
+                        <input type="time" id="endAtTime">
+                    </div>
+                </div>
+                <div>
+                    <div style="font-size:0.8rem;color:#999;margin-bottom:6px;font-weight:500;text-transform:uppercase;letter-spacing:0.05em;">Quick Presets <span style="color:#444;font-size:0.75rem;text-transform:none;letter-spacing:0;">· Ctrl+Click to save</span></div>
+                    <div class="presets" id="presetsGrid"></div>
                 </div>
             </div>
         </div>
@@ -446,24 +468,6 @@
             </div>
         </div>
 
-        <div class="section">
-            <h3>Timer Mode</h3>
-            <div class="mode-row">
-                <button class="mode-button active" id="modeDurationBtn" onclick="setTimerMode('duration')">Duration</button>
-                <input type="text" id="duration" class="time-text" placeholder="0:00" pattern="\d{1,3}:\d{2}" title="⚠️ Changes update the live timer immediately. Format: MM:SS (e.g., 30:00)" maxlength="6" inputmode="numeric">
-            </div>
-            <div class="mode-row">
-                <button class="mode-button" id="modeEndAtBtn" onclick="setTimerMode('endAt')" title="Select an end time first">End At</button>
-                <input type="time" id="endAtTime">
-                <span class="end-time-display" id="endTimeCalc"></span>
-            </div>
-        </div>
-
-        <div class="section">
-            <h3>Quick Presets</h3>
-            <div class="presets" id="presetsGrid"></div>
-            <small style="display: block; margin-top: 8px; color: #999;">Ctrl+Click to save &nbsp;·&nbsp; While running, applies the full preset minus time already elapsed</small>
-        </div>
 
         <div class="section">
             <h3>Warning Thresholds</h3>
@@ -480,81 +484,91 @@
         </div>
 
         <div class="section">
-            <h3>Display Options</h3>
-            <label class="checkbox-label">
+            <h3>Display &amp; Speed</h3>
+            <label class="checkbox-label" style="margin-bottom:8px;">
                 <input type="checkbox" id="countUp">
                 <span>Count up after zero</span>
             </label>
-            <div class="form-group">
-                <label style="font-size: 0.9rem;">Output Mode</label>
-                <div class="button-group" style="margin-top: 8px;">
-                    <button class="button" id="modeTimerBtn" onclick="setOutputMode('timer')" style="flex: 1;">⏱️ Timer</button>
-                    <button class="button" id="modeClockBtn" onclick="setOutputMode('clock')" style="flex: 1;">🕐 Time of day</button>
-                </div>
+            <div style="display:flex;gap:8px;margin-bottom:10px;">
+                <button class="button" id="modeTimerBtn" onclick="setOutputMode('timer')" style="flex:1;">⏱️ Timer</button>
+                <button class="button" id="modeClockBtn" onclick="setOutputMode('clock')" style="flex:1;">🕐 Clock</button>
             </div>
-            <div class="form-group" style="margin-top: 12px;">
-                <label style="font-size: 0.9rem;">Display Size</label>
-                <div style="display: flex; align-items: center; gap: 12px; margin-top: 8px;">
-                    <input type="range" id="displayScaleSlider" min="0.5" max="2.0" step="0.1" value="1.0"
-                           style="flex: 1; height: 6px; border-radius: 3px; background: #333; accent-color: #90caf9;"
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                <div>
+                    <div style="font-size:0.8rem;color:#999;margin-bottom:4px;">Display size: <span id="displayScaleValue" style="color:#90caf9;font-weight:bold;">1.5×</span></div>
+                    <input type="range" id="displayScaleSlider" min="0.5" max="2.0" step="0.1" value="1.5"
+                           style="width:100%;height:5px;accent-color:#90caf9;margin-bottom:6px;"
                            oninput="updateDisplayScalePreview()">
-                    <span id="displayScaleValue" style="min-width: 35px; font-weight: bold; color: #90caf9;">1.0x</span>
+                    <button onclick="applyDisplayScale()" class="button" style="width:100%;background:#2196f3;color:white;padding:8px;font-size:0.85rem;">Apply Size</button>
                 </div>
-                <button onclick="applyDisplayScale()" class="button" style="width: 100%; margin-top: 8px; background: #2196f3; color: white;">
-                    Apply Display Size
-                </button>
+                <div>
+                    <div style="font-size:0.8rem;color:#999;margin-bottom:4px;">Speed: <span id="speedValue" style="color:#4caf50;font-weight:bold;">1.0×</span></div>
+                    <input type="range" id="speedSlider" min="0.5" max="1.5" step="0.05" value="1.0"
+                           style="width:100%;height:5px;accent-color:#4caf50;margin-bottom:6px;">
+                    <button onclick="applySpeed()" class="button" style="width:100%;background:#4caf50;color:white;padding:8px;font-size:0.85rem;font-weight:bold;">Apply Speed</button>
+                </div>
             </div>
         </div>
 
-        <!-- Speed Multiplier - Full Width -->
-        <div class="section" style="grid-column: 1 / -1; margin-top: 16px; border-top: 2px solid #333; padding-top: 20px;">
-            <h3>Speed Multiplier</h3>
-            <div style="background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 20px;">
-                <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px; flex-wrap: wrap;">
-                    <label for="speedSlider" style="font-size: 0.9rem; min-width: 60px;">Speed:</label>
-                    <input type="range" id="speedSlider" min="0.5" max="1.5" step="0.05" value="1.0" 
-                           style="flex: 1; min-width: 200px; height: 6px; border-radius: 3px; background: #333; accent-color: #4caf50;">
-                    <span id="speedValue" style="min-width: 50px; font-weight: bold; color: #4caf50;">1.0x</span>
-                </div>
-                
-                <div id="speedPreview" style="padding: 15px; background: #0a0a0a; border-radius: 6px; margin-bottom: 15px; min-height: 80px;">
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 10px;">
-                        <div>
-                            <div style="font-size: 0.85rem; color: #999; margin-bottom: 4px;">Real-time Duration</div>
-                            <div id="realTimeDuration" style="font-size: 1.1rem; color: #e5e5e5;">--:-- → --:--</div>
-                        </div>
-                        <div>
-                            <div style="font-size: 0.85rem; color: #999; margin-bottom: 4px;">Will End At</div>
-                            <div id="speedEndTime" style="font-size: 1.1rem; color: #e5e5e5;">--:--:--</div>
-                        </div>
-                    </div>
-                    <div style="border-top: 1px solid #333; padding-top: 10px; margin-top: 10px;">
-                        <div style="font-size: 0.85rem; color: #999; margin-bottom: 4px;">Preview Speed</div>
-                        <div id="speedAnimation" style="font-family: monospace; font-size: 1.2rem; color: #4caf50;">0</div>
-                    </div>
-                </div>
-                
-                <button onclick="applySpeed()" class="btn" style="width: 100%; background: #4caf50; color: white; font-weight: bold; padding: 14px;">
-                    Apply Speed Change
-                </button>
+        <!-- Message Display - Full Width -->
+        <div class="section" style="grid-column: 1 / -1;">
+            <h3>Message to Display Screen</h3>
+            <div style="display:flex;gap:8px;margin-bottom:10px;">
+                <input type="text" id="messageInput" maxlength="500"
+                       placeholder="Type a message for the output screen…"
+                       style="flex:1;padding:12px;font-size:1rem;"
+                       onkeydown="if(event.key==='Enter'&&this.value.trim())sendMessage(lastMessageMode);">
             </div>
+            <div style="display:flex;gap:8px;margin-bottom:10px;">
+                <button class="button" id="msgBtnOverlay" onclick="sendMessage('overlay')"
+                        style="flex:2;background:#1565c0;color:#fff;"
+                        title="Replaces the timer with the message">Full Screen</button>
+                <button class="button" id="msgBtnTicker" onclick="sendMessage('ticker')"
+                        style="flex:2;background:#4a4a4a;color:#e5e5e5;"
+                        title="Scrolls above the timer">Ticker</button>
+                <button class="button danger" onclick="clearMessage()" style="flex:1;">Clear</button>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+                <span style="font-size:0.85rem;color:#999;white-space:nowrap;">Ticker speed:</span>
+                <button class="button msg-speed-btn" data-speed="0.25" onclick="setTickerSpeed(0.25)"
+                        style="flex:1;font-size:0.8rem;padding:6px;">Slow</button>
+                <button class="button msg-speed-btn active" data-speed="0.5" onclick="setTickerSpeed(0.5)"
+                        style="flex:1;font-size:0.8rem;padding:6px;background:#1565c0;color:#fff;">Normal</button>
+                <button class="button msg-speed-btn" data-speed="1.0" onclick="setTickerSpeed(1.0)"
+                        style="flex:1;font-size:0.8rem;padding:6px;">Fast</button>
+                <button class="button msg-speed-btn" data-speed="2.0" onclick="setTickerSpeed(2.0)"
+                        style="flex:1;font-size:0.8rem;padding:6px;">Very Fast</button>
+            </div>
+            <div id="messageStatus" style="font-size:0.85rem;color:#90caf9;min-height:1.2em;margin-bottom:6px;"></div>
+            <div id="messageHistory" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+            <small style="color:#666;display:block;margin-top:6px;">Full Screen hides timer · Ticker scrolls above it · Enter resends in last mode · Click history to reload</small>
         </div>
+
 
 
     </div>
     </div>
 
     <script>
-        // Get room from URL parameter
+        // Access is entirely token-based now - the token in the URL IS the credential.
+        // There is no room name/slug available client-side until the server sends one
+        // back (see the timerState handler below, which populates roomInfo).
         const urlParams = new URLSearchParams(window.location.search);
-        const roomId = urlParams.get('room') || 'default';
-        
-        // Update room info display
-        document.getElementById('roomName').textContent = roomId;
-        
-        // Update display link with room parameter
+        const controlToken = urlParams.get('token');
+        let roomInfo = null; // { slug, controlUrl, displayUrl } - filled in from the server
+
         const displayLink = document.getElementById('displayLink');
-        displayLink.href = `/display?room=${encodeURIComponent(roomId)}`;
+        const roomNameEl = document.getElementById('roomName');
+
+        if (!controlToken) {
+            const hadOldLink = urlParams.has('room');
+            roomNameEl.textContent = hadOldLink ? 'Link expired' : 'No link provided';
+            document.body.innerHTML = `<div style="padding:40px;text-align:center;font-family:sans-serif;color:#ccc;">
+                <h2>${hadOldLink ? 'This link is from before the security update and no longer works.' : 'No control link provided.'}</h2>
+                <p>Ask the room owner for a fresh control link.</p>
+            </div>`;
+            throw new Error('No control token in URL - stopping page script.');
+        }
 
         // Global state
         let currentState = { mode: 'stopped', durationMs: 0, speed: 1.0, displayScale: 1.0 };
@@ -571,16 +585,12 @@
 
         // Timer mode selection
         function setTimerMode(mode) {
-            if (mode === 'endAt') {
-                const endAtTime = document.getElementById('endAtTime').value;
-                if (!endAtTime) {
-                    alert('Please select an end time first');
-                    return;
-                }
-            }
             currentTimerMode = mode;
             document.getElementById('modeDurationBtn').classList.toggle('active', mode === 'duration');
             document.getElementById('modeEndAtBtn').classList.toggle('active', mode === 'endAt');
+            if (mode === 'endAt' && !document.getElementById('endAtTime').value) {
+                document.getElementById('endAtTime').focus();
+            }
             updateEndTimeCalc();
             emitSettings();
         }
@@ -622,11 +632,26 @@
 
         // Update end time calc when duration changes
         document.getElementById('duration').addEventListener('input', updateEndTimeCalc);
-        document.getElementById('endAtTime').addEventListener('input', updateEndTimeCalc);
-        displayLink.href = `/display?room=${encodeURIComponent(roomId)}`;
-        
-        // Connect socket with room parameter and type
-        const socket = io({ query: { room: roomId, type: 'control' } });
+        // Selecting an end time auto-activates End At mode and emits settings
+        document.getElementById('endAtTime').addEventListener('input', () => {
+            if (currentTimerMode !== 'endAt') {
+                currentTimerMode = 'endAt';
+                document.getElementById('modeDurationBtn').classList.remove('active');
+                document.getElementById('modeEndAtBtn').classList.add('active');
+            }
+            updateEndTimeCalc();
+            emitSettings();
+        });
+        // Connect using the control token as the sole credential. Role is derived
+        // server-side from which token matched - never trust a client-declared type.
+        const socket = io({ auth: { token: controlToken } });
+
+        socket.on('authError', ({ message }) => {
+            document.body.innerHTML = `<div style="padding:40px;text-align:center;font-family:sans-serif;color:#ccc;">
+                <h2>Access denied</h2>
+                <p>${message || 'This link is no longer valid.'}</p>
+            </div>`;
+        });
 
         // Helper functions for MM:SS format
         function parseTimeInput(value) {
@@ -658,12 +683,18 @@
             input.addEventListener('blur', () => validateAndFormatTimeInput(input));
         });
 
-        // Copy room links function
+        // Copy room links function - uses the links the server sent back with the
+        // first timerState event (see socket.on('timerState', ...) below). Display
+        // link is not derivable client-side since it's a separate secret from the
+        // control token this page was opened with.
         function copyRoomLinks(event) {
-            const baseUrl = window.location.origin;
-            const controlUrl = `${baseUrl}/control?room=${encodeURIComponent(roomId)}`;
-            const displayUrl = `${baseUrl}/display?room=${encodeURIComponent(roomId)}`;
-            const text = `Foxy's Timer - Room: ${roomId}\n\nControl Panel:\n${controlUrl}\n\nDisplay Screen:\n${displayUrl}`;
+            if (!roomInfo) {
+                alert('Room info not loaded yet - try again in a moment.');
+                return;
+            }
+            const controlUrl = roomInfo.controlUrl;
+            const displayUrl = roomInfo.displayUrl;
+            const text = `Foxy's Timer - Room: ${roomInfo.slug}\n\nControl Panel:\n${controlUrl}\n\nDisplay Screen:\n${displayUrl}`;
             
             // Detect if mobile device or Mac (for AirDrop support)
             const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -672,7 +703,7 @@
             // Use Web Share API on mobile devices and Mac (for AirDrop)
             if ((isMobile || isMac) && navigator.share) {
                 navigator.share({
-                    title: `Foxy's Presentation Timer - ${roomId}`,
+                    title: `Foxy's Presentation Timer - ${roomInfo.slug}`,
                     text: text
                 }).then(() => {
                     const btn = event.target;
@@ -705,12 +736,25 @@
         let slidersInitialised = false;
 
         socket.on('timerState', (state) => {
+            // roomInfo is only ever sent once, on the first state after connecting
+            // (see server.js) - it carries the display link, which this control
+            // panel has no other way to know (it's a separate secret from its own
+            // control token).
+            if (state.roomInfo && !roomInfo) {
+                roomInfo = state.roomInfo;
+                roomNameEl.textContent = roomInfo.slug;
+                displayLink.href = roomInfo.displayUrl;
+            }
+
             currentState = state;
             updateStatus();
             updateTimerPreview();
             updatePlayPauseButton();
 
             if (!slidersInitialised) {
+                // On first state, adopt ALL settings from the server rather than
+                // pushing local values — this prevents a freshly-opened control panel
+                // from overwriting a live timer with stale localStorage data.
                 if (state.speed !== undefined) {
                     document.getElementById('speedSlider').value = state.speed;
                     updateSpeedPreview();
@@ -719,8 +763,33 @@
                     document.getElementById('displayScaleSlider').value = state.displayScale;
                     updateDisplayScalePreview();
                 }
+                if (state.amberThresholdMs !== undefined) {
+                    document.getElementById('amberThreshold').value = formatTimeInput(
+                        Math.floor(state.amberThresholdMs / 60000),
+                        Math.floor((state.amberThresholdMs % 60000) / 1000)
+                    );
+                }
+                if (state.redThresholdMs !== undefined) {
+                    document.getElementById('redThreshold').value = formatTimeInput(
+                        Math.floor(state.redThresholdMs / 60000),
+                        Math.floor((state.redThresholdMs % 60000) / 1000)
+                    );
+                }
+                if (state.countUp !== undefined) {
+                    document.getElementById('countUp').checked = !!state.countUp;
+                }
+                // Sync duration from server when stopped (running/paused already handled below)
+                if (state.mode === 'stopped' && state.durationMs !== undefined && !durationInputFocused) {
+                    document.getElementById('duration').value = formatTimeInput(
+                        Math.floor(state.durationMs / 60000),
+                        Math.floor((state.durationMs % 60000) / 1000)
+                    );
+                }
                 slidersInitialised = true;
             }
+
+            // Update message UI to reflect current server state
+            updateMessageUI(state);
 
             // Keep duration input in sync with server (nudge, running/paused tick, or Take).
             if (!durationInputFocused) {
@@ -772,6 +841,73 @@
             statusBadge.textContent = modeClass.charAt(0).toUpperCase() + modeClass.slice(1);
         }
 
+        function updateEndsAt() {
+            const el = document.getElementById('endsAtDisplay');
+            if (!el) return;
+            const s = currentState;
+            if (!s || s.showClock) { el.innerHTML = ''; return; }
+
+            const speed = s.speed || 1.0;
+            let wallEndMs = null;
+            let overrunMs = 0;
+
+            if (s.mode === 'running') {
+                // Fixed anchor: startTime + total wall-clock duration. Doesn't drift per frame.
+                wallEndMs = (s.startTime || 0) + (s.accumulatedPauseMs || 0) + (s.durationMs || 0) / speed;
+                const remaining = wallEndMs - Date.now();
+                if (remaining < 0 && s.countUp) {
+                    overrunMs = -remaining * speed; // convert to timer-ms
+                    wallEndMs = null;
+                }
+            } else if (s.mode === 'paused') {
+                const timerElapsed = ((s.pauseTime || Date.now()) - (s.startTime || 0) - (s.accumulatedPauseMs || 0)) * speed;
+                const timerRemaining = (s.durationMs || 0) - timerElapsed;
+                if (timerRemaining < 0 && s.countUp) {
+                    overrunMs = -timerRemaining;
+                    wallEndMs = null;
+                } else if (timerRemaining > 0) {
+                    wallEndMs = Date.now() + timerRemaining / speed;
+                }
+            } else {
+                // Stopped — show expected end if resumed from full duration
+                const durationMs = (s.durationMs || 0);
+                if (durationMs > 0) {
+                    wallEndMs = Date.now() + durationMs / speed;
+                }
+            }
+
+            // Overrun display
+            if (overrunMs > 0) {
+                const overSec = Math.floor(overrunMs / 1000);
+                el.style.color = '#9c27b0';
+                el.textContent = `Overrunning ${Math.floor(overSec/60)}:${String(overSec%60).padStart(2,'0')}`;
+                return;
+            }
+
+            if (!wallEndMs) { el.innerHTML = ''; return; }
+
+            const wallEnd = new Date(wallEndMs);
+            const hh = String(wallEnd.getHours()).padStart(2,'0');
+            const mm = String(wallEnd.getMinutes()).padStart(2,'0');
+            const ss = String(wallEnd.getSeconds()).padStart(2,'0');
+
+            const prefix = s.mode === 'stopped' ? 'Would end at'
+                         : s.mode === 'paused'  ? 'If resumed, ends at'
+                         :                        'Ends at';
+
+            let html = `<div style="font-size:0.9em;font-weight:600;">${prefix} ${hh}:${mm}:${ss}</div>`;
+
+            if (currentTimerMode === 'endAt' && s.endAtTarget) {
+                html += `<div style="color:#aaa;">Target: ${s.endAtTarget}</div>`;
+            }
+            if (Math.abs(speed - 1.0) > 0.01) {
+                html += `<div style="color:#ff9800;">Speed ${speed.toFixed(2)}× active</div>`;
+            }
+
+            el.style.color = '#90caf9';
+            el.innerHTML = html;
+        }
+
         function updateTimerPreview() {
             const previewEl = document.getElementById('timerPreview');
 
@@ -807,12 +943,15 @@
                     previewEl.classList.add('amber');
                 }
             }
+            updateEndsAt();
         }
 
         // Update preview every second (always, including for clock mode)
         setInterval(() => {
             if (currentState.mode === 'running' || currentState.showClock) {
                 updateTimerPreview();
+            } else if (currentState.mode === 'paused') {
+                updateEndsAt();
             }
         }, 1000);
 
@@ -945,6 +1084,9 @@
             const minutes = Math.floor(durationMs / (60 * 1000));
             const seconds = Math.floor((durationMs % (60 * 1000)) / 1000);
             document.getElementById('duration').value = formatTimeInput(minutes, seconds);
+            if (currentState.mode !== 'stopped') {
+                socket.emit('resetTimer');
+            }
             setTimerMode('duration');
             emitSettings();
         }
@@ -1211,43 +1353,9 @@
             toggleImportPanel();
         }
 
-        // Speed multiplier preview functions
-        let speedAnimationInterval = null;
-        let speedAnimationCounter = 0;
-
         function updateSpeedPreview() {
             const speed = parseFloat(document.getElementById('speedSlider').value);
             document.getElementById('speedValue').textContent = speed.toFixed(2) + 'x';
-
-            // Calculate real-time duration
-            const durationMs = getDurationMs();
-            const realTimeMs = durationMs / speed;
-            const durationMin = Math.floor(durationMs / 60000);
-            const durationSec = Math.floor((durationMs % 60000) / 1000);
-            const realMin = Math.floor(realTimeMs / 60000);
-            const realSec = Math.floor((realTimeMs % 60000) / 1000);
-            document.getElementById('realTimeDuration').textContent = 
-                `${durationMin}:${durationSec.toString().padStart(2, '0')} → ${realMin}:${realSec.toString().padStart(2, '0')} real-time`;
-
-            // Calculate end time
-            const now = new Date();
-            const endTime = new Date(now.getTime() + realTimeMs);
-            const hours = endTime.getHours().toString().padStart(2, '0');
-            const minutes = endTime.getMinutes().toString().padStart(2, '0');
-            const seconds = endTime.getSeconds().toString().padStart(2, '0');
-            document.getElementById('speedEndTime').textContent = `${hours}:${minutes}:${seconds}`;
-
-            // Update animation speed
-            if (speedAnimationInterval) {
-                clearInterval(speedAnimationInterval);
-            }
-            const baseInterval = 1000; // 1 second base
-            const animInterval = baseInterval / speed;
-            speedAnimationCounter = 0;
-            speedAnimationInterval = setInterval(() => {
-                speedAnimationCounter++;
-                document.getElementById('speedAnimation').textContent = speedAnimationCounter;
-            }, animInterval);
         }
 
         function applySpeed() {
@@ -1260,13 +1368,7 @@
                 }
             }
 
-            // Stop animation
-            if (speedAnimationInterval) {
-                clearInterval(speedAnimationInterval);
-                speedAnimationInterval = null;
-            }
-
-            // Apply speed to hidden input for compatibility
+                // Apply speed to hidden input for compatibility
             if (!document.getElementById('speed')) {
                 const hiddenSpeed = document.createElement('input');
                 hiddenSpeed.type = 'hidden';
@@ -1289,81 +1391,89 @@
             }, 2000);
         }
 
-        // Emit live settings to server when inputs change
+        // Emit live settings to server when inputs change.
+        // IMPORTANT: never send durationMs while the timer is running or paused —
+        // that would overwrite the live countdown with whatever this device has stored
+        // locally, which is the root cause of sudden "wildly wrong time" jumps when a
+        // second device opens the control panel mid-run.
         function emitSettings() {
             const mode = currentTimerMode;
             const speedInput = document.getElementById('speed');
             const speedValue = speedInput ? parseFloat(speedInput.value) : parseFloat(document.getElementById('speedSlider').value);
             const payload = {
-                durationMs: getDurationMs(),
                 speed: speedValue || 1.0,
                 amberThresholdMs: getAmberThresholdMs(),
                 redThresholdMs: getRedThresholdMs(),
                 countUp: document.getElementById('countUp').checked
             };
-            if (mode === 'endAt') {
-                payload.endAtTarget = document.getElementById('endAtTime').value;
-                // Compute and include duration from local clock
-                const now = new Date();
-                const end = new Date(now);
-                const [h, m] = (payload.endAtTarget || '00:00').split(':');
-                end.setHours(parseInt(h||'0'), parseInt(m||'0'), 0, 0);
-                if (end <= now) {
-                    end.setDate(end.getDate() + 1);
+            // Only push durationMs when stopped — use nudge buttons to adjust a live timer.
+            if (currentState.mode === 'stopped') {
+                if (mode === 'endAt') {
+                    payload.endAtTarget = document.getElementById('endAtTime').value;
+                    const now = new Date();
+                    const end = new Date(now);
+                    const [h, m] = (payload.endAtTarget || '00:00').split(':');
+                    end.setHours(parseInt(h||'0'), parseInt(m||'0'), 0, 0);
+                    if (end <= now) {
+                        end.setDate(end.getDate() + 1);
+                    }
+                    payload.durationMs = Math.max(0, end.getTime() - now.getTime());
+                } else {
+                    payload.durationMs = getDurationMs();
                 }
-                payload.durationMs = Math.max(0, end.getTime() - now.getTime());
             }
             socket.emit('updateSettings', payload);
         }
 
-        // Load saved settings from localStorage
+        // Load saved settings from localStorage (for initial display only —
+        // server state is authoritative and will overwrite on first timerState).
         window.addEventListener('load', () => {
             const saved = localStorage.getItem('timerSettings');
             if (saved) {
-                const settings = JSON.parse(saved);
-                // Handle both old format (separate min/sec) and new format (MM:SS)
-                if (settings.duration) {
-                    document.getElementById('duration').value = settings.duration;
-                } else {
-                    const dMin = settings.durationMin ?? 30;
-                    const dSec = settings.durationSec ?? 0;
-                    document.getElementById('duration').value = formatTimeInput(dMin, dSec);
-                }
-                if (settings.amberThreshold) {
-                    document.getElementById('amberThreshold').value = settings.amberThreshold;
-                } else {
-                    const aMin = settings.amberMin ?? 5;
-                    const aSec = settings.amberSec ?? 0;
-                    document.getElementById('amberThreshold').value = formatTimeInput(aMin, aSec);
-                }
-                if (settings.redThreshold) {
-                    document.getElementById('redThreshold').value = settings.redThreshold;
-                } else {
-                    const rMin = settings.redMin ?? 2;
-                    const rSec = settings.redSec ?? 0;
-                    document.getElementById('redThreshold').value = formatTimeInput(rMin, rSec);
-                }
-                const speedValue = settings.speed || 1.0;
-                document.getElementById('speedSlider').value = speedValue;
-                // Create hidden speed input for compatibility
-                if (!document.getElementById('speed')) {
-                    const hiddenSpeed = document.createElement('input');
-                    hiddenSpeed.type = 'hidden';
-                    hiddenSpeed.id = 'speed';
-                    hiddenSpeed.value = speedValue;
-                    document.body.appendChild(hiddenSpeed);
-                } else {
-                    document.getElementById('speed').value = speedValue;
-                }
-                updateSpeedPreview();
-                document.getElementById('countUp').checked = settings.countUp || false;
+                try {
+                    const settings = JSON.parse(saved);
+                    // Handle both old format (separate min/sec) and new format (MM:SS)
+                    if (settings.duration) {
+                        document.getElementById('duration').value = settings.duration;
+                    } else {
+                        const dMin = settings.durationMin ?? 30;
+                        const dSec = settings.durationSec ?? 0;
+                        document.getElementById('duration').value = formatTimeInput(dMin, dSec);
+                    }
+                    if (settings.amberThreshold) {
+                        document.getElementById('amberThreshold').value = settings.amberThreshold;
+                    } else {
+                        const aMin = settings.amberMin ?? 5;
+                        const aSec = settings.amberSec ?? 0;
+                        document.getElementById('amberThreshold').value = formatTimeInput(aMin, aSec);
+                    }
+                    if (settings.redThreshold) {
+                        document.getElementById('redThreshold').value = settings.redThreshold;
+                    } else {
+                        const rMin = settings.redMin ?? 2;
+                        const rSec = settings.redSec ?? 0;
+                        document.getElementById('redThreshold').value = formatTimeInput(rMin, rSec);
+                    }
+                    const speedValue = settings.speed || 1.0;
+                    document.getElementById('speedSlider').value = speedValue;
+                    if (!document.getElementById('speed')) {
+                        const hiddenSpeed = document.createElement('input');
+                        hiddenSpeed.type = 'hidden';
+                        hiddenSpeed.id = 'speed';
+                        hiddenSpeed.value = speedValue;
+                        document.body.appendChild(hiddenSpeed);
+                    } else {
+                        document.getElementById('speed').value = speedValue;
+                    }
+                    updateSpeedPreview();
+                    document.getElementById('countUp').checked = settings.countUp || false;
+                } catch (e) { /* ignore corrupt localStorage */ }
             } else {
                 // Set sensible defaults on first load
                 document.getElementById('duration').value = '30:00';
                 document.getElementById('amberThreshold').value = '5:00';
                 document.getElementById('redThreshold').value = '2:00';
                 document.getElementById('speedSlider').value = 1.0;
-                // Create hidden speed input with default value
                 if (!document.getElementById('speed')) {
                     const hiddenSpeed = document.createElement('input');
                     hiddenSpeed.type = 'hidden';
@@ -1373,31 +1483,16 @@
                 }
                 updateSpeedPreview();
             }
-            // Send initial settings to server so thresholds match immediately
-            emitSettings();
-            // Render presets grid
+            // DO NOT call emitSettings() here — server state is authoritative.
+            // Settings will be adopted from the first timerState event.
             renderPresets();
-            // Initialize output mode buttons state
             setOutputMode('timer');
-            // Initialize end time display
             updateEndTimeCalc();
         });
 
         // Update end time display every second to keep it current
         setInterval(() => {
             updateEndTimeCalc();
-            // Also update speed preview if visible
-            if (document.getElementById('speedSlider')) {
-                const durationMs = getDurationMs();
-                const speed = parseFloat(document.getElementById('speedSlider').value);
-                const realTimeMs = durationMs / speed;
-                const now = new Date();
-                const endTime = new Date(now.getTime() + realTimeMs);
-                const hours = endTime.getHours().toString().padStart(2, '0');
-                const minutes = endTime.getMinutes().toString().padStart(2, '0');
-                const seconds = endTime.getSeconds().toString().padStart(2, '0');
-                document.getElementById('speedEndTime').textContent = `${hours}:${minutes}:${seconds}`;
-            }
         }, 1000);
 
         // Save settings to localStorage
@@ -1436,6 +1531,108 @@
         const durationInput = document.getElementById('duration');
         durationInput.addEventListener('focus', () => durationInputFocused = true);
         durationInput.addEventListener('blur',  () => durationInputFocused = false);
+
+        // ============================================================
+        // Message display
+        // ============================================================
+
+        let lastMessageMode = 'overlay';
+        let currentTickerSpeed = 0.5;
+        const MSG_HISTORY_KEY = 'msgHistory_' + controlToken;
+        const MAX_HISTORY = 10;
+
+        function loadMessageHistory() {
+            try { return JSON.parse(localStorage.getItem(MSG_HISTORY_KEY) || '[]'); } catch { return []; }
+        }
+        function saveToHistory(text) {
+            let h = loadMessageHistory().filter(m => m !== text);
+            h.unshift(text);
+            if (h.length > MAX_HISTORY) h = h.slice(0, MAX_HISTORY);
+            localStorage.setItem(MSG_HISTORY_KEY, JSON.stringify(h));
+            renderMessageHistory();
+        }
+        function renderMessageHistory() {
+            const el = document.getElementById('messageHistory');
+            if (!el) return;
+            const history = loadMessageHistory();
+            if (!history.length) { el.innerHTML = ''; return; }
+            el.innerHTML = history.map((msg, i) =>
+                `<button onclick="recallMessage(${i})"
+                    style="padding:5px 10px;background:#2a2a2a;border:1px solid #444;border-radius:4px;
+                           color:#ccc;font-size:0.8rem;cursor:pointer;max-width:240px;
+                           overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                    title="${msg.replace(/"/g,'&quot;')}">${msg.length>35?msg.slice(0,35)+'…':msg}</button>`
+            ).join('');
+        }
+        function recallMessage(idx) {
+            const msg = loadMessageHistory()[idx];
+            if (msg) document.getElementById('messageInput').value = msg;
+        }
+
+        function highlightModeBtn(activeMode) {
+            const overlay = document.getElementById('msgBtnOverlay');
+            const ticker  = document.getElementById('msgBtnTicker');
+            if (activeMode === 'overlay') {
+                overlay.style.cssText = 'flex:2;background:#1976d2;color:#fff;box-shadow:0 0 12px rgba(25,118,210,0.7);';
+                ticker.style.cssText  = 'flex:2;background:#2a2a2a;color:#555;';
+            } else if (activeMode === 'ticker') {
+                overlay.style.cssText = 'flex:2;background:#2a2a2a;color:#555;';
+                ticker.style.cssText  = 'flex:2;background:#1976d2;color:#fff;box-shadow:0 0 12px rgba(25,118,210,0.7);';
+            } else {
+                overlay.style.cssText = 'flex:2;background:#1565c0;color:#fff;';
+                ticker.style.cssText  = 'flex:2;background:#4a4a4a;color:#e5e5e5;';
+            }
+        }
+
+        function sendMessage(mode) {
+            const text = document.getElementById('messageInput').value.trim();
+            if (!text) return;
+            lastMessageMode = mode;
+            socket.emit('setMessage', { text, mode, speed: currentTickerSpeed });
+            saveToHistory(text);
+            highlightModeBtn(mode);
+        }
+
+        function clearMessage() {
+            socket.emit('setMessage', { text: '', mode: 'none' });
+            highlightModeBtn('none');
+        }
+
+        function setTickerSpeed(speed) {
+            currentTickerSpeed = speed;
+            document.querySelectorAll('.msg-speed-btn').forEach(b => {
+                const isActive = parseFloat(b.dataset.speed) === speed;
+                b.style.background = isActive ? '#1565c0' : '';
+                b.style.color      = isActive ? '#fff' : '';
+            });
+            // If a ticker is currently live, update it immediately
+            if (currentState.messageMode === 'ticker' && currentState.message) {
+                socket.emit('setMessage', { text: currentState.message, mode: 'ticker', speed });
+            } else {
+                const statusEl = document.getElementById('messageStatus');
+                if (statusEl && !currentState.message) {
+                    statusEl.textContent = 'Speed set — click Ticker to apply';
+                    setTimeout(() => { if (statusEl.textContent.startsWith('Speed set')) statusEl.textContent = ''; }, 2500);
+                }
+            }
+        }
+
+        function updateMessageUI(state) {
+            const statusEl = document.getElementById('messageStatus');
+            if (!statusEl) return;
+            const mode = state.messageMode || 'none';
+            const text = state.message || '';
+            highlightModeBtn(text ? mode : 'none');
+            if (mode === 'none' || !text) {
+                statusEl.textContent = '';
+            } else {
+                const label = mode === 'overlay' ? 'Full Screen' : 'Ticker';
+                statusEl.textContent = `Active (${label}): "${text.length > 60 ? text.slice(0,60)+'…' : text}"`;
+            }
+        }
+
+        // Render history on load
+        renderMessageHistory();
 
         // Keyboard shortcuts — all suppressed when an input/textarea has focus
         document.addEventListener('keydown', (e)=>{

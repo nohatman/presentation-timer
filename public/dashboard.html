@@ -305,6 +305,7 @@
             <div style="display: flex; flex-direction: column; gap: 0.75rem; align-items: flex-end;">
                 <div class="nav-links">
                     <a href="/" class="nav-link">🏠 Home</a>
+                    <button onclick="changeApiKey()" class="nav-link" style="cursor:pointer;">🔑 API Key</button>
                 </div>
                 <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; justify-content: flex-end;">
                     <button onclick="startAllRooms()" class="nav-link" style="background:#2e7d32;border-color:#2e7d32;color:white;cursor:pointer;">▶ Start All</button>
@@ -312,6 +313,12 @@
                     <button id="startSelectedBtn" onclick="startSelectedRooms()" class="nav-link" style="display:none;background:#1976d2;border-color:#1976d2;color:white;cursor:pointer;">▶ Start Selected (0)</button>
                 </div>
             </div>
+        </div>
+        <div style="display:flex;gap:0.5rem;margin-top:1rem;">
+            <input type="text" id="newRoomSlug" placeholder="New room name (e.g. main-stage)"
+                   onkeypress="if(event.key==='Enter') createRoom()"
+                   style="flex:1;max-width:320px;padding:8px 12px;border-radius:6px;border:1px solid #333;background:#101010;color:#e5e5e5;">
+            <button onclick="createRoom()" class="nav-link" style="background:#2e7d32;border-color:#2e7d32;color:white;cursor:pointer;">➕ Create Room</button>
         </div>
     </div>
 
@@ -324,6 +331,83 @@
         let cardOrder = [];
         let draggedElement = null;
         const selectedRooms = new Set();
+
+        // ============================================================
+        // API key (client authentication) - the dashboard now only ever shows
+        // rooms belonging to whichever client's key is entered here. Get a key
+        // via `node scripts/create-client.js "Name"` on the server.
+        // ============================================================
+
+        function getApiKey() {
+            let key = localStorage.getItem('dashboardApiKey');
+            if (!key) {
+                key = prompt('Enter your client API key (see scripts/create-client.js):');
+                if (key) localStorage.setItem('dashboardApiKey', key.trim());
+            }
+            return key ? key.trim() : null;
+        }
+
+        function changeApiKey() {
+            const key = prompt('Enter your client API key:');
+            if (key) {
+                localStorage.setItem('dashboardApiKey', key.trim());
+                fetchRooms();
+            }
+        }
+
+        async function authFetch(url, options = {}) {
+            const key = getApiKey();
+            const headers = { ...(options.headers || {}), 'Authorization': `Bearer ${key}` };
+            const response = await fetch(url, { ...options, headers });
+            if (response.status === 401) {
+                localStorage.removeItem('dashboardApiKey');
+                alert('API key rejected - please re-enter it.');
+                location.reload();
+            }
+            return response;
+        }
+
+        async function createRoom() {
+            const input = document.getElementById('newRoomSlug');
+            const slug = input.value.trim();
+            if (!slug) return;
+
+            try {
+                const response = await authFetch('/api/rooms', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ slug })
+                });
+                const data = await response.json();
+                if (!data.ok) {
+                    alert(`❌ ${data.error || 'Failed to create room'}`);
+                    return;
+                }
+                input.value = '';
+                await fetchRooms();
+                alert(`✅ Room "${slug}" created.\n\nControl:\n${data.controlUrl}\n\nDisplay:\n${data.displayUrl}\n\n(Save these now - the control link is the only way to operate this room.)`);
+            } catch (error) {
+                console.error('Error creating room:', error);
+                alert('❌ Failed to create room. Please try again.');
+            }
+        }
+
+        async function regenerateLinks(slug) {
+            if (!confirm(`Regenerate links for "${slug}"? The old control/display links will stop working immediately.`)) return;
+            try {
+                const response = await authFetch(`/api/rooms/${encodeURIComponent(slug)}/regenerate-tokens`, { method: 'POST' });
+                const data = await response.json();
+                if (!data.ok) {
+                    alert(`❌ ${data.error || 'Failed to regenerate links'}`);
+                    return;
+                }
+                await fetchRooms();
+                alert(`✅ New links for "${slug}":\n\nControl:\n${data.controlUrl}\n\nDisplay:\n${data.displayUrl}`);
+            } catch (error) {
+                console.error('Error regenerating links:', error);
+                alert('❌ Failed to regenerate links. Please try again.');
+            }
+        }
 
         // Load saved card order from localStorage
         function loadCardOrder() {
@@ -366,7 +450,7 @@
 
         async function fetchRooms() {
             try {
-                const response = await fetch('/api/rooms');
+                const response = await authFetch('/api/rooms');
                 if (!response.ok) throw new Error('Failed to fetch rooms');
                 
                 roomsData = await response.json();
@@ -391,7 +475,7 @@
                     <div class="empty-state">
                         <div class="empty-state-icon">⏱️</div>
                         <div class="empty-state-text">No active rooms</div>
-                        <div class="empty-state-hint">Create a room from the home page to get started</div>
+                        <div class="empty-state-hint">Create a room using the field above to get started</div>
                     </div>
                 `;
                 updateSelectionUI();
@@ -439,11 +523,14 @@
                 }
 
                 const isSelected = selectedRooms.has(room.id);
+                // Server-side endpoints (pause/resume/start/delete/regenerate) are addressed
+                // by slug scoped to the authenticated client, NOT by room.id (the numeric
+                // database id, used only for local dashboard bookkeeping like drag order).
                 const pauseBtn = room.mode === 'running'
-                    ? `<button onclick="toggleRoomTimer('${escapeHtml(room.id)}', 'running')" class="action-btn" style="background:#ff9800;border-color:#ff9800;color:white;">⏸️ Pause</button>`
+                    ? `<button onclick="toggleRoomTimer('${escapeHtml(room.slug)}', 'running')" class="action-btn" style="background:#ff9800;border-color:#ff9800;color:white;">⏸️ Pause</button>`
                     : room.mode === 'paused'
-                        ? `<button onclick="toggleRoomTimer('${escapeHtml(room.id)}', 'paused')" class="action-btn" style="background:#4caf50;border-color:#4caf50;color:white;">▶️ Resume</button>`
-                        : `<button onclick="toggleRoomTimer('${escapeHtml(room.id)}', 'stopped')" class="action-btn" style="background:#4caf50;border-color:#4caf50;color:white;">▶️ Start</button>`;
+                        ? `<button onclick="toggleRoomTimer('${escapeHtml(room.slug)}', 'paused')" class="action-btn" style="background:#4caf50;border-color:#4caf50;color:white;">▶️ Resume</button>`
+                        : `<button onclick="toggleRoomTimer('${escapeHtml(room.slug)}', 'stopped')" class="action-btn" style="background:#4caf50;border-color:#4caf50;color:white;">▶️ Start</button>`;
 
                 return `
                     <div class="room-card ${room.mode}"
@@ -464,7 +551,7 @@
                                        onchange="onCheckboxChange(this)"
                                        style="width:16px;height:16px;cursor:pointer;accent-color:#4caf50;"
                                        onclick="event.stopPropagation()">
-                                <div class="room-name">${escapeHtml(room.id)}</div>
+                                <div class="room-name">${escapeHtml(room.slug)}</div>
                             </div>
                             <div class="room-status ${room.mode}">${room.mode}</div>
                         </div>
@@ -487,13 +574,16 @@
 
                         <div class="room-actions">
                             ${pauseBtn}
-                            <a href="/control?room=${encodeURIComponent(room.id)}" class="action-btn control" target="_blank">
+                            <a href="${room.controlUrl}" class="action-btn control" target="_blank">
                                 📱 Control Panel
                             </a>
-                            <a href="/display?room=${encodeURIComponent(room.id)}" class="action-btn display" target="_blank">
+                            <a href="${room.displayUrl}" class="action-btn display" target="_blank">
                                 🖥️ Display
                             </a>
-                            <button onclick="deleteRoom('${escapeHtml(room.id)}')" class="action-btn danger">
+                            <button onclick="regenerateLinks('${escapeHtml(room.slug)}')" class="action-btn" style="background:#455a64;border-color:#455a64;color:white;">
+                                🔄 New Links
+                            </button>
+                            <button onclick="deleteRoom('${escapeHtml(room.slug)}')" class="action-btn danger">
                                 🗑️ Delete
                             </button>
                         </div>
@@ -525,8 +615,8 @@
         // Auto-refresh every 1 second for live updates
         setInterval(fetchRooms, 1000);
 
-        // Toggle a single room's timer via REST API
-        async function toggleRoomTimer(roomId, currentMode) {
+        // Toggle a single room's timer via REST API (slug, scoped to the authenticated client)
+        async function toggleRoomTimer(slug, currentMode) {
             try {
                 let endpoint;
                 if (currentMode === 'running') {
@@ -536,7 +626,7 @@
                 } else {
                     endpoint = 'start';
                 }
-                await fetch(`/api/rooms/${encodeURIComponent(roomId)}/${endpoint}`, { method: 'POST' });
+                await authFetch(`/api/rooms/${encodeURIComponent(slug)}/${endpoint}`, { method: 'POST' });
                 await fetchRooms();
             } catch (error) {
                 console.error('Error toggling timer:', error);
@@ -544,12 +634,14 @@
         }
 
         // Start all stopped/paused rooms simultaneously
+        // (naturally client-scoped: roomsData only ever contains the authenticated
+        // client's own rooms, per GET /api/rooms - see server.js)
         async function startAllRooms() {
             const targets = roomsData.filter(r => r.mode !== 'running');
             if (targets.length === 0) return;
             await Promise.all(targets.map(r => {
                 const endpoint = r.mode === 'paused' ? 'resume' : 'start';
-                return fetch(`/api/rooms/${encodeURIComponent(r.id)}/${endpoint}`, { method: 'POST' });
+                return authFetch(`/api/rooms/${encodeURIComponent(r.slug)}/${endpoint}`, { method: 'POST' });
             }));
             await fetchRooms();
         }
@@ -559,7 +651,7 @@
             const targets = roomsData.filter(r => r.mode === 'running');
             if (targets.length === 0) return;
             await Promise.all(targets.map(r =>
-                fetch(`/api/rooms/${encodeURIComponent(r.id)}/pause`, { method: 'POST' })
+                authFetch(`/api/rooms/${encodeURIComponent(r.slug)}/pause`, { method: 'POST' })
             ));
             await fetchRooms();
         }
@@ -570,7 +662,7 @@
             if (targets.length === 0) return;
             await Promise.all(targets.map(r => {
                 const endpoint = r.mode === 'paused' ? 'resume' : 'start';
-                return fetch(`/api/rooms/${encodeURIComponent(r.id)}/${endpoint}`, { method: 'POST' });
+                return authFetch(`/api/rooms/${encodeURIComponent(r.slug)}/${endpoint}`, { method: 'POST' });
             }));
             await fetchRooms();
         }
@@ -599,28 +691,28 @@
             }
         }
 
-        async function deleteRoom(roomId) {
+        async function deleteRoom(slug) {
             // Confirmation dialog
-            const confirmMsg = `Are you sure you want to delete room "${roomId}"?\n\nThis will:\n• Remove the room permanently\n• Disconnect all connected clients\n• Cannot be undone\n\nDelete this room?`;
-            
+            const confirmMsg = `Are you sure you want to delete room "${slug}"?\n\nThis will:\n• Remove the room permanently\n• Disconnect all connected clients\n• Cannot be undone\n\nDelete this room?`;
+
             if (!confirm(confirmMsg)) {
                 return;
             }
-            
+
             try {
-                const response = await fetch(`/api/rooms/${encodeURIComponent(roomId)}`, {
+                const response = await authFetch(`/api/rooms/${encodeURIComponent(slug)}`, {
                     method: 'DELETE'
                 });
-                
+
                 if (!response.ok) {
                     throw new Error('Failed to delete room');
                 }
-                
+
                 // Immediately refresh the room list
                 await fetchRooms();
-                
+
                 // Show success message briefly
-                alert(`✅ Room "${roomId}" deleted successfully`);
+                alert(`✅ Room "${slug}" deleted successfully`);
             } catch (error) {
                 console.error('Error deleting room:', error);
                 alert('❌ Failed to delete room. Please try again.');

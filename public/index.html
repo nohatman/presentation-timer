@@ -234,34 +234,11 @@
         <p class="subtitle">Multi-room countdown timers for presentations</p>
 
         <div class="section">
-            <h2>Create or Join a Room</h2>
-            <div class="input-group">
-                <input type="text" id="roomInput" placeholder="Enter room name (e.g., presentation1)" 
-                       onkeypress="if(event.key==='Enter') joinRoom()">
-                <button class="button primary" onclick="joinRoom()">Go →</button>
-            </div>
-            <p class="help-text">Create a new timer or join an existing one. Room names are case-sensitive.</p>
-            <div id="error" class="error">Please enter a room name</div>
-        </div>
-
-        <div class="section" id="activeRoomsSection" style="display: none;">
-            <h2>Active Rooms</h2>
-            <div id="roomsList" class="rooms-list">
-                <div class="loading">Loading rooms...</div>
-            </div>
-        </div>
-
-        <div class="section">
-            <h2>Quick Start</h2>
+            <h2>Get Started</h2>
+            <p class="help-text">Rooms are now created and managed from the Master Dashboard, scoped to your client account (enter your API key there once - see <code>scripts/create-client.js</code> if you don't have one yet).</p>
             <div class="quick-start">
-                <button class="button secondary" onclick="createRandomRoom()">
-                    🎲 Create Random Room
-                </button>
-                <button class="button secondary" onclick="joinRoom('default')">
-                    📍 Use Default Room
-                </button>
-                <a href="/dashboard" class="button secondary">
-                    🎯 Master Dashboard
+                <a href="/dashboard" class="button primary">
+                    🎯 Open Master Dashboard
                 </a>
             </div>
         </div>
@@ -285,106 +262,5 @@
         </div>
     </div>
 
-    <script>
-        // Focus input on load
-        document.getElementById('roomInput').focus();
-
-        function joinRoom(roomName = null) {
-            const room = roomName || document.getElementById('roomInput').value.trim();
-            
-            if (!room) {
-                document.getElementById('error').style.display = 'block';
-                return;
-            }
-            
-            // Hide error if shown
-            document.getElementById('error').style.display = 'none';
-            
-            // Redirect to control panel with room parameter
-            window.location.href = `/control?room=${encodeURIComponent(room)}`;
-        }
-
-        function createRandomRoom() {
-            const adjectives = ['swift', 'bright', 'cool', 'quick', 'smart', 'keen', 'wise', 'bold'];
-            const nouns = ['timer', 'clock', 'counter', 'watch', 'track', 'pace', 'tempo', 'beat'];
-            const randomAdj = adjectives[Math.floor(Math.random() * adjectives.length)];
-            const randomNoun = nouns[Math.floor(Math.random() * nouns.length)];
-            const randomNum = Math.floor(Math.random() * 1000);
-            const roomName = `${randomAdj}-${randomNoun}-${randomNum}`;
-            
-            document.getElementById('roomInput').value = roomName;
-            joinRoom(roomName);
-        }
-
-        // Handle Enter key
-        document.getElementById('roomInput').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                joinRoom();
-            }
-        });
-
-        // Fetch and display active rooms
-        async function fetchActiveRooms() {
-            try {
-                const response = await fetch('/api/rooms');
-                if (!response.ok) throw new Error('Failed to fetch rooms');
-                
-                const rooms = await response.json();
-                displayRooms(rooms);
-            } catch (error) {
-                console.error('Error fetching rooms:', error);
-                document.getElementById('roomsList').innerHTML = 
-                    '<div class="empty-rooms">Unable to load rooms</div>';
-            }
-        }
-
-        function displayRooms(rooms) {
-            const roomsList = document.getElementById('roomsList');
-            const activeRoomsSection = document.getElementById('activeRoomsSection');
-            
-            if (rooms.length === 0) {
-                activeRoomsSection.style.display = 'none';
-                return;
-            }
-            
-            activeRoomsSection.style.display = 'block';
-            
-            roomsList.innerHTML = rooms.map(room => {
-                const minutes = Math.floor(room.remainingMs / 60000);
-                const seconds = Math.floor((room.remainingMs % 60000) / 1000);
-                const timeStr = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-                
-                const statusClass = room.mode === 'running' ? 'running' : 
-                                  room.mode === 'paused' ? 'paused' : 'stopped';
-                
-                const modeIcon = room.outputMode === 'clock' ? '🕐' : '⏱️';
-                
-                return `
-                    <a href="/control?room=${encodeURIComponent(room.id)}" class="room-card">
-                        <div class="room-card-header">
-                            <span class="room-name">${escapeHtml(room.id)}</span>
-                            <span class="room-status ${statusClass}">${room.mode}</span>
-                        </div>
-                        <div class="room-timer">${modeIcon} ${timeStr}</div>
-                        <div class="room-info">
-                            <span>👥 ${room.connections} connected</span>
-                        </div>
-                    </a>
-                `;
-            }).join('');
-        }
-
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-
-        // Initial fetch
-        fetchActiveRooms();
-        
-        // Auto-refresh every 3 seconds
-        setInterval(fetchActiveRooms, 3000);
-    </script>
 </body>
 </html>

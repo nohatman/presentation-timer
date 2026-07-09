@@ -147,6 +147,51 @@
             letter-spacing: 0.06em;
             text-transform: uppercase;
         }
+        /* Message overlay - replaces timer entirely */
+        #messageOverlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: #000;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            padding: 4rem;
+        }
+        #messageOverlayText {
+            font-size: 9vw;
+            font-weight: bold;
+            text-align: center;
+            color: #fff;
+            line-height: 1.15;
+            text-shadow: 0 0 40px rgba(255,255,255,0.4);
+            word-break: break-word;
+        }
+        /* Message ticker - sits above timer display within the layout */
+        #messageTicker {
+            display: none;
+            width: 100%;
+            overflow: hidden;
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 6px;
+            padding: 12px 0;
+            margin-bottom: 2rem;
+        }
+        #messageTickerText {
+            display: inline-block;
+            white-space: nowrap;
+            font-size: 2.8vw;
+            font-weight: 500;
+            color: #fff;
+            letter-spacing: 0.04em;
+            padding-left: 100vw;
+            animation: tickerScroll linear infinite;
+        }
+        @keyframes tickerScroll {
+            from { transform: translateX(0); }
+            to   { transform: translateX(-100%); }
+        }
         /* Responsive adjustments */
         @media (max-width: 768px) {
             .timer-display {
@@ -173,9 +218,19 @@
     </style>
 </head>
 <body>
+    <!-- Message overlay (mode=overlay): replaces timer display entirely -->
+    <div id="messageOverlay">
+        <div id="messageOverlayText"></div>
+    </div>
+
     <div class="container">
         <div class="settings">
             <button class="fullscreen-button" onclick="toggleFullscreen()">Fullscreen</button>
+        </div>
+
+        <!-- Message ticker sits here, above the timer, within the layout -->
+        <div id="messageTicker">
+            <div id="messageTickerText"></div>
         </div>
 
         <div id="speakerName" class="speaker-name" style="display:none;"></div>
@@ -185,31 +240,59 @@
         <div id="upNext" class="up-next" style="display:none;"></div>
 
         <div class="controls">
-            <button class="control-button" id="controlBtn" onclick="window.open('/control?room=' + encodeURIComponent(roomId), '_blank')">Control</button>
+            <!-- No "Control" button here on purpose: a display link/token grants no
+                 way to reach or derive the control link, by design. -->
             <button class="control-button" onclick="window.open('/', '_blank')">Home</button>
         </div>
         
-        <div class="room-badge" style="position: absolute; bottom: 2rem; left: 50%; transform: translateX(-50%); background: rgba(255,255,255,0.1); padding: 10px 20px; border-radius: 6px; font-size: 1rem; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2);">
-            <span style="opacity: 0.7;">Room:</span> <span style="font-family: monospace; color: #90caf9; font-weight: 600; font-size: 1.1rem;" id="roomDisplay"></span>
+        <div class="room-badge" style="position: absolute; bottom: 1rem; right: 1.5rem; background: rgba(255,255,255,0.08); padding: 5px 12px; border-radius: 5px; font-size: 0.8rem; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.12); opacity: 0.6;">
+            <span>Room:</span> <span style="font-family: monospace; color: #90caf9; font-weight: 600;" id="roomDisplay"></span>
         </div>
     </div>
 
     <script>
-        // Get room from URL parameter
+        // Access is entirely token-based - the token in the URL IS the credential.
         const urlParams = new URLSearchParams(window.location.search);
-        const roomId = urlParams.get('room') || 'default';
-        
-        // Update room display
-        document.getElementById('roomDisplay').textContent = roomId;
-        
-        // Connect socket with room parameter and type
-        const socket = io({ query: { room: roomId, type: 'display' } });
+        const displayToken = urlParams.get('token');
+
+        if (!displayToken) {
+            const hadOldLink = urlParams.has('room');
+            document.body.innerHTML = `<div style="padding:40px;text-align:center;font-family:sans-serif;color:#ccc;">
+                <h2>${hadOldLink ? 'This link is from before the security update and no longer works.' : 'No display link provided.'}</h2>
+                <p>Ask the room owner for a fresh display link.</p>
+            </div>`;
+            throw new Error('No display token in URL - stopping page script.');
+        }
+
+        // Connect using the display token as the sole credential. Role is derived
+        // server-side from which token matched - never trust a client-declared type.
+        const socket = io({ auth: { token: displayToken } });
+
+        socket.on('authError', ({ message }) => {
+            document.body.innerHTML = `<div style="padding:40px;text-align:center;font-family:sans-serif;color:#ccc;">
+                <h2>Access denied</h2>
+                <p>${message || 'This link is no longer valid.'}</p>
+            </div>`;
+        });
+
         let currentState = {};
         let blinkInterval = null;
         let displaySeconds = null; // smoothed displayed seconds
         let lastFrameTime = performance.now();
+        let clockOffset = 0;        // ms to add to Date.now() to match server clock
+        let currentMessage = '';
+        let currentMessageMode = 'none';
+        let currentTickerSpeed = 1.0;
 
         socket.on('timerState', (state) => {
+            // Compute server–client clock offset so elapsed time is accurate even
+            // if this device's system clock differs from the server's clock.
+            if (state.serverNow) {
+                clockOffset = state.serverNow - Date.now();
+            }
+            if (state.roomInfo && state.roomInfo.slug) {
+                document.getElementById('roomDisplay').textContent = state.roomInfo.slug;
+            }
             currentState = state;
             updateDisplay(true);
 
@@ -240,10 +323,50 @@
             }
         });
 
+        function updateMessageDisplay() {
+            const overlay   = document.getElementById('messageOverlay');
+            const ticker    = document.getElementById('messageTicker');
+            const container = document.querySelector('.container');
+            const { message = '', messageMode = 'none' } = currentState;
+
+            // Overlay: covers the whole screen
+            if (messageMode === 'overlay' && message) {
+                document.getElementById('messageOverlayText').textContent = message;
+                overlay.style.display = 'flex';
+                container.style.visibility = 'hidden';
+            } else {
+                overlay.style.display = 'none';
+                container.style.visibility = 'visible';
+            }
+
+            // Ticker: scrolls above the timer
+            const tickerSpeed = currentState.messageTickerSpeed || 1.0;
+            if (messageMode === 'ticker' && message) {
+                if (message !== currentMessage || messageMode !== currentMessageMode || tickerSpeed !== currentTickerSpeed) {
+                    const textEl = document.getElementById('messageTickerText');
+                    textEl.textContent = message + '      ';
+                    // Base ~0.14s per char (min 8s), divided by speed multiplier.
+                    const dur = (Math.max(8, message.length * 0.14) / tickerSpeed).toFixed(1);
+                    textEl.style.animation = 'none';
+                    void textEl.offsetWidth; // force reflow to restart
+                    textEl.style.animation = `tickerScroll ${dur}s linear infinite`;
+                }
+                ticker.style.display = 'block';
+            } else {
+                ticker.style.display = 'none';
+            }
+
+            currentMessage     = message;
+            currentMessageMode = messageMode;
+            currentTickerSpeed = tickerSpeed;
+        }
+
         function updateDisplay(forceImmediate = false) {
             const timerEl = document.getElementById('timerDisplay');
             const clockEl = document.getElementById('clockDisplay');
             const statusEl = document.getElementById('status');
+
+            updateMessageDisplay();
 
             if (currentState.showClock) {
                 timerEl.style.display = 'none';
@@ -267,7 +390,7 @@
             let isFinished = false;
 
             if (startTime) {
-                const now = Date.now();
+                const now = Date.now() + clockOffset; // corrected to match server clock
                 const pausedOffset = pauseTime ? (pauseTime - startTime) - accumulatedPauseMs : (now - startTime) - accumulatedPauseMs;
                 const elapsedMs = Math.max(0, pausedOffset) * speed;
                 remainingMs = durationMs - elapsedMs;
