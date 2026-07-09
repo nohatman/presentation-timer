@@ -290,7 +290,9 @@
 <body>
     <div class="header">
         <div>
-            <h1>🎯 Master Dashboard</h1>
+            <h1>🎯 Master Dashboard
+                <span id="platformAdminBadge" style="display:none;font-size:0.8rem;font-weight:700;background:#6a1b9a;color:white;padding:3px 10px;border-radius:5px;vertical-align:middle;margin-left:8px;">PLATFORM ADMIN — ALL CLIENTS</span>
+            </h1>
             <p style="color: #999; margin-top: 0.5rem;">Monitor all active presentation timers</p>
         </div>
         <div class="header-info">
@@ -308,13 +310,13 @@
                     <button onclick="changeApiKey()" class="nav-link" style="cursor:pointer;">🔑 API Key</button>
                 </div>
                 <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; justify-content: flex-end;">
-                    <button onclick="startAllRooms()" class="nav-link" style="background:#2e7d32;border-color:#2e7d32;color:white;cursor:pointer;">▶ Start All</button>
+                    <button id="startAllBtn" onclick="startAllRooms()" class="nav-link" style="background:#2e7d32;border-color:#2e7d32;color:white;cursor:pointer;">▶ Start All</button>
                     <button onclick="stopAllRooms()" class="nav-link" style="background:#b71c1c;border-color:#b71c1c;color:white;cursor:pointer;">⏹ Stop All</button>
                     <button id="startSelectedBtn" onclick="startSelectedRooms()" class="nav-link" style="display:none;background:#1976d2;border-color:#1976d2;color:white;cursor:pointer;">▶ Start Selected (0)</button>
                 </div>
             </div>
         </div>
-        <div style="display:flex;gap:0.5rem;margin-top:1rem;">
+        <div id="createRoomRow" style="display:flex;gap:0.5rem;margin-top:1rem;">
             <input type="text" id="newRoomSlug" placeholder="New room name (e.g. main-stage)"
                    onkeypress="if(event.key==='Enter') createRoom()"
                    style="flex:1;max-width:320px;padding:8px 12px;border-radius:6px;border:1px solid #333;background:#101010;color:#e5e5e5;">
@@ -331,6 +333,7 @@
         let cardOrder = [];
         let draggedElement = null;
         const selectedRooms = new Set();
+        let isPlatformAdmin = false; // set from GET /api/whoami - drives cross-client view
 
         // ============================================================
         // API key (client authentication) - the dashboard now only ever shows
@@ -351,6 +354,7 @@
             const key = prompt('Enter your client API key:');
             if (key) {
                 localStorage.setItem('dashboardApiKey', key.trim());
+                refreshWhoAmI();
                 fetchRooms();
             }
         }
@@ -365,6 +369,28 @@
                 location.reload();
             }
             return response;
+        }
+
+        // Determines whether this is a platform-admin session (cross-client view)
+        // vs a normal client - drives whether Start All is shown, whether the
+        // "Create Room" field is shown, and the confirmation wording used below.
+        async function refreshWhoAmI() {
+            try {
+                const response = await authFetch('/api/whoami');
+                const data = await response.json();
+                if (data.ok) {
+                    isPlatformAdmin = !!data.isPlatformAdmin;
+                }
+            } catch (error) {
+                console.error('Error fetching whoami:', error);
+            }
+            document.getElementById('platformAdminBadge').style.display = isPlatformAdmin ? 'inline-block' : 'none';
+            // Platform-wide Start All doesn't exist - see Phase 3 notes. Client-scoped
+            // Start All (the normal case) is completely unaffected.
+            document.getElementById('startAllBtn').style.display = isPlatformAdmin ? 'none' : 'inline-block';
+            // Room creation is a Client Administrator action; a platform admin has no
+            // single client to create the room under, so this stays CLI-only for now.
+            document.getElementById('createRoomRow').style.display = isPlatformAdmin ? 'none' : 'flex';
         }
 
         async function createRoom() {
@@ -392,17 +418,24 @@
             }
         }
 
-        async function regenerateLinks(slug) {
-            if (!confirm(`Regenerate links for "${slug}"? The old control/display links will stop working immediately.`)) return;
+        async function regenerateLinks(id) {
+            const room = roomsData.find(r => r.id === id);
+            if (!room) return;
+
+            const confirmMsg = room.clientName
+                ? `Regenerate links for "${room.slug}" belonging to client "${room.clientName}"? The old control/display links will stop working immediately.`
+                : `Regenerate links for "${room.slug}"? The old control/display links will stop working immediately.`;
+            if (!confirm(confirmMsg)) return;
+
             try {
-                const response = await authFetch(`/api/rooms/${encodeURIComponent(slug)}/regenerate-tokens`, { method: 'POST' });
+                const response = await authFetch(roomActionUrl(room, 'regenerate-tokens'), { method: 'POST' });
                 const data = await response.json();
                 if (!data.ok) {
                     alert(`❌ ${data.error || 'Failed to regenerate links'}`);
                     return;
                 }
                 await fetchRooms();
-                alert(`✅ New links for "${slug}":\n\nControl:\n${data.controlUrl}\n\nDisplay:\n${data.displayUrl}`);
+                alert(`✅ New links for "${room.slug}":\n\nControl:\n${data.controlUrl}\n\nDisplay:\n${data.displayUrl}`);
             } catch (error) {
                 console.error('Error regenerating links:', error);
                 alert('❌ Failed to regenerate links. Please try again.');
@@ -523,14 +556,19 @@
                 }
 
                 const isSelected = selectedRooms.has(room.id);
-                // Server-side endpoints (pause/resume/start/delete/regenerate) are addressed
-                // by slug scoped to the authenticated client, NOT by room.id (the numeric
-                // database id, used only for local dashboard bookkeeping like drag order).
+                // room.clientName is only present when viewing as a platform admin
+                // (see GET /api/rooms in server.js) - it's the signal every action
+                // function below uses to decide whether to hit the client-scoped,
+                // slug-addressed endpoints (unchanged from Phase 2) or the
+                // platform-admin, id-addressed /api/admin/rooms/:id/* endpoints.
+                const clientBadge = room.clientName
+                    ? `<div style="font-size:0.75rem;color:#ba68c8;margin-top:2px;">Client: ${escapeHtml(room.clientName)}</div>`
+                    : '';
                 const pauseBtn = room.mode === 'running'
-                    ? `<button onclick="toggleRoomTimer('${escapeHtml(room.slug)}', 'running')" class="action-btn" style="background:#ff9800;border-color:#ff9800;color:white;">⏸️ Pause</button>`
+                    ? `<button onclick="toggleRoomTimer('${escapeHtml(room.id)}', 'running')" class="action-btn" style="background:#ff9800;border-color:#ff9800;color:white;">⏸️ Pause</button>`
                     : room.mode === 'paused'
-                        ? `<button onclick="toggleRoomTimer('${escapeHtml(room.slug)}', 'paused')" class="action-btn" style="background:#4caf50;border-color:#4caf50;color:white;">▶️ Resume</button>`
-                        : `<button onclick="toggleRoomTimer('${escapeHtml(room.slug)}', 'stopped')" class="action-btn" style="background:#4caf50;border-color:#4caf50;color:white;">▶️ Start</button>`;
+                        ? `<button onclick="toggleRoomTimer('${escapeHtml(room.id)}', 'paused')" class="action-btn" style="background:#4caf50;border-color:#4caf50;color:white;">▶️ Resume</button>`
+                        : `<button onclick="toggleRoomTimer('${escapeHtml(room.id)}', 'stopped')" class="action-btn" style="background:#4caf50;border-color:#4caf50;color:white;">▶️ Start</button>`;
 
                 return `
                     <div class="room-card ${room.mode}"
@@ -551,7 +589,10 @@
                                        onchange="onCheckboxChange(this)"
                                        style="width:16px;height:16px;cursor:pointer;accent-color:#4caf50;"
                                        onclick="event.stopPropagation()">
-                                <div class="room-name">${escapeHtml(room.slug)}</div>
+                                <div>
+                                    <div class="room-name">${escapeHtml(room.slug)}</div>
+                                    ${clientBadge}
+                                </div>
                             </div>
                             <div class="room-status ${room.mode}">${room.mode}</div>
                         </div>
@@ -580,10 +621,10 @@
                             <a href="${room.displayUrl}" class="action-btn display" target="_blank">
                                 🖥️ Display
                             </a>
-                            <button onclick="regenerateLinks('${escapeHtml(room.slug)}')" class="action-btn" style="background:#455a64;border-color:#455a64;color:white;">
+                            <button onclick="regenerateLinks('${escapeHtml(room.id)}')" class="action-btn" style="background:#455a64;border-color:#455a64;color:white;">
                                 🔄 New Links
                             </button>
-                            <button onclick="deleteRoom('${escapeHtml(room.slug)}')" class="action-btn danger">
+                            <button onclick="deleteRoom('${escapeHtml(room.id)}')" class="action-btn danger">
                                 🗑️ Delete
                             </button>
                         </div>
@@ -610,13 +651,30 @@
 
         // Initial fetch
         loadCardOrder();
-        fetchRooms();
-        
+        refreshWhoAmI().then(fetchRooms);
+
         // Auto-refresh every 1 second for live updates
         setInterval(fetchRooms, 1000);
 
-        // Toggle a single room's timer via REST API (slug, scoped to the authenticated client)
-        async function toggleRoomTimer(slug, currentMode) {
+        // Every room-scoped action (pause/resume/start/delete/regenerate) has to hit
+        // one of two different endpoint families depending on who's asking:
+        //  - a normal client: the slug-addressed /api/rooms/:slug/* routes (Phase 2,
+        //    unchanged - a client can only ever reach its own rooms this way anyway)
+        //  - a platform admin: the id-addressed /api/admin/rooms/:id/* routes, since
+        //    slugs collide across clients by design and only id is unambiguous.
+        // room.clientName is only ever populated by the platform-admin listing (see
+        // GET /api/rooms in server.js), so its presence is the routing signal.
+        function roomActionUrl(room, action) {
+            const base = room.clientName
+                ? `/api/admin/rooms/${encodeURIComponent(room.id)}`
+                : `/api/rooms/${encodeURIComponent(room.slug)}`;
+            return action ? `${base}/${action}` : base;
+        }
+
+        // Toggle a single room's timer via REST API
+        async function toggleRoomTimer(id, currentMode) {
+            const room = roomsData.find(r => r.id === id);
+            if (!room) return;
             try {
                 let endpoint;
                 if (currentMode === 'running') {
@@ -626,43 +684,59 @@
                 } else {
                     endpoint = 'start';
                 }
-                await authFetch(`/api/rooms/${encodeURIComponent(slug)}/${endpoint}`, { method: 'POST' });
+                await authFetch(roomActionUrl(room, endpoint), { method: 'POST' });
                 await fetchRooms();
             } catch (error) {
                 console.error('Error toggling timer:', error);
             }
         }
 
-        // Start all stopped/paused rooms simultaneously
-        // (naturally client-scoped: roomsData only ever contains the authenticated
-        // client's own rooms, per GET /api/rooms - see server.js)
+        // Start all stopped/paused rooms simultaneously - client-scoped only.
+        // Platform-wide Start All deliberately does not exist (see Phase 3 notes) -
+        // the button is hidden for a platform admin, and this is a defensive
+        // second check in case of stale UI state.
         async function startAllRooms() {
+            if (isPlatformAdmin) return;
             const targets = roomsData.filter(r => r.mode !== 'running');
             if (targets.length === 0) return;
             await Promise.all(targets.map(r => {
                 const endpoint = r.mode === 'paused' ? 'resume' : 'start';
-                return authFetch(`/api/rooms/${encodeURIComponent(r.slug)}/${endpoint}`, { method: 'POST' });
+                return authFetch(roomActionUrl(r, endpoint), { method: 'POST' });
             }));
             await fetchRooms();
         }
 
-        // Stop (pause) all running rooms simultaneously
+        // Stop (pause) all running rooms simultaneously. For a normal client this is
+        // unchanged from Phase 2 (no confirmation, scoped to their own rooms - roomsData
+        // only ever contains those). For a platform admin this is a real emergency/
+        // support action spanning every client, so it requires explicit confirmation
+        // naming the scope before running.
         async function stopAllRooms() {
             const targets = roomsData.filter(r => r.mode === 'running');
             if (targets.length === 0) return;
+
+            if (isPlatformAdmin) {
+                const clientCount = new Set(targets.map(r => r.clientName)).size;
+                const confirmMsg = `Stop ALL running rooms across ALL clients?\n\nThis will pause ${targets.length} room(s) across ${clientCount} client(s), platform-wide.\n\nContinue?`;
+                if (!confirm(confirmMsg)) return;
+            }
+
             await Promise.all(targets.map(r =>
-                authFetch(`/api/rooms/${encodeURIComponent(r.slug)}/pause`, { method: 'POST' })
+                authFetch(roomActionUrl(r, 'pause'), { method: 'POST' })
             ));
             await fetchRooms();
         }
 
-        // Start selected rooms
+        // Start selected rooms - a deliberately hand-picked subset (via the
+        // checkboxes), not a blanket action, so this stays available for a platform
+        // admin too (e.g. starting two specific rooms across two different clients
+        // together) even though blanket Start All does not.
         async function startSelectedRooms() {
             const targets = roomsData.filter(r => selectedRooms.has(r.id) && r.mode !== 'running');
             if (targets.length === 0) return;
             await Promise.all(targets.map(r => {
                 const endpoint = r.mode === 'paused' ? 'resume' : 'start';
-                return authFetch(`/api/rooms/${encodeURIComponent(r.slug)}/${endpoint}`, { method: 'POST' });
+                return authFetch(roomActionUrl(r, endpoint), { method: 'POST' });
             }));
             await fetchRooms();
         }
@@ -691,16 +765,23 @@
             }
         }
 
-        async function deleteRoom(slug) {
-            // Confirmation dialog
-            const confirmMsg = `Are you sure you want to delete room "${slug}"?\n\nThis will:\n• Remove the room permanently\n• Disconnect all connected clients\n• Cannot be undone\n\nDelete this room?`;
+        async function deleteRoom(id) {
+            const room = roomsData.find(r => r.id === id);
+            if (!room) return;
+
+            // Platform-admin actions on another client's room get an extra-explicit
+            // confirmation naming the client; a normal client's own-room confirmation
+            // is unchanged from Phase 2.
+            const confirmMsg = room.clientName
+                ? `Delete room "${room.slug}" belonging to client "${room.clientName}"?\n\nThis will:\n• Remove the room permanently\n• Disconnect all connected clients\n• Cannot be undone\n\nDelete this room?`
+                : `Are you sure you want to delete room "${room.slug}"?\n\nThis will:\n• Remove the room permanently\n• Disconnect all connected clients\n• Cannot be undone\n\nDelete this room?`;
 
             if (!confirm(confirmMsg)) {
                 return;
             }
 
             try {
-                const response = await authFetch(`/api/rooms/${encodeURIComponent(slug)}`, {
+                const response = await authFetch(roomActionUrl(room, ''), {
                     method: 'DELETE'
                 });
 
@@ -712,7 +793,7 @@
                 await fetchRooms();
 
                 // Show success message briefly
-                alert(`✅ Room "${slug}" deleted successfully`);
+                alert(`✅ Room "${room.slug}" deleted successfully`);
             } catch (error) {
                 console.error('Error deleting room:', error);
                 alert('❌ Failed to delete room. Please try again.');

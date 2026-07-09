@@ -60,6 +60,18 @@ db.exec(`
   );
 `);
 
+// Migration: CREATE TABLE IF NOT EXISTS above doesn't retroactively add columns to
+// an already-existing clients table (e.g. on an already-deployed Railway volume).
+// This runs on every boot and is a no-op once the column exists.
+function ensureColumn(table, column, definition) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all();
+  if (!cols.some((c) => c.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    console.log(`🔧 Migrated: added ${table}.${column}`);
+  }
+}
+ensureColumn('clients', 'is_platform_admin', 'INTEGER NOT NULL DEFAULT 0');
+
 // ============================================
 // Tokens / API keys
 // ============================================
@@ -107,15 +119,33 @@ function getOrCreateDefaultEvent(clientId) {
   return event.id;
 }
 
-function createClient(name) {
+function createClient(name, { isPlatformAdmin = false } = {}) {
   const now = Date.now();
   const rawKey = generateApiKey();
   const info = db.prepare(
-    'INSERT INTO clients (name, api_key_hash, status, created_at) VALUES (?, ?, ?, ?)'
-  ).run(name, hashApiKey(rawKey), 'active', now);
+    'INSERT INTO clients (name, api_key_hash, status, created_at, is_platform_admin) VALUES (?, ?, ?, ?, ?)'
+  ).run(name, hashApiKey(rawKey), 'active', now, isPlatformAdmin ? 1 : 0);
   const clientId = info.lastInsertRowid;
   const eventId = getOrCreateDefaultEvent(clientId);
-  return { id: clientId, name, apiKey: rawKey, eventId };
+  return { id: clientId, name, apiKey: rawKey, eventId, isPlatformAdmin };
+}
+
+// BizShows-only. A dedicated function (rather than a flag on ordinary client
+// creation) so granting platform-wide access is always a deliberate act.
+function createPlatformAdmin(name) {
+  return createClient(name, { isPlatformAdmin: true });
+}
+
+function listClients() {
+  return db.prepare(`
+    SELECT clients.id, clients.name, clients.status, clients.is_platform_admin, clients.created_at,
+           COUNT(rooms.id) AS room_count
+    FROM clients
+    LEFT JOIN events ON events.client_id = clients.id
+    LEFT JOIN rooms ON rooms.event_id = events.id
+    GROUP BY clients.id
+    ORDER BY clients.name
+  `).all();
 }
 
 // Generates a brand new key for an existing client, invalidating the old one.
@@ -167,6 +197,27 @@ function getOrCreateLegacyClient() {
 
 const LEGACY_CLIENT = getOrCreateLegacyClient();
 const LEGACY_EVENT_ID = getOrCreateDefaultEvent(LEGACY_CLIENT.id);
+
+// One-shot platform admin bootstrap, for environments where the database only
+// exists on a remote volume (e.g. Railway) that scripts/create-platform-admin.js
+// can't reach from a local machine. Inert unless BOOTSTRAP_PLATFORM_ADMIN is set;
+// safe to leave the env var set permanently since it no-ops once the named client
+// exists. Does not touch the Legacy client or any other client.
+function bootstrapPlatformAdminIfRequested() {
+  const name = process.env.BOOTSTRAP_PLATFORM_ADMIN;
+  if (!name) return;
+
+  const existing = getClientByName(name);
+  if (existing) {
+    console.log(`[BOOTSTRAP_PLATFORM_ADMIN] Client "${name}" already exists (id=${existing.id}) - skipping. Use scripts/rotate-client-key.js if you need a new key.`);
+    return;
+  }
+
+  const admin = createPlatformAdmin(name);
+  console.log(`\n🔑 [BOOTSTRAP_PLATFORM_ADMIN] Created platform admin "${admin.name}" (id=${admin.id}) - this key can see and control EVERY client's rooms.`);
+  console.log(`   API key (shown once - store it now):\n   ${admin.apiKey}\n`);
+}
+bootstrapPlatformAdminIfRequested();
 
 // ============================================
 // Legacy rooms.json import (Phase 1, unchanged behaviour)
@@ -289,6 +340,31 @@ function getRoomsForClient(clientId) {
   `).all(clientId);
 }
 
+// Platform-admin-only: every room across every client, with the owning client's
+// id/name attached. Slugs are NOT unique across this result set (only within one
+// client), so callers must key off room id, never slug, once mixing clients.
+function getAllRoomsWithClientNames() {
+  return db.prepare(`
+    SELECT rooms.*, clients.id AS client_id, clients.name AS client_name
+    FROM rooms
+    JOIN events ON events.id = rooms.event_id
+    JOIN clients ON clients.id = events.client_id
+    ORDER BY clients.name, rooms.created_at ASC
+  `).all();
+}
+
+// Platform-admin-only: look up a room by its globally-unique id, with owning
+// client id/name attached - no ownership check, unlike getRoomForClient().
+function getRoomWithClientById(id) {
+  return db.prepare(`
+    SELECT rooms.*, clients.id AS client_id, clients.name AS client_name
+    FROM rooms
+    JOIN events ON events.id = rooms.event_id
+    JOIN clients ON clients.id = events.client_id
+    WHERE rooms.id = ?
+  `).get(id) || null;
+}
+
 // Issues fresh tokens for a room, invalidating any previously distributed links.
 function regenerateRoomTokens(clientId, slug) {
   const room = getRoomForClient(clientId, slug);
@@ -347,15 +423,19 @@ module.exports = {
   LEGACY_ROOMS_JSON_PATH,
   // clients
   createClient,
+  createPlatformAdmin,
   rotateClientApiKey,
   getClientByApiKey,
   getClientByName,
+  listClients,
   // rooms
   createRoom,
   getRoomById,
   getRoomByToken,
   getRoomForClient,
   getRoomsForClient,
+  getAllRoomsWithClientNames,
+  getRoomWithClientById,
   regenerateRoomTokens,
   writeRoomState,
   loadAllRoomStates,

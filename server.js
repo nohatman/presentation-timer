@@ -415,50 +415,67 @@ setInterval(() => {
 // REST API - client-authenticated room management (dashboard, provisioning)
 // ============================================
 
-// GET all rooms belonging to the authenticated client (was: unauthenticated/global)
-app.get('/api/rooms', auth.requireClientAuth, (req, res) => {
-  const rows = db.getRoomsForClient(req.client.id);
+// Shared shape for a room-list entry, used by both the normal client-scoped
+// listing and the platform-admin cross-client listing below.
+function summarizeRoom(row, req) {
+  const roomId = String(row.id);
+  const state = timerRooms.get(roomId) || createDefaultTimerState();
+  const socketsInRoom = io.sockets.adapter.rooms.get(roomId);
+  const connectionCount = socketsInRoom ? socketsInRoom.size : 0;
 
-  const rooms = rows.map((row) => {
-    const roomId = String(row.id);
-    const state = timerRooms.get(roomId) || createDefaultTimerState();
-    const socketsInRoom = io.sockets.adapter.rooms.get(roomId);
-    const connectionCount = socketsInRoom ? socketsInRoom.size : 0;
+  let remainingMs = 0;
+  let overMs = 0;
+  if (state.mode === 'running') {
+    const elapsed = (Date.now() - state.startTime - state.accumulatedPauseMs) * state.speed;
+    remainingMs = Math.max(0, state.durationMs - elapsed);
+    if (state.countUp) overMs = Math.max(0, elapsed - state.durationMs);
+  } else if (state.mode === 'paused') {
+    const elapsed = (state.pauseTime - state.startTime - state.accumulatedPauseMs) * state.speed;
+    remainingMs = Math.max(0, state.durationMs - elapsed);
+    if (state.countUp) overMs = Math.max(0, elapsed - state.durationMs);
+  } else {
+    remainingMs = state.durationMs;
+  }
 
-    let remainingMs = 0;
-    let overMs = 0;
-    if (state.mode === 'running') {
-      const elapsed = (Date.now() - state.startTime - state.accumulatedPauseMs) * state.speed;
-      remainingMs = Math.max(0, state.durationMs - elapsed);
-      if (state.countUp) overMs = Math.max(0, elapsed - state.durationMs);
-    } else if (state.mode === 'paused') {
-      const elapsed = (state.pauseTime - state.startTime - state.accumulatedPauseMs) * state.speed;
-      remainingMs = Math.max(0, state.durationMs - elapsed);
-      if (state.countUp) overMs = Math.max(0, elapsed - state.durationMs);
-    } else {
-      remainingMs = state.durationMs;
-    }
+  const baseUrl = `${req.protocol}://${req.get('host')}`;
+  const links = buildRoomLinks(baseUrl, row);
 
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
-    const links = buildRoomLinks(baseUrl, row);
+  return {
+    id: roomId,
+    slug: row.slug,
+    clientName: row.client_name || null, // only present in the platform-admin listing
+    mode: state.mode,
+    connections: connectionCount,
+    remainingMs: Math.floor(remainingMs),
+    overMs: Math.floor(overMs),
+    outputMode: state.outputMode,
+    countUp: state.countUp || false,
+    amberThresholdMs: state.amberThresholdMs,
+    redThresholdMs: state.redThresholdMs,
+    controlUrl: links.controlUrl,
+    displayUrl: links.displayUrl
+  };
+}
 
-    return {
-      id: roomId,
-      slug: row.slug,
-      mode: state.mode,
-      connections: connectionCount,
-      remainingMs: Math.floor(remainingMs),
-      overMs: Math.floor(overMs),
-      outputMode: state.outputMode,
-      countUp: state.countUp || false,
-      amberThresholdMs: state.amberThresholdMs,
-      redThresholdMs: state.redThresholdMs,
-      controlUrl: links.controlUrl,
-      displayUrl: links.displayUrl
-    };
+// Tells the dashboard who it's talking to, so it knows whether to render the
+// platform-admin (cross-client) view or the normal single-client view.
+app.get('/api/whoami', auth.requireClientAuth, (req, res) => {
+  res.json({
+    ok: true,
+    clientId: req.client.id,
+    name: req.client.name,
+    isPlatformAdmin: !!req.client.is_platform_admin
   });
+});
 
-  res.json(rooms);
+// GET rooms: a normal client sees only its own (unchanged from Phase 2); a
+// platform admin sees every room across every client, labeled with clientName.
+app.get('/api/rooms', auth.requireClientAuth, (req, res) => {
+  const rows = req.client.is_platform_admin
+    ? db.getAllRoomsWithClientNames()
+    : db.getRoomsForClient(req.client.id);
+
+  res.json(rows.map((row) => summarizeRoom(row, req)));
 });
 
 // POST create a new room under the authenticated client (was: implicit on first connect)
@@ -530,6 +547,108 @@ app.post('/api/rooms/:roomId/regenerate-tokens', auth.requireClientAuth, auth.re
   const baseUrl = `${req.protocol}://${req.get('host')}`;
   const links = buildRoomLinks(baseUrl, updated);
   res.json({ ok: true, roomId: req.roomId, ...links });
+});
+
+// ============================================
+// REST API - platform admin only (cross-client room actions)
+//
+// Addressed by the room's numeric id (never slug - slugs collide across clients
+// by design). No ownership check: a platform admin may act on any client's room,
+// which is exactly the point of the role. Every route requires
+// requirePlatformAdmin, which itself requires requireClientAuth to have already
+// resolved req.client - a client without the flag gets 403, unaffected otherwise.
+// ============================================
+
+const adminRoomAuth = [auth.requireClientAuth, auth.requirePlatformAdmin, auth.resolveRoomById, attachTimerState];
+
+app.post('/api/admin/rooms/:id/start', ...adminRoomAuth, (req, res) => {
+  const { roomId, timerState, room } = req;
+  if (timerState.mode === 'running') {
+    return res.json({ ok: false, error: 'Timer is already running' });
+  }
+  timerState.mode = 'running';
+  timerState.startTime = Date.now();
+  timerState.accumulatedPauseMs = 0;
+  io.to(roomId).emit('timerState', timerState);
+  scheduleSave();
+  res.json({ ok: true, roomId, slug: room.slug, clientName: room.client_name, state: timerState });
+});
+
+app.post('/api/admin/rooms/:id/pause', ...adminRoomAuth, (req, res) => {
+  const { roomId, timerState, room } = req;
+  if (timerState.mode !== 'running') {
+    return res.json({ ok: false, error: 'Timer is not running' });
+  }
+  timerState.mode = 'paused';
+  timerState.pauseTime = Date.now();
+  io.to(roomId).emit('timerState', timerState);
+  scheduleSave();
+  res.json({ ok: true, roomId, slug: room.slug, clientName: room.client_name, state: timerState });
+});
+
+app.post('/api/admin/rooms/:id/resume', ...adminRoomAuth, (req, res) => {
+  const { roomId, timerState, room } = req;
+  if (timerState.mode !== 'paused') {
+    return res.json({ ok: false, error: 'Timer is not paused' });
+  }
+  const pauseDurationMs = Date.now() - timerState.pauseTime;
+  timerState.accumulatedPauseMs += pauseDurationMs;
+  timerState.mode = 'running';
+  timerState.pauseTime = null;
+  io.to(roomId).emit('timerState', timerState);
+  scheduleSave();
+  res.json({ ok: true, roomId, slug: room.slug, clientName: room.client_name, state: timerState });
+});
+
+app.post('/api/admin/rooms/:id/reset', ...adminRoomAuth, (req, res) => {
+  const { roomId, timerState, room } = req;
+  timerState.mode = 'stopped';
+  timerState.startTime = null;
+  timerState.pauseTime = null;
+  timerState.accumulatedPauseMs = 0;
+  io.to(roomId).emit('timerState', timerState);
+  scheduleSave();
+  res.json({ ok: true, roomId, slug: room.slug, clientName: room.client_name, state: timerState });
+});
+
+app.delete('/api/admin/rooms/:id', auth.requireClientAuth, auth.requirePlatformAdmin, auth.resolveRoomById, (req, res) => {
+  const { roomId, room } = req;
+
+  timerRooms.delete(roomId);
+  db.deleteRoom(room.id);
+
+  if (roomCleanupTimers.has(roomId)) {
+    clearTimeout(roomCleanupTimers.get(roomId));
+    roomCleanupTimers.delete(roomId);
+  }
+
+  const socketsInRoom = io.sockets.adapter.rooms.get(roomId);
+  if (socketsInRoom) {
+    for (const socketId of socketsInRoom) {
+      const socket = io.sockets.sockets.get(socketId);
+      if (socket) socket.disconnect(true);
+    }
+  }
+
+  console.log(`🗑️  [platform admin] Deleted room: ${room.slug} (id=${roomId}, client=${room.client_name})`);
+  res.json({ ok: true, roomId, slug: room.slug, clientName: room.client_name });
+});
+
+app.post('/api/admin/rooms/:id/regenerate-tokens', auth.requireClientAuth, auth.requirePlatformAdmin, auth.resolveRoomById, (req, res) => {
+  const updated = db.regenerateRoomTokens(req.room.client_id, req.room.slug);
+  if (!updated) return res.status(404).json({ ok: false, error: 'Room not found' });
+
+  const socketsInRoom = io.sockets.adapter.rooms.get(req.roomId);
+  if (socketsInRoom) {
+    for (const socketId of socketsInRoom) {
+      const socket = io.sockets.sockets.get(socketId);
+      if (socket) socket.disconnect(true);
+    }
+  }
+
+  const baseUrl = `${req.protocol}://${req.get('host')}`;
+  const links = buildRoomLinks(baseUrl, updated);
+  res.json({ ok: true, roomId: req.roomId, slug: req.room.slug, clientName: req.room.client_name, ...links });
 });
 
 // ============================================

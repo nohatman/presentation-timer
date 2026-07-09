@@ -45,8 +45,40 @@ function resolveSocketAccess(token) {
   return { room: access.room, role: access.role, roomId: String(access.room.id) };
 }
 
+// Express middleware, chained after requireClientAuth - 403s unless req.client is
+// flagged as a platform admin. Platform admin is BizShows-only, provisioned via
+// scripts/create-platform-admin.js, never granted implicitly.
+function requirePlatformAdmin(req, res, next) {
+  if (!req.client.is_platform_admin) {
+    return res.status(403).json({ ok: false, error: 'Platform admin access required' });
+  }
+  next();
+}
+
+// Express middleware, chained after requireClientAuth + requirePlatformAdmin -
+// resolves :id (the room's numeric database id) with NO ownership restriction,
+// since a platform admin can act on any client's room. Unlike resolveOwnedRoom,
+// slugs are never used here - they aren't unique once multiple clients are in play.
+function resolveRoomById(req, res, next) {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    return res.status(400).json({ ok: false, error: 'Invalid room id' });
+  }
+
+  const room = db.getRoomWithClientById(id);
+  if (!room) {
+    return res.status(404).json({ ok: false, error: 'Room not found' });
+  }
+
+  req.room = room;
+  req.roomId = String(room.id);
+  next();
+}
+
 module.exports = {
   requireClientAuth,
   resolveOwnedRoom,
-  resolveSocketAccess
+  resolveSocketAccess,
+  requirePlatformAdmin,
+  resolveRoomById
 };
