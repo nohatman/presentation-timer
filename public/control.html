@@ -371,20 +371,33 @@
             <button class="button secondary" style="padding: 10px 16px;" onclick="copyRoomLinks(event)">� Share Links</button>
         </div>
 
-        <!-- Multi-Control Warning -->
-        <div id="multiControlWarning" style="display: none; grid-column: 1 / -1; background: #ff9800; color: #000; padding: 12px 16px; border-radius: 8px; margin-bottom: 1rem; font-weight: 500; display: flex; align-items: center; gap: 10px;">
-            <span style="font-size: 1.2rem;">⚠️</span>
-            <span id="warningText">Multiple control panels connected</span>
-        </div>
-
-        <!-- Observer mode banner (Phase 4): shown when another control-token session
-             is the active controller. Every control still visibly responds to clicks,
-             but the server rejects the action - see controlRejected handler. -->
-        <div id="observerBanner" style="display: none; grid-column: 1 / -1; background: #37474f; color: #fff; padding: 12px 16px; border-radius: 8px; margin-bottom: 1rem; font-weight: 500; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;">
-            <span>👀 Observer mode — another operator is currently in control.</span>
-            <button class="button primary" style="padding: 8px 16px;" onclick="takeOverControl()">Take Over</button>
+        <!-- Compact controller-status bar (Phase 4 refinement): always visible, single
+             source of truth for both "how many control panels are connected" and
+             "is this device the active controller or an observer" - replaces the
+             previous two large stacked notices (orange multi-control warning +
+             separate observer banner), which duplicated information and ate a lot
+             of vertical space, especially on mobile. -->
+        <div id="controllerStatusBar" style="grid-column: 1 / -1; min-width: 0; box-sizing: border-box; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 8px 14px; margin-bottom: 1rem; font-size: 0.85rem;">
+            <span id="controllerStatusBadge" style="padding: 3px 10px; border-radius: 5px; font-weight: 700; font-size: 0.72rem; letter-spacing: 0.5px; white-space: nowrap; background: #2e7d32; color: #fff;">CONTROLLER</span>
+            <span id="controllerStatusCount" style="color: #999; white-space: nowrap;"></span>
+            <button id="controllerTakeOverBtn" style="display: none; margin-left: auto; padding: 5px 14px; font-size: 0.8rem; border-radius: 5px; border: none; background: #1976d2; color: #fff; cursor: pointer; white-space: nowrap;" onclick="openTakeOverModal()">Take Over</button>
         </div>
         <div id="controlRejectedNotice" style="display: none; grid-column: 1 / -1; background: #b71c1c; color: #fff; padding: 10px 16px; border-radius: 8px; margin-bottom: 1rem; font-weight: 500;"></div>
+
+        <!-- Custom Take Over confirmation modal - deliberately not window.confirm(),
+             matches the dark interface, and supports focus management/Escape/
+             click-outside as required. Confirming still performs the existing
+             always-available immediate takeover (no approval step). -->
+        <div id="takeOverModalOverlay" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 1000; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box;" onclick="if (event.target === this) closeTakeOverModal();">
+            <div id="takeOverModal" role="dialog" aria-modal="true" aria-labelledby="takeOverModalTitle" tabindex="-1" style="background: #1a1a1a; border: 1px solid #333; border-radius: 12px; padding: 24px; max-width: 400px; width: 100%; box-sizing: border-box; box-shadow: 0 8px 32px rgba(0,0,0,0.5); outline: none;">
+                <h2 id="takeOverModalTitle" style="margin: 0 0 12px 0; font-size: 1.2rem; color: #fafafa;">Take control of this room?</h2>
+                <p style="margin: 0 0 20px 0; color: #ccc; font-size: 0.9rem; line-height: 1.5;">This will immediately transfer control to this device. The current controller will become an observer.</p>
+                <div style="display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap;">
+                    <button onclick="closeTakeOverModal()" style="padding: 10px 18px; border-radius: 8px; border: 1px solid #444; background: transparent; color: #ccc; cursor: pointer; font-size: 0.9rem;">Cancel</button>
+                    <button id="takeOverConfirmBtn" onclick="confirmTakeOver()" style="padding: 10px 18px; border-radius: 8px; border: none; background: #1976d2; color: #fff; cursor: pointer; font-weight: 600; font-size: 0.9rem;">Take Control</button>
+                </div>
+            </div>
+        </div>
 
         <div class="timer-control-row">
             <!-- Col 1: Timer preview + ends-at info -->
@@ -830,28 +843,44 @@
             }
         });
 
-        // Handle controller count updates
-        socket.on('controllerCount', (data) => {
-            const warning = document.getElementById('multiControlWarning');
-            const warningText = document.getElementById('warningText');
-
-            if (data.count > 1) {
-                warning.style.display = 'flex';
-                warningText.textContent = `⚠️ Warning: ${data.count} control panels are connected to this room`;
-            } else {
-                warning.style.display = 'none';
-            }
-        });
-
-        // Phase 4: only one control-token session is the "active controller" at a
-        // time; everyone else is an observer whose actions the server rejects (see
-        // controlRejected below). Defaults to true so the common single-operator
-        // case never flashes an observer banner before the first status arrives.
+        // Compact controller-status bar: single render function fed by both
+        // controllerCount (how many control panels are connected) and
+        // controllerStatus (whether THIS device is the active controller) - both
+        // pieces of info live in the same bar, so either event triggers a re-render.
+        // Defaults to controller/true so the common single-operator case never
+        // flashes an observer state before the first status arrives.
         let isActiveController = true;
+        let connectedControllerCount = 1;
+
+        function renderControllerStatusBar() {
+            const badge = document.getElementById('controllerStatusBadge');
+            const count = document.getElementById('controllerStatusCount');
+            const takeOverBtn = document.getElementById('controllerTakeOverBtn');
+
+            if (isActiveController) {
+                badge.textContent = 'CONTROLLER';
+                badge.style.background = '#2e7d32';
+                takeOverBtn.style.display = 'none';
+            } else {
+                badge.textContent = 'OBSERVER';
+                badge.style.background = '#e65100';
+                takeOverBtn.style.display = 'inline-block';
+            }
+
+            count.textContent = connectedControllerCount === 1
+                ? '1 control panel connected'
+                : `${connectedControllerCount} control panels connected`;
+        }
+        renderControllerStatusBar(); // seed the bar immediately, before the server's first events arrive
+
+        socket.on('controllerCount', (data) => {
+            connectedControllerCount = data.count;
+            renderControllerStatusBar();
+        });
 
         socket.on('controllerStatus', ({ activeControllerSocketId }) => {
             isActiveController = (activeControllerSocketId === socket.id);
-            document.getElementById('observerBanner').style.display = isActiveController ? 'none' : 'flex';
+            renderControllerStatusBar();
         });
 
         socket.on('controlRejected', ({ message }) => {
@@ -862,13 +891,31 @@
             notice._hideTimer = setTimeout(() => { notice.style.display = 'none'; }, 4000);
         });
 
-        function takeOverControl() {
-            const confirmed = confirm(
-                'Take control of this room?\n\n' +
-                'This will immediately transfer control to this device. The current controller will become an observer.'
-            );
-            if (!confirmed) return;
+        // Custom Take Over confirmation modal - no window.confirm(). Confirming
+        // still performs the same immediate, always-available takeover as before
+        // (no approval step from the current controller).
+        function handleTakeOverModalKeydown(e) {
+            if (e.key === 'Escape') closeTakeOverModal();
+        }
+
+        function openTakeOverModal() {
+            const overlay = document.getElementById('takeOverModalOverlay');
+            const modal = document.getElementById('takeOverModal');
+            overlay.style.display = 'flex';
+            modal.focus();
+            document.addEventListener('keydown', handleTakeOverModalKeydown);
+        }
+
+        function closeTakeOverModal() {
+            document.getElementById('takeOverModalOverlay').style.display = 'none';
+            document.removeEventListener('keydown', handleTakeOverModalKeydown);
+            const takeOverBtn = document.getElementById('controllerTakeOverBtn');
+            if (takeOverBtn.style.display !== 'none') takeOverBtn.focus();
+        }
+
+        function confirmTakeOver() {
             socket.emit('requestControl');
+            closeTakeOverModal();
         }
 
         function updateStatus() {

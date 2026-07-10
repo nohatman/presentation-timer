@@ -118,6 +118,17 @@ future phase below.
   layout for small screens. Not a Phase 4 regression - pre-existing. Deferred
   as its own future UI/UX task; deliberately not bundled into any phase to
   avoid a broad dashboard redesign as a side effect of unrelated work.
+- **Control panel mobile responsive layout.** `public/control.html`'s
+  `.container` uses `grid-template-columns: repeat(2, minmax(320px, 1fr))`
+  with no mobile media-query override, so the page never collapses below
+  ~640-680px regardless of viewport width - confirmed directly via a
+  Playwright check at a 375px viewport (page content measured ~718px wide).
+  Pre-existing, predates Phase 4 - the notices Phase 4's status bar replaced
+  had the same `grid-column: 1 / -1` and would have overflowed identically.
+  The new controller-status bar's own CSS was verified correct in isolation
+  (wraps cleanly when given an actually-375px box); the overflow is entirely
+  from this container-level issue, not the bar. Same category of task as the
+  dashboard one above - deferred, not addressed in Phase 4.
 
 ## Known future admin/client UI improvements (captured, not started)
 
@@ -150,3 +161,28 @@ Approved as a future phase, not to be implemented until explicitly requested:
 - **Phase 6 - Client login & admin UX overhaul.** The future phase captured
   above: real authentication, sessions, and client/event/room management UI.
   Explicitly deferred - not started, not scheduled.
+- **Phase 7 (candidate) - Optional per-room Shared control mode.** Analysis
+  given (not implemented), decided **not** to build now. Binding constraints
+  for whenever it is built:
+  - Store `controlMode` in the room's `state_json` (alongside `displayScale`/
+    `messageMode` etc.), **defaulting to `"exclusive"`** - no schema
+    migration needed, same pattern as every other per-room setting.
+  - Exclusive Control remains the default and only current mode; Shared
+    Control must always be **explicitly opt-in** per room, never a global
+    default or an implicit side effect of anything else.
+  - The control interface must **clearly indicate** which mode a room is in
+    at all times (not just when something goes wrong).
+  - The UI must **warn users about the risk of conflicting simultaneous
+    commands** before/while Shared mode is active - not just documented here,
+    visible to the client at the point they opt in.
+  - Real operational risk if built (conflicting simultaneous commands, no
+    per-operator audit trail) - a legitimate feature for customers who want
+    co-piloted control, but a genuine event-day risk. Deliberately kept
+    separate from Phase 4 rather than folded in, so Phase 4's actual fix
+    isn't muddied by simultaneously shipping an opt-out of it.
+  - **Explicitly out of scope even within this future phase**: a more
+    granular per-capability operator model (timer control / rundown control /
+    messaging-only / observer as separate grants, rather than a blanket
+    controller/observer binary) - would likely require real per-operator
+    identity, not just a shared control token. Noted as a distinct, larger,
+    undesigned idea - not part of the Shared Control candidate phase above.
