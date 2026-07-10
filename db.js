@@ -13,6 +13,15 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const Database = require('better-sqlite3');
+const bcrypt = require('bcryptjs');
+
+// Bcrypt cost factor - kept modest (not the common 12) because this is a
+// real-time app: bcryptjs's "async" API chunks its work via setImmediate
+// rather than using a worker thread, so a login attempt still competes for
+// CPU with the timer engine's own tick processing, just interleaved rather
+// than fully blocking. 10 is still secure and keeps that window short.
+const BCRYPT_COST = 10;
+const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days, fixed (not sliding)
 
 const DATABASE_PATH = process.env.DATABASE_PATH
   || path.join(__dirname, 'data', 'presentation-timer.sqlite');
@@ -57,6 +66,24 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY,
     value TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_id INTEGER NOT NULL REFERENCES clients(id),
+    email TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    must_change_password INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'active',
+    created_at INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    token_hash TEXT NOT NULL UNIQUE,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL
   );
 `);
 
@@ -169,6 +196,10 @@ function getClientByName(name) {
   return db.prepare('SELECT * FROM clients WHERE name = ?').get(name) || null;
 }
 
+function getClientById(id) {
+  return db.prepare('SELECT * FROM clients WHERE id = ?').get(id) || null;
+}
+
 // Idempotent: safe to call on every boot. Also upgrades a Phase 1 Legacy client
 // that predates API keys (api_key_hash was left NULL) by minting one now.
 function getOrCreateLegacyClient() {
@@ -218,6 +249,179 @@ function bootstrapPlatformAdminIfRequested() {
   console.log(`   API key (shown once - store it now):\n   ${admin.apiKey}\n`);
 }
 bootstrapPlatformAdminIfRequested();
+
+// ============================================
+// Users & Sessions (Phase 6a) - human dashboard login, separate from the
+// clients.api_key_hash machine-to-machine identity used by Companion/API
+// integrations, which this section never touches.
+//
+// A user always belongs to exactly one client (client_id NOT NULL, including
+// platform-admin users - see module comment below for why). Passwords use
+// bcrypt (slow, salted - appropriate for low-entropy human-chosen secrets);
+// this is deliberately NOT hashApiKey()'s fast SHA-256, which is only correct
+// for the high-entropy random tokens used elsewhere (API keys, control/
+// display tokens, session tokens below).
+// ============================================
+
+function generateTempPassword() {
+  // High-entropy, not meant to be memorised - the user changes it on first
+  // login (must_change_password). Reuses the same random source as API keys.
+  return crypto.randomBytes(18).toString('base64url');
+}
+
+function createUser(email, password, clientId, { mustChangePassword = false } = {}) {
+  const now = Date.now();
+  const passwordHash = bcrypt.hashSync(password, BCRYPT_COST);
+  const info = db.prepare(`
+    INSERT INTO users (client_id, email, password_hash, must_change_password, status, created_at)
+    VALUES (?, ?, ?, ?, 'active', ?)
+  `).run(clientId, email.toLowerCase(), passwordHash, mustChangePassword ? 1 : 0, now);
+  return { id: info.lastInsertRowid, email: email.toLowerCase(), clientId };
+}
+
+function getUserByEmail(email) {
+  if (!email) return null;
+  return db.prepare('SELECT * FROM users WHERE email = ?').get(email.toLowerCase()) || null;
+}
+
+function getUserById(id) {
+  return db.prepare('SELECT * FROM users WHERE id = ?').get(id) || null;
+}
+
+function listUsers() {
+  // Never selects password_hash - this is for safe listing (CLI/support use),
+  // not authentication.
+  return db.prepare(`
+    SELECT users.id, users.email, users.must_change_password, users.status, users.created_at,
+           clients.id AS client_id, clients.name AS client_name, clients.is_platform_admin
+    FROM users
+    JOIN clients ON clients.id = users.client_id
+    ORDER BY clients.name, users.email
+  `).all();
+}
+
+// Async (not hashSync) - bcryptjs chunks the async path via setImmediate so a
+// login attempt doesn't fully block the event loop while other rooms' timer
+// ticks are trying to run. Returns the user row on success, null on any
+// failure (unknown email, wrong password, inactive user) - callers must treat
+// all three identically so a login failure never reveals which was wrong.
+async function verifyUserPassword(email, password) {
+  const user = getUserByEmail(email);
+  if (!user || user.status !== 'active') return null;
+  const ok = await bcrypt.compare(password, user.password_hash);
+  return ok ? user : null;
+}
+
+// Used by the forced first-login change flow. Verifies currentPassword,
+// replaces password_hash, clears must_change_password, and invalidates every
+// OTHER session for this user (keeps the caller's own current session alive -
+// server.js issues a fresh session token immediately after calling this).
+async function changePassword(userId, currentPassword, newPassword, currentRawSessionToken) {
+  const user = getUserById(userId);
+  if (!user) return { ok: false, error: 'User not found' };
+  const ok = await bcrypt.compare(currentPassword, user.password_hash);
+  if (!ok) return { ok: false, error: 'Current password is incorrect' };
+
+  const newHash = bcrypt.hashSync(newPassword, BCRYPT_COST);
+  db.prepare('UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?').run(newHash, userId);
+
+  // Hashing stays encapsulated here, same as every other token lookup in this
+  // module - callers pass the raw token, never a pre-hashed value.
+  if (currentRawSessionToken) {
+    db.prepare('DELETE FROM sessions WHERE user_id = ? AND token_hash != ?')
+      .run(userId, hashApiKey(currentRawSessionToken));
+  } else {
+    db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
+  }
+  return { ok: true };
+}
+
+// Admin/CLI password reset - generates a new temporary password, re-flags
+// must_change_password, and invalidates ALL existing sessions for that user
+// (including whatever session they were using, unlike changePassword() above -
+// a reset means "I no longer trust this account's current state").
+function resetUserPassword(email) {
+  const user = getUserByEmail(email);
+  if (!user) return null;
+  const tempPassword = generateTempPassword();
+  const passwordHash = bcrypt.hashSync(tempPassword, BCRYPT_COST);
+  db.prepare('UPDATE users SET password_hash = ?, must_change_password = 1 WHERE id = ?').run(passwordHash, user.id);
+  db.prepare('DELETE FROM sessions WHERE user_id = ?').run(user.id);
+  return { id: user.id, email: user.email, tempPassword };
+}
+
+// ---- Sessions ----
+
+// Opportunistic cleanup, run on every new session creation - no separate
+// cleanup job needed at this scale.
+function deleteExpiredSessions() {
+  db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(Date.now());
+}
+
+// Returns the RAW token once - only ever available here and in the Set-Cookie
+// header. The database only ever stores its hash (SHA-256, same principle as
+// hashApiKey() - session tokens are high-entropy random values, not
+// low-entropy human secrets, so a fast hash is correct here, unlike passwords).
+function createSession(userId) {
+  deleteExpiredSessions();
+  const now = Date.now();
+  const rawToken = generateToken();
+  const expiresAt = now + SESSION_TTL_MS;
+  db.prepare(`
+    INSERT INTO sessions (token_hash, user_id, created_at, expires_at)
+    VALUES (?, ?, ?, ?)
+  `).run(hashApiKey(rawToken), userId, now, expiresAt);
+  return { rawToken, expiresAt };
+}
+
+// Hashes the presented cookie value and looks up by hash - the raw token
+// itself is never stored or queried directly.
+function getSessionUser(rawToken) {
+  if (!rawToken) return null;
+  const row = db.prepare(`
+    SELECT users.* FROM sessions
+    JOIN users ON users.id = sessions.user_id
+    WHERE sessions.token_hash = ? AND sessions.expires_at > ?
+  `).get(hashApiKey(rawToken), Date.now());
+  return row || null;
+}
+
+function deleteSession(rawToken) {
+  if (!rawToken) return;
+  db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(hashApiKey(rawToken));
+}
+
+// One-shot bootstrap for the first Platform Administrator human login, for the
+// same reason the Phase 3 platform-admin client bootstrap exists: the
+// production database only lives on Railway's volume, unreachable from a
+// local script run. Inert unless BOOTSTRAP_ADMIN_USER_EMAIL is set. Requires
+// a platform-admin client to already exist (BOOTSTRAP_PLATFORM_ADMIN, above) -
+// links the new user to it rather than guessing. Creates at most once: never
+// prints or regenerates a password for an already-existing user on later
+// boots, and never touches the Legacy client or the Platform Administrator
+// API key.
+function bootstrapAdminUserIfRequested() {
+  const email = process.env.BOOTSTRAP_ADMIN_USER_EMAIL;
+  if (!email) return;
+
+  const existing = getUserByEmail(email);
+  if (existing) {
+    console.log(`[BOOTSTRAP_ADMIN_USER_EMAIL] User "${email}" already exists (id=${existing.id}) - skipped. Use scripts/reset-user-password.js if you need new credentials.`);
+    return;
+  }
+
+  const adminClient = db.prepare('SELECT * FROM clients WHERE is_platform_admin = 1 ORDER BY id ASC LIMIT 1').get();
+  if (!adminClient) {
+    console.error(`❌ [BOOTSTRAP_ADMIN_USER_EMAIL] No platform-admin client exists yet - set BOOTSTRAP_PLATFORM_ADMIN first (Phase 3), redeploy once, then set BOOTSTRAP_ADMIN_USER_EMAIL.`);
+    return;
+  }
+
+  const tempPassword = generateTempPassword();
+  const user = createUser(email, tempPassword, adminClient.id, { mustChangePassword: true });
+  console.log(`\n🔑 [BOOTSTRAP_ADMIN_USER_EMAIL] Created login "${email}" (user id=${user.id}, linked to platform-admin client "${adminClient.name}").`);
+  console.log(`   Temporary password (shown once - you'll be asked to change it on first login):\n   ${tempPassword}\n`);
+}
+bootstrapAdminUserIfRequested();
 
 // ============================================
 // Legacy rooms.json import (Phase 1, unchanged behaviour)
@@ -427,7 +631,21 @@ module.exports = {
   rotateClientApiKey,
   getClientByApiKey,
   getClientByName,
+  getClientById,
   listClients,
+  // users
+  generateTempPassword,
+  createUser,
+  getUserByEmail,
+  getUserById,
+  listUsers,
+  verifyUserPassword,
+  changePassword,
+  resetUserPassword,
+  // sessions
+  createSession,
+  getSessionUser,
+  deleteSession,
   // rooms
   createRoom,
   getRoomById,

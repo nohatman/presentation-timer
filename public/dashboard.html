@@ -307,7 +307,7 @@
             <div style="display: flex; flex-direction: column; gap: 0.75rem; align-items: flex-end;">
                 <div class="nav-links">
                     <a href="/" class="nav-link">🏠 Home</a>
-                    <button onclick="changeApiKey()" class="nav-link" style="cursor:pointer;">🔑 API Key</button>
+                    <button onclick="logout()" class="nav-link" style="cursor:pointer;">🚪 Logout</button>
                 </div>
                 <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; justify-content: flex-end;">
                     <button id="startAllBtn" onclick="startAllRooms()" class="nav-link" style="background:#2e7d32;border-color:#2e7d32;color:white;cursor:pointer;">▶ Start All</button>
@@ -336,39 +336,43 @@
         let isPlatformAdmin = false; // set from GET /api/whoami - drives cross-client view
 
         // ============================================================
-        // API key (client authentication) - the dashboard now only ever shows
-        // rooms belonging to whichever client's key is entered here. Get a key
-        // via `node scripts/create-client.js "Name"` on the server.
+        // Session authentication (Phase 6a) - the normal human workflow is
+        // sign in at /login, which sets an HttpOnly session cookie; the browser
+        // then attaches it automatically to every same-origin fetch() below, no
+        // header needed. The dashboard no longer prompts for or stores an API
+        // key - Bearer-key auth still works server-side exactly as before for
+        // Companion/API integrations, it's just no longer part of this UI.
         // ============================================================
 
-        function getApiKey() {
-            let key = localStorage.getItem('dashboardApiKey');
-            if (!key) {
-                key = prompt('Enter your client API key (see scripts/create-client.js):');
-                if (key) localStorage.setItem('dashboardApiKey', key.trim());
-            }
-            return key ? key.trim() : null;
-        }
-
-        function changeApiKey() {
-            const key = prompt('Enter your client API key:');
-            if (key) {
-                localStorage.setItem('dashboardApiKey', key.trim());
-                refreshWhoAmI();
-                fetchRooms();
-            }
-        }
-
         async function authFetch(url, options = {}) {
-            const key = getApiKey();
-            const headers = { ...(options.headers || {}), 'Authorization': `Bearer ${key}` };
-            const response = await fetch(url, { ...options, headers });
+            const response = await fetch(url, options);
+
             if (response.status === 401) {
-                localStorage.removeItem('dashboardApiKey');
-                alert('API key rejected - please re-enter it.');
-                location.reload();
+                // No valid session (never logged in, or it expired/was revoked).
+                window.location.href = '/login';
+                return response;
             }
+
+            if (response.status === 403) {
+                // Only ever means one thing at this auth layer: password change
+                // required before the account can use the dashboard at all.
+                const data = await response.clone().json().catch(() => null);
+                if (data && data.mustChangePassword) {
+                    window.location.href = '/change-password';
+                    return response;
+                }
+            }
+
             return response;
+        }
+
+        async function logout() {
+            try {
+                await fetch('/api/auth/logout', { method: 'POST' });
+            } catch (err) {
+                console.error('Error logging out:', err);
+            }
+            window.location.href = '/login';
         }
 
         // Determines whether this is a platform-admin session (cross-client view)

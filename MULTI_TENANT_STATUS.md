@@ -6,6 +6,62 @@ full design brief this work follows.
 
 ## Completed phases
 
+### Phase 6a — Session authentication backend + human login
+- New `users` table: every user (including platform admins) links to a `client_id`
+  NOT NULL - a platform-admin user is linked to whichever client already carries
+  `is_platform_admin = 1` (Phase 3), so `req.client` is structurally identical
+  regardless of auth method and `requirePlatformAdmin` needed zero changes.
+- New `sessions` table: `token_hash` only, never the raw token - same SHA-256
+  principle as `api_key_hash`. Session tokens are high-entropy random values, unlike
+  passwords (bcryptjs, cost 10 - deliberately not native bcrypt, avoiding a second
+  native-module Railway build after Phase 1's `better-sqlite3` saga).
+- Login: `POST /api/auth/login`, rate-limited (8/5min per IP, in-memory). Unknown
+  email and wrong password return an identical response - verified directly, not
+  just by code inspection.
+- Sessions are DB-backed (not stateless JWT) specifically so logout and password
+  reset can genuinely revoke them server-side - verified: an old cookie is
+  rejected immediately after logout, not just cleared client-side.
+- `HttpOnly` + `SameSite=Lax` always; `Secure` added automatically only when
+  `req.secure` is true (respects the existing `trust proxy` setting, so it
+  self-adjusts to Railway's HTTPS in production vs local HTTP in dev) -
+  confirmed both ways directly, including simulating Railway's
+  `X-Forwarded-Proto: https` header.
+- Forced first-login password change (`must_change_password`): enforced
+  server-side, not just a client-side redirect suggestion - every dashboard
+  route rejects a flagged session with 403 until `/api/auth/change-password`
+  clears it. Self-service password change keeps the current session alive but
+  invalidates every other one for that user; admin-triggered reset (CLI) 
+  invalidates ALL sessions including the current one and re-flags the account.
+- Origin/Referer check on state-changing session-authenticated requests
+  (lightweight CSRF mitigation) - Bearer-key requests are exempt by construction
+  (a cross-site page can't attach an arbitrary Authorization header) and verified
+  to remain unaffected by a mismatched Origin.
+- `requireDashboardAuth` accepts Bearer API key (tried first, identical to the
+  old `requireClientAuth` behaviour) OR session cookie - a strict superset, so
+  every existing Bearer-authenticated caller (Companion, curl, existing tests)
+  is provably unaffected. The dashboard's normal human workflow no longer
+  prompts for or stores an API key at all (removed `getApiKey()`/`prompt()`);
+  Bearer auth remains fully available server-side for Companion/API use, just
+  no longer surfaced as a browser UI affordance.
+- `BOOTSTRAP_ADMIN_USER_EMAIL` env var: same proven pattern as
+  `BOOTSTRAP_PLATFORM_ADMIN` (Phase 3) - creates a login for that email linked
+  to the existing platform-admin client, prints a temp password once, never
+  touches the Legacy client or the Platform Administrator API key. Errors
+  clearly (doesn't guess) if no platform-admin client exists yet.
+- CLI: `scripts/create-user.js`, `scripts/reset-user-password.js`,
+  `scripts/list-users.js` (never prints password hashes).
+- Verified end-to-end (not just unit-level): login success/failure, rate
+  limiting, forced password change gating and clearing, session persistence
+  across requests, logout revocation, admin-reset revocation, cross-client
+  session isolation (a normal client session cannot see or reach another
+  client's rooms, direct slug access included), platform-admin session
+  cross-client visibility, Bearer API-key path fully unaffected, Companion
+  endpoint fully unaffected, control/display token socket auth fully
+  unaffected, CSRF/Origin rejection, and cookie `Secure` behaviour in both
+  simulated-production and local-HTTP conditions.
+- **Phase 6b (dashboard mobile responsive pass) not started** - explicitly
+  deferred, per instruction not to begin it during 6a.
+
 ### Phase 1 — Data model & persistence (SQLite)
 - Replaced the flat `rooms.json` file with SQLite (`better-sqlite3`), via `db.js`.
 - Schema: `clients` → `events` → `rooms` (one default event per client for now,
@@ -43,6 +99,39 @@ full design brief this work follows.
 - CLI: `scripts/create-client.js`, `scripts/rotate-client-key.js`,
   `scripts/list-room-links.js` (list/regenerate a client's room links).
 
+### Phase 4 — Room controller exclusivity / collaboration model
+- One active controller per room at a time (per control-token socket); additional
+  control-token connections become observers. Role is server-derived per socket,
+  not per token - two people sharing the same control link get distinct roles.
+- Take Over is always available - no approval step, no hard lock, so an operator
+  can always recover if the controlling device crashes, disconnects, or becomes
+  unavailable. Custom in-app confirmation modal (not `window.confirm()`): Cancel/
+  Take Control, click-outside and Escape both close without changing control,
+  focus moves into the modal on open and returns to the Take Over button on close.
+- REST/dashboard/Companion actions are exempt entirely - a separate, higher trust
+  tier (client API key) than a shared browser control-token session. Verified
+  directly: REST actions kept working while sockets were mid observer/controller
+  handoff.
+- Controller/Observer status is integrated into the existing Room header card
+  (compact badge + connection count + conditional Take Over button) rather than
+  a separate full-width notice row.
+- Mobile layout fixed as part of this phase: `.container`'s
+  `grid-template-columns: repeat(2, minmax(320px, 1fr))` and
+  `.timer-control-row`'s fixed `185px 155px 1fr` columns never collapsed below
+  ~650-700px regardless of viewport; fixed via a `max-width: 700px` media query
+  collapsing both to a single column, plus `flex-wrap` on the nav row and room
+  header. Verified with Playwright: no horizontal overflow at 360/390/430px in
+  both Controller and Observer states and with the modal open; desktop (1400px)
+  layout confirmed unchanged.
+- Related bug fixed in the same pass: `setOutputMode('timer')` ran unconditionally
+  on page load and always emitted to the server, so an observer got an unprompted
+  rejection notice before touching anything. Split into a UI-only update and the
+  emitting user action.
+- Shared Control (opt-in, all control-token holders can act concurrently) was
+  analyzed but deliberately not built - see "Known future admin/client UI
+  improvements" below for the binding constraints if it's ever implemented.
+- **Approved and complete**, per direct browser testing (not just automated checks).
+
 ### Phase 3 — RBAC roles & client-scoped Master Dashboard
 - `clients.is_platform_admin` flag (migrated onto the existing table via
   `ALTER TABLE`, safe on an already-populated DB - verified against a live
@@ -69,23 +158,28 @@ full design brief this work follows.
 
 ## Current login / API key behaviour
 
-There is no user-account system - no passwords, no sessions, no cookies.
-Two credential types, both opaque bearer secrets:
+As of Phase 6a, the normal human workflow is a real login, not an API key:
 
-1. **Client API key** - entered once into the dashboard via a `prompt()`,
-   stored in the browser's `localStorage`, sent as a Bearer header on every
-   dashboard request. Same key is used for Companion's config.
-2. **Room control/display tokens** - embedded directly in the room's URL; the
-   token itself is the credential, no separate login step. Control token =
-   full control; display token = strictly read-only (verified: a display
-   token cannot mutate state even if a client attempts it directly).
+1. **Human dashboard login** (`users` + `sessions` tables) - email/password at
+   `/login`, bcrypt-hashed password, DB-backed session behind an `HttpOnly`,
+   `SameSite=Lax` cookie (`Secure` automatically added in production). 30-day
+   fixed expiry, server-side revocation on logout/reset. Forced password
+   change on first login for newly-provisioned accounts. No API key is ever
+   shown to, entered by, or stored by a human user anymore - the dashboard's
+   `prompt()`/`localStorage` API-key flow was removed from the UI entirely.
+2. **Client API key** - unchanged, still used by Companion and any other
+   machine-to-machine/API integration exactly as before. `requireDashboardAuth`
+   accepts it as an emergency-compatibility fallback alongside the session
+   cookie, but it is no longer part of the browser UI.
+3. **Room control/display tokens** - completely unchanged, unaffected by any
+   of the above (control-token/display-token socket auth was not touched in
+   Phase 6a and was re-verified directly to confirm that).
 
-No expiry, no rotation schedule, no MFA, no self-service signup - every
-credential is provisioned manually via a CLI script run by BizShows. This is
-intentionally lightweight per the original brief, and is adequate for
-Companion and internal use, but is **not** the intended long-term experience
-for a client's own staff logging into their dashboard daily - see the new
-future phase below.
+No self-service signup, no self-service password reset (no email dependency
+yet - deliberately deferred) - every human account is provisioned manually via
+`scripts/create-user.js`, with `scripts/reset-user-password.js` as the manual
+recovery path (mirrors `rotate-client-key.js`'s pattern exactly, and
+invalidates all of that user's existing sessions).
 
 ## Railway volume / database assumptions
 
@@ -138,35 +232,35 @@ future phase below.
 
 ## Known future admin/client UI improvements (captured, not started)
 
-Approved as a future phase, not to be implemented until explicitly requested:
-
-- Proper client login: email/password or magic link, replacing API-key-in-
-  a-`prompt()`.
-- Persistent session/cookie-based login, replacing the raw API key sitting
-  in `localStorage`.
-- A client details page.
+- ~~Proper client login: email/password, replacing API-key-in-a-`prompt()`~~
+  **DONE (Phase 6a)**.
+- ~~Persistent session/cookie-based login, replacing the raw API key sitting
+  in `localStorage`~~ **DONE (Phase 6a)**.
+- A client details page. **Not started** - Phase 6c candidate.
 - A client list view for Platform Admin (currently CLI-only via
-  `list-clients.js`).
+  `list-clients.js`/`list-users.js`). **Not started** - Phase 6c candidate.
 - Client profile/status/API key management from the UI (currently CLI-only:
-  create/rotate via scripts).
+  create/rotate via scripts). **Not started** - Phase 6c candidate.
 - Events and rooms shown under each client in the UI (currently: one default
-  event per client, not surfaced anywhere in the UI).
+  event per client, not surfaced anywhere in the UI). **Not started**.
 
 ## Remaining planned phases
 
-- **Phase 4 - Room controller exclusivity / collaboration model.** Implemented
-  and browser-tested: one active controller per room, additional control-token
-  connections become observers, Take Over is always available (no approval
-  step, no hard lock - an operator can always recover if the controlling
-  device crashes or disconnects), REST/dashboard/Companion actions remain
-  exempt. A confirmation dialog was added on Take Over per browser-test
-  feedback. Pending final sign-off.
 - **Phase 5 - Active Rooms visibility.** Fold fully into the authenticated
   dashboard (largely already true post-Phase 2/3); add an optional per-room
   "hidden from Active Rooms" operational flag (not a security control).
-- **Phase 6 - Client login & admin UX overhaul.** The future phase captured
-  above: real authentication, sessions, and client/event/room management UI.
-  Explicitly deferred - not started, not scheduled.
+- **Phase 6b - Dashboard mobile responsive pass.** Not started - explicitly
+  deferred until 6a is deployed and browser-tested. Same method as the
+  control.html mobile fix in Phase 4: identify the actual offending
+  grid/width rules via inspection, not guesswork, then a scoped media-query
+  fix. Also removes the (now session-login-redundant) header space the old
+  API-key button used to occupy.
+- **Phase 6c (candidate) - Platform Admin client-management UI.** Client list
+  view, client detail page, client profile/API-key management from the UI
+  (currently CLI-only). Not started, not yet approved as its own phase - the
+  `users` table design from 6a is already forward-compatible with it
+  (multiple users per client, already-resolved platform-admin status) with
+  no rework needed when it's picked up.
 - **Phase 7 (candidate) - Optional per-room Shared control mode.** Analysis
   given (not implemented), decided **not** to build now. Binding constraints
   for whenever it is built:

@@ -482,6 +482,91 @@ setInterval(() => {
 }, 1000);
 
 // ============================================
+// REST API - human login (Phase 6a)
+// ============================================
+
+// Simple in-memory rate limiter for login attempts - no new dependency needed
+// for something this small. Keyed by IP; `trust proxy` is already set above,
+// so req.ip reflects the real client IP behind Railway's proxy, not the
+// proxy's own address.
+const loginAttempts = new Map(); // ip -> timestamps[]
+const LOGIN_RATE_LIMIT = 8;
+const LOGIN_RATE_WINDOW_MS = 5 * 60 * 1000;
+
+function isLoginRateLimited(ip) {
+  const now = Date.now();
+  const attempts = (loginAttempts.get(ip) || []).filter((t) => now - t < LOGIN_RATE_WINDOW_MS);
+  loginAttempts.set(ip, attempts);
+  return attempts.length >= LOGIN_RATE_LIMIT;
+}
+
+function recordLoginAttempt(ip) {
+  const attempts = loginAttempts.get(ip) || [];
+  attempts.push(Date.now());
+  loginAttempts.set(ip, attempts);
+}
+
+app.post('/api/auth/login', async (req, res) => {
+  const ip = req.ip;
+  if (isLoginRateLimited(ip)) {
+    return res.status(429).json({ ok: false, error: 'Too many login attempts. Try again later.' });
+  }
+
+  const { email, password } = req.body || {};
+  if (!email || !password) {
+    recordLoginAttempt(ip);
+    return res.status(401).json({ ok: false, error: 'Invalid email or password' });
+  }
+
+  // Unknown email and wrong password both fail identically - db.verifyUserPassword
+  // returns null for both cases, so there is nothing here that could leak which.
+  const user = await db.verifyUserPassword(email, password);
+  if (!user) {
+    recordLoginAttempt(ip);
+    return res.status(401).json({ ok: false, error: 'Invalid email or password' });
+  }
+
+  const { rawToken, expiresAt } = db.createSession(user.id);
+  auth.setSessionCookie(req, res, rawToken, expiresAt);
+  res.json({ ok: true, mustChangePassword: !!user.must_change_password });
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  // Deliberately not gated by requireSession - the goal is "make sure I'm
+  // logged out", which should succeed even against an already-expired or
+  // already-invalid cookie, not itself require a valid session.
+  const rawToken = auth.parseCookies(req).session;
+  db.deleteSession(rawToken);
+  auth.clearSessionCookie(res);
+  res.json({ ok: true });
+});
+
+// Requires only a bare session (auth.requireSession), NOT auth.requireDashboardAuth's
+// must-change-password gate - otherwise a freshly-provisioned user could never
+// reach the one endpoint that actually clears that flag.
+app.post('/api/auth/change-password', auth.requireSession, async (req, res) => {
+  const { currentPassword, newPassword, confirmPassword } = req.body || {};
+  if (!currentPassword || !newPassword || !confirmPassword) {
+    return res.status(400).json({ ok: false, error: 'All fields are required' });
+  }
+  if (newPassword !== confirmPassword) {
+    return res.status(400).json({ ok: false, error: 'New password and confirmation do not match' });
+  }
+  if (newPassword.length < 10) {
+    return res.status(400).json({ ok: false, error: 'New password must be at least 10 characters' });
+  }
+
+  const result = await db.changePassword(req.user.id, currentPassword, newPassword, req.sessionToken);
+  if (!result.ok) {
+    return res.status(400).json({ ok: false, error: result.error });
+  }
+
+  // changePassword() only deletes OTHER sessions, keeping this one alive by
+  // token - no new cookie needed, the existing one still resolves correctly.
+  res.json({ ok: true });
+});
+
+// ============================================
 // REST API - client-authenticated room management (dashboard, provisioning)
 // ============================================
 
@@ -529,7 +614,7 @@ function summarizeRoom(row, req) {
 
 // Tells the dashboard who it's talking to, so it knows whether to render the
 // platform-admin (cross-client) view or the normal single-client view.
-app.get('/api/whoami', auth.requireClientAuth, (req, res) => {
+app.get('/api/whoami', auth.requireDashboardAuth, (req, res) => {
   res.json({
     ok: true,
     clientId: req.client.id,
@@ -540,7 +625,7 @@ app.get('/api/whoami', auth.requireClientAuth, (req, res) => {
 
 // GET rooms: a normal client sees only its own (unchanged from Phase 2); a
 // platform admin sees every room across every client, labeled with clientName.
-app.get('/api/rooms', auth.requireClientAuth, (req, res) => {
+app.get('/api/rooms', auth.requireDashboardAuth, (req, res) => {
   const rows = req.client.is_platform_admin
     ? db.getAllRoomsWithClientNames()
     : db.getRoomsForClient(req.client.id);
@@ -549,7 +634,7 @@ app.get('/api/rooms', auth.requireClientAuth, (req, res) => {
 });
 
 // POST create a new room under the authenticated client (was: implicit on first connect)
-app.post('/api/rooms', auth.requireClientAuth, (req, res) => {
+app.post('/api/rooms', auth.requireDashboardAuth, (req, res) => {
   const { slug } = req.body || {};
   if (typeof slug !== 'string' || !slug.trim()) {
     return res.status(400).json({ ok: false, error: 'Missing or invalid "slug" in request body' });
@@ -575,7 +660,7 @@ app.post('/api/rooms', auth.requireClientAuth, (req, res) => {
 });
 
 // Delete room endpoint
-app.delete('/api/rooms/:roomId', auth.requireClientAuth, auth.resolveOwnedRoom, (req, res) => {
+app.delete('/api/rooms/:roomId', auth.requireDashboardAuth, auth.resolveOwnedRoom, (req, res) => {
   const { roomId, room } = req;
 
   timerRooms.delete(roomId);
@@ -602,7 +687,7 @@ app.delete('/api/rooms/:roomId', auth.requireClientAuth, auth.resolveOwnedRoom, 
 // POST issue fresh control/display links for a room, invalidating the old ones.
 // This is the operator-facing recovery path for "a link leaked" or "cutover broke
 // my old bookmarked links" - see also scripts/list-room-links.js for a CLI version.
-app.post('/api/rooms/:roomId/regenerate-tokens', auth.requireClientAuth, auth.resolveOwnedRoom, (req, res) => {
+app.post('/api/rooms/:roomId/regenerate-tokens', auth.requireDashboardAuth, auth.resolveOwnedRoom, (req, res) => {
   const updated = db.regenerateRoomTokens(req.client.id, req.room.slug);
   if (!updated) return res.status(404).json({ ok: false, error: 'Room not found' });
 
@@ -630,7 +715,7 @@ app.post('/api/rooms/:roomId/regenerate-tokens', auth.requireClientAuth, auth.re
 // resolved req.client - a client without the flag gets 403, unaffected otherwise.
 // ============================================
 
-const adminRoomAuth = [auth.requireClientAuth, auth.requirePlatformAdmin, auth.resolveRoomById, attachTimerState];
+const adminRoomAuth = [auth.requireDashboardAuth, auth.requirePlatformAdmin, auth.resolveRoomById, attachTimerState];
 
 app.post('/api/admin/rooms/:id/start', ...adminRoomAuth, (req, res) => {
   const { roomId, timerState, room } = req;
@@ -682,7 +767,7 @@ app.post('/api/admin/rooms/:id/reset', ...adminRoomAuth, (req, res) => {
   res.json({ ok: true, roomId, slug: room.slug, clientName: room.client_name, state: timerState });
 });
 
-app.delete('/api/admin/rooms/:id', auth.requireClientAuth, auth.requirePlatformAdmin, auth.resolveRoomById, (req, res) => {
+app.delete('/api/admin/rooms/:id', auth.requireDashboardAuth, auth.requirePlatformAdmin, auth.resolveRoomById, (req, res) => {
   const { roomId, room } = req;
 
   timerRooms.delete(roomId);
@@ -706,7 +791,7 @@ app.delete('/api/admin/rooms/:id', auth.requireClientAuth, auth.requirePlatformA
   res.json({ ok: true, roomId, slug: room.slug, clientName: room.client_name });
 });
 
-app.post('/api/admin/rooms/:id/regenerate-tokens', auth.requireClientAuth, auth.requirePlatformAdmin, auth.resolveRoomById, (req, res) => {
+app.post('/api/admin/rooms/:id/regenerate-tokens', auth.requireDashboardAuth, auth.requirePlatformAdmin, auth.resolveRoomById, (req, res) => {
   const updated = db.regenerateRoomTokens(req.room.client_id, req.room.slug);
   if (!updated) return res.status(404).json({ ok: false, error: 'Room not found' });
 
@@ -731,7 +816,7 @@ app.post('/api/admin/rooms/:id/regenerate-tokens', auth.requireClientAuth, auth.
 // and the slug is resolved only within that client's own rooms.
 // ============================================
 
-const roomAuth = [auth.requireClientAuth, auth.resolveOwnedRoom, attachTimerState];
+const roomAuth = [auth.requireDashboardAuth, auth.resolveOwnedRoom, attachTimerState];
 
 // GET pre-computed display values optimised for Companion button feedback
 app.get('/api/rooms/:roomId/companion', ...roomAuth, (req, res) => {
@@ -1027,6 +1112,14 @@ app.get('/display', (req, res) => {
 
 app.get('/dashboard', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
+});
+
+app.get('/login', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'login.html'));
+});
+
+app.get('/change-password', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'change-password.html'));
 });
 
 // Load persisted rooms before starting
