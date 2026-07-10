@@ -315,13 +315,17 @@
         }
         .room-header {
             grid-column: 1 / -1;
+            min-width: 0;
+            box-sizing: border-box;
             background: rgba(144, 202, 249, 0.1);
             border: 2px solid rgba(144, 202, 249, 0.3);
             padding: 16px 20px;
             border-radius: 8px;
             display: flex;
+            flex-wrap: wrap;
             justify-content: space-between;
             align-items: center;
+            gap: 12px;
         }
         .room-name-display {
             font-size: 1.8rem;
@@ -347,14 +351,31 @@
         .links a:hover {
             text-decoration: underline;
         }
+
+        /* Mobile layout fix: root cause of the page opening wider than the
+           viewport was two grids with fixed/min pixel column widths that never
+           shrink regardless of viewport - .container's minmax(320px, 1fr) x2
+           (~656px+ minimum) and .timer-control-row's fixed 185px+155px columns
+           (~340px+ minimum before its 1fr column even gets space). Neither
+           collapses on its own; below this breakpoint both go to a single
+           column instead. Desktop layout (grid-template-columns above) is
+           untouched - this only applies under the breakpoint. */
+        @media (max-width: 700px) {
+            .container {
+                grid-template-columns: 1fr;
+            }
+            .timer-control-row {
+                grid-template-columns: 1fr;
+            }
+        }
     </style>
 </head>
 <body>
     <div class="wrapper">
     <div class="container">
-        <div style="grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <div style="grid-column: 1 / -1; min-width: 0; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px;">
             <h1 style="margin: 0;">Timer Control</h1>
-            <div class="links" style="border: none; padding: 0; text-align: right;">
+            <div class="links" style="border: none; padding: 0; text-align: right; min-width: 0;">
                 <a href="#" id="displayLink" target="_blank">Open Display Screen</a>
                 <span style="color: #666; margin: 0 8px;">|</span>
                 <a href="/dashboard" target="_blank">Master Dashboard</a>
@@ -363,25 +384,25 @@
             </div>
         </div>
 
+        <!-- Room header: name stays visually dominant (left, large); controller
+             status (badge/count/Take Over) and Share Links live in a wrapping group
+             on the right - Phase 4 mobile refinement folds the status directly into
+             this card instead of a separate full-width row. On narrow viewports the
+             group wraps beneath the room name (flex-wrap on both this row and the
+             group itself), never causing horizontal overflow. -->
         <div class="room-header">
             <div>
                 <div style="font-size: 0.9rem; color: #999; margin-bottom: 4px;">Room</div>
                 <div class="room-name-display" id="roomName"></div>
             </div>
-            <button class="button secondary" style="padding: 10px 16px;" onclick="copyRoomLinks(event)">� Share Links</button>
+            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0;">
+                <span id="controllerStatusBadge" style="padding: 3px 10px; border-radius: 5px; font-weight: 700; font-size: 0.72rem; letter-spacing: 0.5px; white-space: nowrap; background: #2e7d32; color: #fff;">CONTROLLER</span>
+                <span id="controllerStatusCount" style="color: #999; font-size: 0.85rem; white-space: nowrap;"></span>
+                <button id="controllerTakeOverBtn" style="display: none; padding: 5px 14px; font-size: 0.8rem; border-radius: 5px; border: none; background: #1976d2; color: #fff; cursor: pointer; white-space: nowrap;" onclick="openTakeOverModal()">Take Over</button>
+                <button class="button secondary" style="padding: 10px 16px; white-space: nowrap;" onclick="copyRoomLinks(event)">📤 Share Links</button>
+            </div>
         </div>
 
-        <!-- Compact controller-status bar (Phase 4 refinement): always visible, single
-             source of truth for both "how many control panels are connected" and
-             "is this device the active controller or an observer" - replaces the
-             previous two large stacked notices (orange multi-control warning +
-             separate observer banner), which duplicated information and ate a lot
-             of vertical space, especially on mobile. -->
-        <div id="controllerStatusBar" style="grid-column: 1 / -1; min-width: 0; box-sizing: border-box; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 8px 14px; margin-bottom: 1rem; font-size: 0.85rem;">
-            <span id="controllerStatusBadge" style="padding: 3px 10px; border-radius: 5px; font-weight: 700; font-size: 0.72rem; letter-spacing: 0.5px; white-space: nowrap; background: #2e7d32; color: #fff;">CONTROLLER</span>
-            <span id="controllerStatusCount" style="color: #999; white-space: nowrap;"></span>
-            <button id="controllerTakeOverBtn" style="display: none; margin-left: auto; padding: 5px 14px; font-size: 0.8rem; border-radius: 5px; border: none; background: #1976d2; color: #fff; cursor: pointer; white-space: nowrap;" onclick="openTakeOverModal()">Take Over</button>
-        </div>
         <div id="controlRejectedNotice" style="display: none; grid-column: 1 / -1; background: #b71c1c; color: #fff; padding: 10px 16px; border-radius: 8px; margin-bottom: 1rem; font-weight: 500;"></div>
 
         <!-- Custom Take Over confirmation modal - deliberately not window.confirm(),
@@ -1181,11 +1202,16 @@
         }
 
         // Output mode toggle
-        function setOutputMode(mode){
-            socket.emit('setOutputMode', mode);
-            // also mirror immediate UI feedback
+        // UI-only - does not touch the server. Safe to call on load/sync for any
+        // role (control or observer), unlike setOutputMode() below.
+        function updateOutputModeButtons(mode) {
             document.getElementById('modeTimerBtn').classList.toggle('primary', mode==='timer');
             document.getElementById('modeClockBtn').classList.toggle('primary', mode==='clock');
+        }
+
+        function setOutputMode(mode){
+            socket.emit('setOutputMode', mode);
+            updateOutputModeButtons(mode);
         }
 
         // Display scale functions
@@ -1567,10 +1593,13 @@
                 }
                 updateSpeedPreview();
             }
-            // DO NOT call emitSettings() here — server state is authoritative.
-            // Settings will be adopted from the first timerState event.
+            // DO NOT call emitSettings() or setOutputMode() here — server state is
+            // authoritative, and setOutputMode() emits to the server. An observer
+            // hitting this on load would get an immediate, unprompted rejection
+            // notice despite never clicking anything. UI-only default instead;
+            // the real value arrives with the first timerState event.
             renderPresets();
-            setOutputMode('timer');
+            updateOutputModeButtons('timer');
             updateEndTimeCalc();
         });
 

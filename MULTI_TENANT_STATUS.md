@@ -118,17 +118,23 @@ future phase below.
   layout for small screens. Not a Phase 4 regression - pre-existing. Deferred
   as its own future UI/UX task; deliberately not bundled into any phase to
   avoid a broad dashboard redesign as a side effect of unrelated work.
-- **Control panel mobile responsive layout.** `public/control.html`'s
-  `.container` uses `grid-template-columns: repeat(2, minmax(320px, 1fr))`
-  with no mobile media-query override, so the page never collapses below
-  ~640-680px regardless of viewport width - confirmed directly via a
-  Playwright check at a 375px viewport (page content measured ~718px wide).
-  Pre-existing, predates Phase 4 - the notices Phase 4's status bar replaced
-  had the same `grid-column: 1 / -1` and would have overflowed identically.
-  The new controller-status bar's own CSS was verified correct in isolation
-  (wraps cleanly when given an actually-375px box); the overflow is entirely
-  from this container-level issue, not the bar. Same category of task as the
-  dashboard one above - deferred, not addressed in Phase 4.
+- ~~Control panel mobile responsive layout~~ **FIXED** (Phase 4 mobile pass).
+  Root cause was `.container`'s `grid-template-columns: repeat(2,
+  minmax(320px, 1fr))` and `.timer-control-row`'s fixed `185px 155px 1fr`
+  columns, neither of which collapsed on narrow viewports; a secondary cause
+  was the top nav row (`h1` + links) lacking `flex-wrap`. Fixed via a
+  `@media (max-width: 700px)` override collapsing both grids to a single
+  column, plus `flex-wrap: wrap` on the nav row and the room header. Desktop
+  layout (grid definitions above the media query) is untouched. Verified with
+  Playwright: `document.documentElement.scrollWidth <= clientWidth` at 360px,
+  390px, and 430px, in both Controller and Observer states, and with the
+  Take Over modal open; desktop (1400px) confirmed still 2-column/3-column.
+  A related bug found and fixed in the same pass: `setOutputMode('timer')`
+  was called unconditionally in the page's `load` handler (to set initial
+  button highlighting) and always emitted to the server - for an observer,
+  this fired an unprompted rejection notice on every page load before any
+  user action. Fixed by splitting UI-update from server-emit (mirrors the
+  existing `emitSettings()` on-load exclusion already in the code).
 
 ## Known future admin/client UI improvements (captured, not started)
 
