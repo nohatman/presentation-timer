@@ -50,6 +50,15 @@ full design brief this work follows.
   clearly (doesn't guess) if no platform-admin client exists yet.
 - CLI: `scripts/create-user.js`, `scripts/reset-user-password.js`,
   `scripts/list-users.js` (never prints password hashes).
+- `scripts/change-user-email.js` (local DB) / `RENAME_USER_EMAIL_FROM` +
+  `RENAME_USER_EMAIL_TO` env vars (production, same boot-time bootstrap
+  pattern as `BOOTSTRAP_ADMIN_USER_EMAIL`) - corrects a login email in place:
+  same user id/password/client link (so platform-admin status, derived
+  transitively through that link, survives too - verified directly), rejects
+  a target email already used by another user or the user's own current
+  email, invalidates that user's existing sessions, never touches client API
+  keys or room tokens. Idempotent on repeat boots with the vars left set
+  (checks whether the target email already exists before acting).
 - Verified end-to-end (not just unit-level): login success/failure, rate
   limiting, forced password change gating and clearing, session persistence
   across requests, logout revocation, admin-reset revocation, cross-client
@@ -59,8 +68,12 @@ full design brief this work follows.
   endpoint fully unaffected, control/display token socket auth fully
   unaffected, CSRF/Origin rejection, and cookie `Secure` behaviour in both
   simulated-production and local-HTTP conditions.
+- **Deployed to Railway and browser-tested - approved.** Human login, forced
+  password change, session persistence (reload/new tab), and logout all
+  confirmed working in the real deployed environment, not just locally.
 - **Phase 6b (dashboard mobile responsive pass) not started** - explicitly
-  deferred, per instruction not to begin it during 6a.
+  deferred until after the email-correction script below is deployed and
+  confirmed.
 
 ### Phase 1 — Data model & persistence (SQLite)
 - Replaced the flat `rooms.json` file with SQLite (`better-sqlite3`), via `db.js`.

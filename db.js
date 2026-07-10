@@ -350,6 +350,74 @@ function resetUserPassword(email) {
   return { id: user.id, email: user.email, tempPassword };
 }
 
+// Same trim+lowercase normalisation login/createUser already apply, plus a
+// basic format sanity check - not full RFC5322 validation, just enough to
+// catch an obvious typo before it's stored.
+function normalizeEmail(email) {
+  return String(email || '').trim().toLowerCase();
+}
+
+function isValidEmailFormat(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+// Renames a user's login email in place - same id, password_hash,
+// must_change_password, and client_id (so platform-admin status, which is
+// derived transitively through the linked client, is untouched too) - only
+// the email column changes. Invalidates all of that user's existing sessions,
+// since a session cookie was issued to "whoever could log in as the old
+// email" and the account's identity has now changed. Never touches
+// clients.api_key_hash or any room token.
+function changeUserEmail(currentEmail, newEmail) {
+  const user = getUserByEmail(currentEmail);
+  if (!user) return { ok: false, error: `No user found with email "${currentEmail}"` };
+
+  const normalized = normalizeEmail(newEmail);
+  if (!isValidEmailFormat(normalized)) {
+    return { ok: false, error: `"${newEmail}" doesn't look like a valid email address` };
+  }
+
+  const existing = getUserByEmail(normalized);
+  if (existing && existing.id === user.id) {
+    return { ok: false, error: `"${normalized}" is already this user's current email` };
+  }
+  if (existing) {
+    return { ok: false, error: `Email "${normalized}" is already assigned to another user` };
+  }
+
+  db.prepare('UPDATE users SET email = ? WHERE id = ?').run(normalized, user.id);
+  db.prepare('DELETE FROM sessions WHERE user_id = ?').run(user.id);
+
+  return { ok: true, id: user.id, oldEmail: user.email, newEmail: normalized };
+}
+
+// One-shot production-safe email correction, same reasoning as every other
+// BOOTSTRAP_* var: the database only lives on Railway's volume, unreachable
+// from a local script run, so a boot-time env-var trigger is the proven safe
+// path rather than assuming a Railway CLI/SSH command has volume access.
+// Idempotent: if a user already has the target email, assumes the rename
+// already happened on an earlier boot and skips rather than erroring or
+// attempting it again.
+function renameUserEmailIfRequested() {
+  const from = process.env.RENAME_USER_EMAIL_FROM;
+  const to = process.env.RENAME_USER_EMAIL_TO;
+  if (!from || !to) return;
+
+  const alreadyAtTarget = getUserByEmail(to);
+  if (alreadyAtTarget) {
+    console.log(`[RENAME_USER_EMAIL_FROM/TO] A user already has email "${to}" - assuming this already happened, skipping.`);
+    return;
+  }
+
+  const result = changeUserEmail(from, to);
+  if (!result.ok) {
+    console.error(`❌ [RENAME_USER_EMAIL_FROM/TO] ${result.error}`);
+    return;
+  }
+  console.log(`✅ [RENAME_USER_EMAIL_FROM/TO] Renamed user id=${result.id} from "${result.oldEmail}" to "${result.newEmail}" - they must log in again with the new email.`);
+}
+renameUserEmailIfRequested();
+
 // ---- Sessions ----
 
 // Opportunistic cleanup, run on every new session creation - no separate
@@ -642,6 +710,7 @@ module.exports = {
   verifyUserPassword,
   changePassword,
   resetUserPassword,
+  changeUserEmail,
   // sessions
   createSession,
   getSessionUser,
