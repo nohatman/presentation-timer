@@ -109,6 +109,16 @@ future phase below.
 - **No backup/restore process exists yet for the volume.** Not addressed by
   any phase so far - worth flagging as a real gap, not yet planned.
 
+## Known bugs / UX issues (captured, not fixed)
+
+- **Master Dashboard mobile responsive layout.** On initial mobile load, the
+  dashboard renders wider than the viewport and appears partially cropped/
+  zoomed; elements then shift and the layout settles into a better position
+  after a moment. Header controls and room cards need a proper responsive
+  layout for small screens. Not a Phase 4 regression - pre-existing. Deferred
+  as its own future UI/UX task; deliberately not bundled into any phase to
+  avoid a broad dashboard redesign as a side effect of unrelated work.
+
 ## Known future admin/client UI improvements (captured, not started)
 
 Approved as a future phase, not to be implemented until explicitly requested:
@@ -127,10 +137,13 @@ Approved as a future phase, not to be implemented until explicitly requested:
 
 ## Remaining planned phases
 
-- **Phase 4 - Room controller exclusivity / collaboration model.** Replace
-  "anyone holding the control token can issue commands with no coordination"
-  with something that supports legitimate multi-operator collaboration
-  without silent conflicting commands. Proposal pending approval.
+- **Phase 4 - Room controller exclusivity / collaboration model.** Implemented
+  and browser-tested: one active controller per room, additional control-token
+  connections become observers, Take Over is always available (no approval
+  step, no hard lock - an operator can always recover if the controlling
+  device crashes or disconnects), REST/dashboard/Companion actions remain
+  exempt. A confirmation dialog was added on Take Over per browser-test
+  feedback. Pending final sign-off.
 - **Phase 5 - Active Rooms visibility.** Fold fully into the authenticated
   dashboard (largely already true post-Phase 2/3); add an optional per-room
   "hidden from Active Rooms" operational flag (not a security control).

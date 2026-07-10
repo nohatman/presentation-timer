@@ -863,6 +863,11 @@
         });
 
         function takeOverControl() {
+            const confirmed = confirm(
+                'Take control of this room?\n\n' +
+                'This will immediately transfer control to this device. The current controller will become an observer.'
+            );
+            if (!confirmed) return;
             socket.emit('requestControl');
         }
 
