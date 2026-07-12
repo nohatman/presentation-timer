@@ -837,6 +837,153 @@ app.get('/api/admin/clients/:id', ...adminClientAuth, (req, res) => {
   res.json({ ok: true, ...detail });
 });
 
+// ---- Phase 6c.2: mutations. Each writes exactly one audit_log entry after
+// its db.js call succeeds - never before, and never including the temporary
+// password or API key it may have just generated. ----
+
+// Duplicate-name/email checks live here, not inside the db.js mutators -
+// matches the existing convention already used by scripts/create-client.js
+// and scripts/create-user.js (they check getClientByName/getUserByEmail
+// themselves before calling the create function).
+
+app.post('/api/admin/clients', ...adminClientAuth, (req, res) => {
+  const name = String((req.body && req.body.name) || '').trim().slice(0, 200);
+  if (!name) {
+    return res.status(400).json({ ok: false, error: 'Client name is required' });
+  }
+  if (db.getClientByName(name)) {
+    return res.status(409).json({ ok: false, error: `A client named "${name}" already exists` });
+  }
+
+  const created = db.createClient(name);
+  db.recordAuditLog({
+    actorUserId: req.user.id,
+    action: 'client.create',
+    targetType: 'client',
+    targetId: created.id,
+    targetLabel: name
+  });
+
+  const client = db.getClientById(created.id);
+  res.json({
+    ok: true,
+    client: { id: client.id, name: client.name, status: client.status, created_at: client.created_at },
+    apiKey: created.apiKey
+  });
+});
+
+app.post('/api/admin/clients/:id/rename', ...adminClientAuth, (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    return res.status(400).json({ ok: false, error: 'Invalid client id' });
+  }
+  const existing = db.getClientById(id);
+  if (!existing) {
+    return res.status(404).json({ ok: false, error: 'Client not found' });
+  }
+
+  const newName = String((req.body && req.body.name) || '').trim().slice(0, 200);
+  if (!newName) {
+    return res.status(400).json({ ok: false, error: 'Client name is required' });
+  }
+  const collision = db.getClientByName(newName);
+  if (collision && collision.id !== id) {
+    return res.status(409).json({ ok: false, error: `A client named "${newName}" already exists` });
+  }
+
+  const result = db.renameClient(id, newName);
+  db.recordAuditLog({
+    actorUserId: req.user.id,
+    action: 'client.rename',
+    targetType: 'client',
+    targetId: id,
+    targetLabel: `${result.oldName} → ${result.newName}`
+  });
+
+  const client = db.getClientById(id);
+  res.json({ ok: true, client: { id: client.id, name: client.name, status: client.status, created_at: client.created_at } });
+});
+
+app.post('/api/admin/clients/:id/users', ...adminClientAuth, (req, res) => {
+  const clientId = Number(req.params.id);
+  if (!Number.isInteger(clientId)) {
+    return res.status(400).json({ ok: false, error: 'Invalid client id' });
+  }
+  const client = db.getClientById(clientId);
+  if (!client) {
+    return res.status(404).json({ ok: false, error: 'Client not found' });
+  }
+
+  const email = db.normalizeEmail((req.body && req.body.email) || '');
+  if (!db.isValidEmailFormat(email)) {
+    return res.status(400).json({ ok: false, error: `"${(req.body && req.body.email) || ''}" doesn't look like a valid email address` });
+  }
+  if (db.getUserByEmail(email)) {
+    return res.status(409).json({ ok: false, error: `A user with email "${email}" already exists` });
+  }
+
+  const tempPassword = db.generateTempPassword();
+  const user = db.createUser(email, tempPassword, clientId, { mustChangePassword: true });
+  db.recordAuditLog({
+    actorUserId: req.user.id,
+    action: 'user.create',
+    targetType: 'user',
+    targetId: user.id,
+    targetLabel: email
+  });
+
+  res.json({ ok: true, user: { id: user.id, email: user.email, clientId }, tempPassword });
+});
+
+app.post('/api/admin/users/:id/reset-password', ...adminClientAuth, (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    return res.status(400).json({ ok: false, error: 'Invalid user id' });
+  }
+  const user = db.getUserById(id);
+  if (!user) {
+    return res.status(404).json({ ok: false, error: 'User not found' });
+  }
+
+  const result = db.resetUserPassword(user.email);
+  db.recordAuditLog({
+    actorUserId: req.user.id,
+    action: 'user.reset_password',
+    targetType: 'user',
+    targetId: user.id,
+    targetLabel: user.email
+  });
+
+  res.json({ ok: true, user: { id: user.id, email: user.email }, tempPassword: result.tempPassword });
+});
+
+app.post('/api/admin/users/:id/change-email', ...adminClientAuth, (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    return res.status(400).json({ ok: false, error: 'Invalid user id' });
+  }
+  const user = db.getUserById(id);
+  if (!user) {
+    return res.status(404).json({ ok: false, error: 'User not found' });
+  }
+
+  const newEmail = (req.body && req.body.newEmail) || '';
+  const result = db.changeUserEmail(user.email, newEmail);
+  if (!result.ok) {
+    return res.status(400).json({ ok: false, error: result.error });
+  }
+
+  db.recordAuditLog({
+    actorUserId: req.user.id,
+    action: 'user.change_email',
+    targetType: 'user',
+    targetId: user.id,
+    targetLabel: `${result.oldEmail} → ${result.newEmail}`
+  });
+
+  res.json({ ok: true, user: { id: user.id, oldEmail: result.oldEmail, newEmail: result.newEmail } });
+});
+
 // ============================================
 // REST API for Bitfocus Companion
 //

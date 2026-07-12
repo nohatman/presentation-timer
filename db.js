@@ -207,6 +207,17 @@ function getClientsWithCounts() {
   `).all();
 }
 
+// Platform Admin UI (Phase 6c.2). Duplicate-name checking is the caller's
+// responsibility (matches createClient()/createUser()'s existing convention -
+// scripts/create-client.js checks getClientByName before calling createClient).
+// Returns null if the id doesn't exist.
+function renameClient(id, newName) {
+  const client = getClientById(id);
+  if (!client) return null;
+  db.prepare('UPDATE clients SET name = ? WHERE id = ?').run(newName, id);
+  return { id, oldName: client.name, newName };
+}
+
 // Platform Admin UI (Phase 6c.1) client detail: profile + every user/event/room
 // belonging to this client. Never selects password_hash, control_token,
 // display_token, api_key_hash, or state_json - this is an administrative
@@ -791,6 +802,7 @@ module.exports = {
   listClients,
   getClientsWithCounts,
   getClientDetail,
+  renameClient,
   // users
   generateTempPassword,
   createUser,
@@ -801,6 +813,8 @@ module.exports = {
   changePassword,
   resetUserPassword,
   changeUserEmail,
+  normalizeEmail,
+  isValidEmailFormat,
   // sessions
   createSession,
   getSessionUser,

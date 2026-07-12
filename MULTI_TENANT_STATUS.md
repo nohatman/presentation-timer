@@ -6,6 +6,61 @@ full design brief this work follows.
 
 ## Completed phases
 
+### Phase 6c.2 — Client and user management
+- New mutations, all behind the same `adminClientAuth` (`requireAdminSession` +
+  `requirePlatformAdmin`) chain as 6c.1's reads, so the no-Bearer/CSRF/404-not-
+  403 guarantees apply uniformly: `POST /api/admin/clients` (create),
+  `POST /api/admin/clients/:id/rename`, `POST /api/admin/clients/:id/users`
+  (create user), `POST /api/admin/users/:id/reset-password`,
+  `POST /api/admin/users/:id/change-email`. Duplicate-name/email checks live
+  in the route handlers, not inside the `db.js` mutators - matches the
+  existing convention already used by `create-client.js`/`create-user.js`.
+- Session invalidation, password hashing, and email normalisation are **not
+  new logic** - every mutation is a thin wrapper around the same `db.js`
+  functions the CLI scripts already use and Phase 6a already tested
+  (`createUser`, `resetUserPassword`, `changeUserEmail`). Verified directly
+  against the live server this session, not just re-read from code: reset a
+  user's password via the API, confirmed their prior session cookie got 401
+  on the very next request.
+- Guided **Create Client → Create First User** flow (`admin-clients.html`):
+  name → one-time API key result modal (explicitly labelled for
+  Companion/API integrations, not human login) → create-first-user form (or
+  Skip) → one-time temp-password result modal. The two secrets are never
+  shown together or combined - each gets its own modal, and `closeModal()`
+  clears `#modalContent`'s innerHTML (not just hides it) so neither lingers
+  in the DOM after its modal closes. If first-user creation fails, the client
+  is kept (never rolled back) and a recovery message links to the client's
+  detail page rather than losing track of it.
+- Client detail page (`admin-client-detail.html`) gained: Edit Name (inline
+  form, no confirmation needed - non-disruptive), Add User (form → temp
+  password result modal, reusable per client), Change Email (single form
+  that states the session-invalidation effect inline rather than a separate
+  confirm step), Reset Password (two-step: confirmation modal naming the
+  effect, then the temp-password result modal).
+- All custom in-app modals (Phase 4's Take Over modal pattern, never
+  `window.confirm()`/`alert()`/`prompt()`): focus moves into the dialog on
+  open, Escape and click-outside both cancel safely with no side effects,
+  focus returns to the triggering element on close.
+- `audit_log` (schema built in 6c.1) now actually receives entries: one per
+  successful mutation (`client.create`, `client.rename`, `user.create`,
+  `user.reset_password`, `user.change_email`), `actor_user_id` always from
+  the session (never client-supplied), `target_label` a human-readable
+  non-secret identifier (e.g. `"old name → new name"`). Verified directly by
+  inspecting the table after a full mutation run: exactly the expected 5 rows,
+  and grepped the temp passwords and the new API key against the entire
+  table's JSON - zero matches.
+- Verified end-to-end (26/26 Playwright + 12/12 curl checks): the full
+  wizard happy path including a real clipboard-copy assertion (not just that
+  a button exists); Escape/click-outside cancel with no data created;
+  duplicate-name/email → 409, invalid email → 400, unknown id → 404; Bearer
+  API key (even a valid one) → 401 on every mutation, not just the 6c.1
+  reads; a cross-origin `Origin` header with a valid session cookie → 403 on
+  a mutation (new proof - 6c.1 was read-only and couldn't exercise this); no
+  API key or temp password appears in any subsequent `GET` response; no
+  horizontal overflow at 360/390/430px on either page, including with the
+  modals open.
+- **Browser-tested and approved locally; Railway deployment pending.**
+
 ### Phase 6c.1 — Platform Admin client-management UI (read-only)
 - New pages `/admin/clients` (list) and `/admin/clients/:id` (detail), reachable
   only by a logged-in Platform Administrator - no create/edit/suspend/reset/
@@ -343,8 +398,8 @@ invalidates all of that user's existing sessions).
 - ~~A client details page~~ **DONE (Phase 6c.1)**.
 - ~~A client list view for Platform Admin (currently CLI-only via
   `list-clients.js`/`list-users.js`)~~ **DONE (Phase 6c.1)**.
-- Client profile/status/API key management from the UI (currently CLI-only:
-  create/rotate via scripts). **Not started** - Phase 6c.2/6c.3 candidate.
+- ~~Client profile management from the UI (create, edit name, users)~~ **DONE
+  (Phase 6c.2)**. Client status/API key rotation still CLI-only - Phase 6c.3.
 - ~~Events and rooms shown under each client in the UI~~ **DONE (Phase 6c.1)**,
   on the client detail page.
 
@@ -353,17 +408,6 @@ invalidates all of that user's existing sessions).
 - **Phase 5 - Active Rooms visibility.** Fold fully into the authenticated
   dashboard (largely already true post-Phase 2/3); add an optional per-room
   "hidden from Active Rooms" operational flag (not a security control).
-- **Phase 6c.2 (approved, not started) - Client and user management.** Create
-  Client from the UI (Platform Admin only - not public signup), guided
-  create-client-then-create-first-user flow, edit client name, create/list
-  users per client, reset password, change email - each wrapping the
-  already-proven `db.js` functions the CLI scripts use today. Temporary
-  passwords and new API keys shown exactly once via a custom in-app result
-  modal with a Copy button, never logged or stored again. All mutations write
-  an `audit_log` entry (table already exists, from 6c.1). `create-client.js`
-  and `create-platform-admin.js` stay CLI-only for platform-admin-granting/
-  initial-bootstrap reasons; existing CLI scripts remain as emergency tools
-  even once the UI actions exist.
 - **Phase 6c.3 (approved, not started) - Client status and API key
   management.** Suspend/reactivate (no data deletion; invalidates all human
   sessions and rejects API-key/control-token/display-token access immediately,
