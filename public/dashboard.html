@@ -419,12 +419,26 @@
         <div id="createRoomRow" class="create-room-row">
             <input type="text" id="newRoomSlug" placeholder="New room name (e.g. main-stage)"
                    onkeypress="if(event.key==='Enter') createRoom()">
-            <button onclick="createRoom()" class="nav-link" style="background:#2e7d32;border-color:#2e7d32;color:white;cursor:pointer;">➕ Create Room</button>
+            <button onclick="createRoom(this)" class="nav-link" style="background:#2e7d32;border-color:#2e7d32;color:white;cursor:pointer;">➕ Create Room</button>
         </div>
     </div>
 
     <div id="roomsContainer" class="rooms-grid">
         <div class="loading">Loading rooms...</div>
+    </div>
+
+    <!-- Generic modal shell (dashboard UX fix), same pattern as control.html's
+         Take Over modal and the Phase 6c admin pages: custom overlay, never
+         alert()/prompt()/confirm(), focus moves into the dialog on open and
+         back to the trigger element on close, Escape and click-outside both
+         close safely. Used for the Room Links modal (room creation / New
+         Links) and its regenerate-confirmation step. max-height/overflow-y
+         so the link fields never force the page itself to scroll/overflow
+         on a short mobile viewport. -->
+    <div id="modalOverlay" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 1000; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box;" onclick="if (event.target === this) closeModal();">
+        <div id="modalBox" role="dialog" aria-modal="true" aria-labelledby="modalTitle" tabindex="-1" style="background: #1a1a1a; border: 1px solid #333; border-radius: 12px; padding: 24px; max-width: 480px; width: 100%; box-sizing: border-box; box-shadow: 0 8px 32px rgba(0,0,0,0.5); outline: none; max-height: 90vh; overflow-y: auto;">
+            <div id="modalContent"></div>
+        </div>
     </div>
 
     <script>
@@ -497,7 +511,7 @@
             document.getElementById('createRoomRow').style.display = isPlatformAdmin ? 'none' : 'flex';
         }
 
-        async function createRoom() {
+        async function createRoom(triggerEl) {
             const input = document.getElementById('newRoomSlug');
             const slug = input.value.trim();
             if (!slug) return;
@@ -515,35 +529,182 @@
                 }
                 input.value = '';
                 await fetchRooms();
-                alert(`✅ Room "${slug}" created.\n\nControl:\n${data.controlUrl}\n\nDisplay:\n${data.displayUrl}\n\n(Save these now - the control link is the only way to operate this room.)`);
+                openRoomLinksModal('Room created', slug, data.controlUrl, data.displayUrl, triggerEl);
             } catch (error) {
                 console.error('Error creating room:', error);
                 alert('❌ Failed to create room. Please try again.');
             }
         }
 
-        async function regenerateLinks(id) {
+        function regenerateLinks(id, triggerEl) {
             const room = roomsData.find(r => r.id === id);
             if (!room) return;
+            openModal(renderRegenerateConfirm(room), triggerEl);
+        }
 
-            const confirmMsg = room.clientName
-                ? `Regenerate links for "${room.slug}" belonging to client "${room.clientName}"? The old control/display links will stop working immediately.`
-                : `Regenerate links for "${room.slug}"? The old control/display links will stop working immediately.`;
-            if (!confirm(confirmMsg)) return;
+        function renderRegenerateConfirm(room) {
+            const message = room.clientName
+                ? `Regenerate links for "${escapeHtml(room.slug)}" belonging to client "${escapeHtml(room.clientName)}"? The old control/display links will stop working immediately.`
+                : `Regenerate links for "${escapeHtml(room.slug)}"? The old control/display links will stop working immediately.`;
+            return `
+                <h2 id="modalTitle" style="margin:0 0 12px 0;font-size:1.2rem;color:#fafafa;">Regenerate links?</h2>
+                <p style="margin:0 0 20px 0;color:#ccc;font-size:0.9rem;line-height:1.5;">${message}</p>
+                <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;">
+                    <button onclick="closeModal()" style="padding:10px 18px;border-radius:8px;border:1px solid #444;background:transparent;color:#ccc;cursor:pointer;font-size:0.9rem;">Cancel</button>
+                    <button onclick="confirmRegenerateLinks('${escapeHtml(room.id)}')" style="padding:10px 18px;border-radius:8px;border:none;background:#455a64;color:#fff;cursor:pointer;font-weight:600;font-size:0.9rem;">Regenerate</button>
+                </div>
+            `;
+        }
+
+        async function confirmRegenerateLinks(id) {
+            const room = roomsData.find(r => r.id === id);
+            if (!room) return;
 
             try {
                 const response = await authFetch(roomActionUrl(room, 'regenerate-tokens'), { method: 'POST' });
                 const data = await response.json();
                 if (!data.ok) {
+                    closeModal();
                     alert(`❌ ${data.error || 'Failed to regenerate links'}`);
                     return;
                 }
                 await fetchRooms();
-                alert(`✅ New links for "${room.slug}":\n\nControl:\n${data.controlUrl}\n\nDisplay:\n${data.displayUrl}`);
+                document.getElementById('modalContent').innerHTML = renderRoomLinksModal('New room links', room.slug, data.controlUrl, data.displayUrl);
             } catch (error) {
                 console.error('Error regenerating links:', error);
+                closeModal();
                 alert('❌ Failed to regenerate links. Please try again.');
             }
+        }
+
+        // ============================================================
+        // Generic modal machinery - see the HTML comment above #modalOverlay
+        // for the design rationale.
+        // ============================================================
+        let modalTriggerEl = null;
+
+        function handleModalKeydown(e) {
+            if (e.key === 'Escape') closeModal();
+        }
+
+        function openModal(html, triggerEl) {
+            modalTriggerEl = triggerEl || null;
+            document.getElementById('modalContent').innerHTML = html;
+            document.getElementById('modalOverlay').style.display = 'flex';
+            document.getElementById('modalBox').focus();
+            document.addEventListener('keydown', handleModalKeydown);
+        }
+
+        // Clears modalContent's innerHTML on close, not just hides it - link
+        // values (and anything else shown in a modal) must not linger in the
+        // DOM after it's been dismissed.
+        function closeModal() {
+            document.getElementById('modalOverlay').style.display = 'none';
+            document.getElementById('modalContent').innerHTML = '';
+            document.removeEventListener('keydown', handleModalKeydown);
+            if (modalTriggerEl) modalTriggerEl.focus();
+            modalTriggerEl = null;
+        }
+
+        function flashCopied(buttonEl) {
+            const original = buttonEl.textContent;
+            buttonEl.textContent = '✅ Copied';
+            setTimeout(() => { buttonEl.textContent = original; }, 1500);
+        }
+
+        async function copyLink(elementId, buttonEl) {
+            const text = document.getElementById(elementId).value;
+            try {
+                await navigator.clipboard.writeText(text);
+                flashCopied(buttonEl);
+            } catch (error) {
+                console.error('Copy failed:', error);
+            }
+        }
+
+        // navigator.share() rejects with AbortError when the user cancels the
+        // native share sheet - that's not a failure, so it doesn't fall back
+        // to copying. Any other failure (or the API being unavailable, though
+        // the Share button is only rendered when it exists) falls back to a
+        // clean copy rather than an error alert.
+        async function shareLink(title, elementId, buttonEl) {
+            const url = document.getElementById(elementId).value;
+            try {
+                await navigator.share({ title, url });
+            } catch (error) {
+                if (error && error.name === 'AbortError') return;
+                console.error('Share failed, falling back to copy:', error);
+                await copyLink(elementId, buttonEl);
+            }
+        }
+
+        async function copyBothLinks(buttonEl) {
+            const control = document.getElementById('controlLinkText').value;
+            const display = document.getElementById('displayLinkText').value;
+            try {
+                await navigator.clipboard.writeText(`Control: ${control}\nDisplay: ${display}`);
+                flashCopied(buttonEl);
+            } catch (error) {
+                console.error('Copy failed:', error);
+            }
+        }
+
+        async function shareBothLinks(roomSlug, buttonEl) {
+            const control = document.getElementById('controlLinkText').value;
+            const display = document.getElementById('displayLinkText').value;
+            try {
+                await navigator.share({ title: roomSlug, text: `Control: ${control}\nDisplay: ${display}` });
+            } catch (error) {
+                if (error && error.name === 'AbortError') return;
+                console.error('Share failed, falling back to copy:', error);
+                await copyBothLinks(buttonEl);
+            }
+        }
+
+        const LINK_BTN_STYLE = 'padding:8px 12px;border-radius:6px;border:1px solid #444;background:#1a1a1a;color:#ccc;cursor:pointer;font-size:0.8rem;white-space:nowrap;';
+        const LINK_SECONDARY_ROW_BTN_STYLE = 'padding:8px 14px;border-radius:6px;border:1px solid #444;background:transparent;color:#ccc;cursor:pointer;font-size:0.82rem;white-space:nowrap;';
+
+        function renderLinkField(labelText, inputId, url, shareTitle, canShare) {
+            return `
+                <div style="margin-bottom:16px;">
+                    <label style="display:block;font-size:0.78rem;color:#999;text-transform:uppercase;margin-bottom:6px;">${escapeHtml(labelText)}</label>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                        <input id="${inputId}" type="text" readonly value="${escapeHtml(url)}" onclick="this.select()" style="flex:1;min-width:0;padding:10px 12px;border-radius:6px;border:1px solid #333;background:#0a0a0a;color:#e5e5e5;font-family:'Courier New',monospace;font-size:0.78rem;box-sizing:border-box;overflow-x:auto;">
+                        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                            <button onclick="copyLink('${inputId}', this)" style="${LINK_BTN_STYLE}">📋 Copy</button>
+                            ${canShare ? `<button onclick="shareLink('${escapeHtml(shareTitle)}', '${inputId}', this)" style="${LINK_BTN_STYLE}">📤 Share</button>` : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Reused for room creation, New Links regeneration, and (per the
+        // requirement) any other room-card action that displays control/
+        // display links. Deliberately calm wording, no "save this now" /
+        // "cannot be recovered" language - links can be reopened from the
+        // room card or regenerated later, and regeneration is always its own
+        // separately-confirmed step (never triggered by opening this modal).
+        function renderRoomLinksModal(title, roomSlug, controlUrl, displayUrl) {
+            const canShare = typeof navigator.share === 'function';
+            return `
+                <h2 id="modalTitle" style="margin:0 0 4px 0;font-size:1.2rem;color:#fafafa;">${escapeHtml(title)}</h2>
+                <p style="margin:0 0 14px 0;color:#f5f5f5;font-size:0.95rem;font-weight:600;">${escapeHtml(roomSlug)}</p>
+                <p style="margin:0 0 20px 0;color:#999;font-size:0.85rem;line-height:1.5;">Use the control link for the operator and the display link for the presentation screen. You can open these links again from the room card.</p>
+                ${renderLinkField('Control link', 'controlLinkText', controlUrl, `${roomSlug} - Control`, canShare)}
+                ${renderLinkField('Display link', 'displayLinkText', displayUrl, `${roomSlug} - Display`, canShare)}
+                <div style="display:flex;justify-content:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:20px;">
+                    <button onclick="copyBothLinks(this)" style="${LINK_SECONDARY_ROW_BTN_STYLE}">📋 Copy both links</button>
+                    ${canShare ? `<button onclick="shareBothLinks('${escapeHtml(roomSlug)}', this)" style="${LINK_SECONDARY_ROW_BTN_STYLE}">📤 Share both links</button>` : ''}
+                </div>
+                <div style="display:flex;justify-content:flex-end;">
+                    <button onclick="closeModal()" style="padding:10px 18px;border-radius:8px;border:none;background:#2e7d32;color:#fff;cursor:pointer;font-weight:600;font-size:0.9rem;">Close</button>
+                </div>
+            `;
+        }
+
+        function openRoomLinksModal(title, roomSlug, controlUrl, displayUrl, triggerEl) {
+            openModal(renderRoomLinksModal(title, roomSlug, controlUrl, displayUrl), triggerEl);
         }
 
         // Load saved card order from localStorage
@@ -728,7 +889,7 @@
                                 </a>
                             </div>
                             <div class="room-actions-row">
-                                <button onclick="regenerateLinks('${escapeHtml(room.id)}')" class="action-btn secondary-action" style="background:#455a64;border-color:#455a64;color:white;">
+                                <button onclick="regenerateLinks('${escapeHtml(room.id)}', this)" class="action-btn secondary-action" style="background:#455a64;border-color:#455a64;color:white;">
                                     🔄 New Links
                                 </button>
                                 <button onclick="deleteRoom('${escapeHtml(room.id)}')" class="action-btn danger secondary-action">
