@@ -197,6 +197,41 @@ function requireDashboardAuth(req, res, next) {
   next();
 }
 
+// Phase 6c: the Platform Admin client-management UI and its account-management
+// endpoints must be reachable ONLY by a logged-in Platform Admin human - a
+// client API key must never work here, even a platform-admin client's own key,
+// unlike requireDashboardAuth's Bearer-or-session fallback used everywhere
+// else. So this deliberately has no Bearer branch at all: no Authorization
+// header is ever inspected. Otherwise mirrors requireDashboardAuth's session
+// branch exactly (must-change-password gate, Origin/CSRF check on mutations,
+// req.client resolved server-side from the session's user.client_id).
+function requireAdminSession(req, res, next) {
+  const rawToken = parseCookies(req)[SESSION_COOKIE];
+  const user = db.getSessionUser(rawToken);
+  if (!user) {
+    return res.status(401).json({ ok: false, error: 'Not authenticated' });
+  }
+
+  if (['POST', 'DELETE', 'PUT', 'PATCH'].includes(req.method) && !isSameOrigin(req)) {
+    return res.status(403).json({ ok: false, error: 'Cross-origin request rejected' });
+  }
+
+  if (user.must_change_password) {
+    return res.status(403).json({ ok: false, error: 'Password change required', mustChangePassword: true });
+  }
+
+  const client = db.getClientById(user.client_id);
+  if (!client) {
+    return res.status(401).json({ ok: false, error: 'Not authenticated' });
+  }
+
+  req.client = client;
+  req.user = user;
+  req.sessionToken = rawToken;
+  req.authMethod = 'session';
+  next();
+}
+
 module.exports = {
   requireClientAuth,
   resolveOwnedRoom,
@@ -208,5 +243,6 @@ module.exports = {
   setSessionCookie,
   clearSessionCookie,
   requireSession,
-  requireDashboardAuth
+  requireDashboardAuth,
+  requireAdminSession
 };

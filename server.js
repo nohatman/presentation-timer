@@ -809,6 +809,35 @@ app.post('/api/admin/rooms/:id/regenerate-tokens', auth.requireDashboardAuth, au
 });
 
 // ============================================
+// REST API - Platform Admin client-management UI (Phase 6c.1, read-only)
+//
+// requireAdminSession deliberately has no Bearer branch - a client API key,
+// even a platform-admin client's own key, can never reach these endpoints,
+// only a logged-in Platform Admin human session. Read-only in 6c.1: no
+// create/edit/suspend/reset/rotate actions yet (Phase 6c.2/6c.3).
+// ============================================
+
+const adminClientAuth = [auth.requireAdminSession, auth.requirePlatformAdmin];
+
+app.get('/api/admin/clients', ...adminClientAuth, (req, res) => {
+  res.json({ ok: true, clients: db.getClientsWithCounts() });
+});
+
+app.get('/api/admin/clients/:id', ...adminClientAuth, (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    return res.status(400).json({ ok: false, error: 'Invalid client id' });
+  }
+
+  const detail = db.getClientDetail(id);
+  if (!detail) {
+    return res.status(404).json({ ok: false, error: 'Client not found' });
+  }
+
+  res.json({ ok: true, ...detail });
+});
+
+// ============================================
 // REST API for Bitfocus Companion
 //
 // Addressing is unchanged (roomId in the URL is still the human slug); the only
@@ -1120,6 +1149,36 @@ app.get('/login', (req, res) => {
 
 app.get('/change-password', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'change-password.html'));
+});
+
+// Phase 6c: Platform Admin client-management pages. Unlike /dashboard above
+// (which serves its shell unconditionally and relies entirely on the API
+// layer to gate real data), these get a server-side redirect too - deliberate
+// defense-in-depth for a more sensitive, cross-tenant-data area: no session at
+// all -> /login; a valid session that isn't a platform admin -> /dashboard
+// (never reveals that admin pages exist, just bounces to the page they do
+// have access to). The API layer (requireAdminSession + requirePlatformAdmin)
+// still independently gates every byte of real data regardless of how this
+// route was reached.
+function requirePlatformAdminPage(req, res, next) {
+  const rawToken = auth.parseCookies(req).session;
+  const user = db.getSessionUser(rawToken);
+  if (!user) {
+    return res.redirect('/login');
+  }
+  const client = db.getClientById(user.client_id);
+  if (!client || !client.is_platform_admin) {
+    return res.redirect('/dashboard');
+  }
+  next();
+}
+
+app.get('/admin/clients', requirePlatformAdminPage, (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin-clients.html'));
+});
+
+app.get('/admin/clients/:id', requirePlatformAdminPage, (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin-client-detail.html'));
 });
 
 // Load persisted rooms before starting

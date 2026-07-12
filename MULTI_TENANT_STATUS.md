@@ -6,6 +6,63 @@ full design brief this work follows.
 
 ## Completed phases
 
+### Phase 6c.1 — Platform Admin client-management UI (read-only)
+- New pages `/admin/clients` (list) and `/admin/clients/:id` (detail), reachable
+  only by a logged-in Platform Administrator - no create/edit/suspend/reset/
+  rotate actions yet (6c.2/6c.3). "Manage Clients" nav entry added to the
+  Master Dashboard, shown only when `isPlatformAdmin` (same gating already
+  used for the existing platform-admin badge/Start-All logic).
+- New `requireAdminSession` middleware (`auth.js`) - session-cookie-only, with
+  **no Bearer branch at all**, so a client API key (even a platform-admin
+  client's own key) can never reach this UI or its endpoints. Chained with the
+  existing `requirePlatformAdmin`. This is deliberately stricter than
+  `requireDashboardAuth`'s Bearer-or-session fallback used everywhere else in
+  the app - verified directly with a valid platform-admin Bearer key against
+  `/api/admin/clients`, confirmed 401.
+- The two page routes also get a server-side redirect gate (defense-in-depth
+  beyond `/dashboard`'s looser existing precedent, deliberate for this more
+  sensitive cross-tenant-data area): no session → `/login`; a valid session
+  that isn't a platform admin → `/dashboard` (never reveals the admin pages
+  exist). The API layer independently re-gates every byte of real data
+  regardless of how the page was reached.
+- `db.js`: `getClientsWithCounts()` (list + user/event/room counts via
+  correlated subqueries, avoiding the join-multiplication a naive multi-table
+  JOIN would cause) and `getClientDetail(id)` (profile + users + events/rooms
+  for one client) - both deliberately exclude `password_hash`,
+  `control_token`, `display_token`, `api_key_hash`, and `state_json`; this is
+  an administrative overview, not a place that should surface bearer
+  credentials. Verified directly: the detail JSON response for a real client
+  has no `password_hash`/`control_token` keys at all.
+- `audit_log` table + append-only `recordAuditLog()`/`getAuditLogForTarget()`
+  helpers added as the foundation for Phase 6c.2/6c.3's mutations - schema is
+  `id, actor_user_id, action, target_type, target_id, target_label,
+  created_at`, deliberately never holds passwords, temporary passwords, API
+  keys, session tokens, or room tokens. Nothing in the app calls
+  `recordAuditLog()` yet (no mutations exist in 6c.1); verified directly via a
+  standalone insert/read round-trip. The client detail page's "Recent
+  activity" section is intentionally deferred to 6c.2, once there are real
+  entries to show.
+- A **non-functional** "Licence / plan: Not configured" line is shown on the
+  client detail page, per explicit instruction - no `clients.plan` column, no
+  schema change, no enforcement. Purely a labelled placeholder pending
+  Phase 8's actual entitlement design.
+- Responsive from the start (not retrofitted, learning from Phase 6b): client
+  list is a card grid with the same 700px breakpoint convention as every
+  earlier phase; client detail's users/rooms lists use a div-based
+  "data-table" that collapses to labelled stacked rows below 700px rather
+  than a `<table>` that could overflow.
+- Verified (21/21 Playwright + 8/8 curl security checks): platform-admin
+  session succeeds on both endpoints; normal-client session gets 403; no
+  session gets 401; a valid Bearer API key gets 401 (proves the no-Bearer
+  requirement); a nonexistent client id gets 404, not 403/500; page-route
+  redirects correct for all three auth states; cross-client isolation
+  confirmed (a client's detail page shows only that client's own users/
+  events/rooms, verified against 4 seeded clients including one with zero
+  users); no horizontal overflow at 360/390/430px or 1400px on either page;
+  "Manage Clients" nav entry visible only for platform admins; normal Master
+  Dashboard regression-checked and confirmed unaffected.
+- **Browser-tested and approved locally; Railway deployment pending.**
+
 ### Phase 6b — Master Dashboard responsive redesign
 - Root causes of mobile overflow, found by inspection (same method as the
   Phase 4 control.html fix): `.rooms-grid`'s `minmax(400px, 1fr)` never
@@ -44,8 +101,9 @@ full design brief this work follows.
   of the approved scope).
 - Did not build the Platform Admin client-management area (Phase 6c) or the
   licence/entitlement system (Phase 8), per explicit instruction.
-- **Approved and complete**, per direct browser/Playwright testing including
-  visual screenshot review at every required width.
+- **Browser-tested and approved locally; Railway deployment pending.** Will be
+  marked fully complete once deployed and verified in production, consistent
+  with every earlier phase's completion criteria.
 
 ### Phase 6a — Session authentication backend + human login
 - New `users` table: every user (including platform admins) links to a `client_id`
@@ -282,25 +340,44 @@ invalidates all of that user's existing sessions).
   **DONE (Phase 6a)**.
 - ~~Persistent session/cookie-based login, replacing the raw API key sitting
   in `localStorage`~~ **DONE (Phase 6a)**.
-- A client details page. **Not started** - Phase 6c candidate.
-- A client list view for Platform Admin (currently CLI-only via
-  `list-clients.js`/`list-users.js`). **Not started** - Phase 6c candidate.
+- ~~A client details page~~ **DONE (Phase 6c.1)**.
+- ~~A client list view for Platform Admin (currently CLI-only via
+  `list-clients.js`/`list-users.js`)~~ **DONE (Phase 6c.1)**.
 - Client profile/status/API key management from the UI (currently CLI-only:
-  create/rotate via scripts). **Not started** - Phase 6c candidate.
-- Events and rooms shown under each client in the UI (currently: one default
-  event per client, not surfaced anywhere in the UI). **Not started**.
+  create/rotate via scripts). **Not started** - Phase 6c.2/6c.3 candidate.
+- ~~Events and rooms shown under each client in the UI~~ **DONE (Phase 6c.1)**,
+  on the client detail page.
 
 ## Remaining planned phases
 
 - **Phase 5 - Active Rooms visibility.** Fold fully into the authenticated
   dashboard (largely already true post-Phase 2/3); add an optional per-room
   "hidden from Active Rooms" operational flag (not a security control).
-- **Phase 6c (candidate) - Platform Admin client-management UI.** Client list
-  view, client detail page, client profile/API-key management from the UI
-  (currently CLI-only). Not started, not yet approved as its own phase - the
-  `users` table design from 6a is already forward-compatible with it
-  (multiple users per client, already-resolved platform-admin status) with
-  no rework needed when it's picked up.
+- **Phase 6c.2 (approved, not started) - Client and user management.** Create
+  Client from the UI (Platform Admin only - not public signup), guided
+  create-client-then-create-first-user flow, edit client name, create/list
+  users per client, reset password, change email - each wrapping the
+  already-proven `db.js` functions the CLI scripts use today. Temporary
+  passwords and new API keys shown exactly once via a custom in-app result
+  modal with a Copy button, never logged or stored again. All mutations write
+  an `audit_log` entry (table already exists, from 6c.1). `create-client.js`
+  and `create-platform-admin.js` stay CLI-only for platform-admin-granting/
+  initial-bootstrap reasons; existing CLI scripts remain as emergency tools
+  even once the UI actions exist.
+- **Phase 6c.3 (approved, not started) - Client status and API key
+  management.** Suspend/reactivate (no data deletion; invalidates all human
+  sessions and rejects API-key/control-token/display-token access immediately,
+  including currently-connected sockets, not just new connections;
+  reactivation restores access without regenerating any credentials) and API
+  key rotation (old key dead immediately, new key shown once via the same
+  custom modal pattern). Highest-risk slice of Phase 6c since it touches live
+  auth enforcement - saved for last once the surrounding UI is already
+  trusted. Requires fixing a real gap found during the Phase 6c design review:
+  `getSessionUser()` currently checks only session expiry, not `users.status`
+  or the linked client's `status` - only the API-key path
+  (`getClientByApiKey`) enforces `status === 'active'` today, so a suspended
+  client's already-logged-in session-authenticated users would otherwise keep
+  working until their session naturally expires (up to 30 days).
 - **Phase 7 (candidate) - Optional per-room Shared control mode.** Analysis
   given (not implemented), decided **not** to build now. Binding constraints
   for whenever it is built:

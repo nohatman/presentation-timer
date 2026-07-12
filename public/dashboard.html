@@ -406,6 +406,7 @@
             <div class="header-actions">
                 <div class="nav-links">
                     <a href="/" class="nav-link">🏠 Home</a>
+                    <a href="/admin/clients" id="manageClientsLink" class="nav-link" style="display:none;">🏢 Manage Clients</a>
                     <button onclick="logout()" class="nav-link" style="cursor:pointer;">🚪 Logout</button>
                 </div>
                 <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; justify-content: flex-end;">
@@ -487,6 +488,7 @@
                 console.error('Error fetching whoami:', error);
             }
             document.getElementById('platformAdminBadge').style.display = isPlatformAdmin ? 'inline-block' : 'none';
+            document.getElementById('manageClientsLink').style.display = isPlatformAdmin ? 'inline-block' : 'none';
             // Platform-wide Start All doesn't exist - see Phase 3 notes. Client-scoped
             // Start All (the normal case) is completely unaffected.
             document.getElementById('startAllBtn').style.display = isPlatformAdmin ? 'none' : 'inline-block';

@@ -85,6 +85,21 @@ db.exec(`
     created_at INTEGER NOT NULL,
     expires_at INTEGER NOT NULL
   );
+
+  -- Append-only record of Platform Admin mutations (Phase 6c). Never holds
+  -- passwords, temporary passwords, API keys, session tokens, or room tokens -
+  -- only enough to answer "who did what to which client/user, when". Written
+  -- exclusively through recordAuditLog() below; nothing in the app updates or
+  -- deletes a row once inserted.
+  CREATE TABLE IF NOT EXISTS audit_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    actor_user_id INTEGER NOT NULL REFERENCES users(id),
+    action TEXT NOT NULL,
+    target_type TEXT NOT NULL,
+    target_id INTEGER,
+    target_label TEXT,
+    created_at INTEGER NOT NULL
+  );
 `);
 
 // Migration: CREATE TABLE IF NOT EXISTS above doesn't retroactively add columns to
@@ -173,6 +188,53 @@ function listClients() {
     GROUP BY clients.id
     ORDER BY clients.name
   `).all();
+}
+
+// Platform Admin UI (Phase 6c.1) client list. Separate from listClients()
+// (used by the CLI) because this also needs user/event counts - correlated
+// subqueries rather than additional JOINs, since joining users directly
+// alongside rooms would multiply the room_count via the cartesian product.
+function getClientsWithCounts() {
+  return db.prepare(`
+    SELECT clients.id, clients.name, clients.status, clients.is_platform_admin, clients.created_at,
+           (SELECT COUNT(*) FROM events WHERE events.client_id = clients.id) AS event_count,
+           (SELECT COUNT(*) FROM rooms
+              JOIN events ON events.id = rooms.event_id
+              WHERE events.client_id = clients.id) AS room_count,
+           (SELECT COUNT(*) FROM users WHERE users.client_id = clients.id) AS user_count
+    FROM clients
+    ORDER BY clients.name
+  `).all();
+}
+
+// Platform Admin UI (Phase 6c.1) client detail: profile + every user/event/room
+// belonging to this client. Never selects password_hash, control_token,
+// display_token, api_key_hash, or state_json - this is an administrative
+// overview, not a place that should surface bearer credentials.
+function getClientDetail(id) {
+  const client = db.prepare(
+    'SELECT id, name, status, is_platform_admin, created_at FROM clients WHERE id = ?'
+  ).get(id);
+  if (!client) return null;
+
+  const users = db.prepare(`
+    SELECT id, email, must_change_password, status, created_at
+    FROM users WHERE client_id = ? ORDER BY email
+  `).all(id);
+
+  const events = db.prepare(`
+    SELECT id, name, created_at FROM events WHERE client_id = ? ORDER BY created_at ASC
+  `).all(id);
+
+  const rooms = db.prepare(`
+    SELECT rooms.id, rooms.event_id, rooms.slug, rooms.hidden, rooms.created_at, rooms.updated_at
+    FROM rooms
+    JOIN events ON events.id = rooms.event_id
+    WHERE events.client_id = ?
+    ORDER BY rooms.created_at ASC
+  `).all(id);
+
+  return { client, users, events, rooms };
 }
 
 // Generates a brand new key for an existing client, invalidating the old one.
@@ -459,6 +521,32 @@ function deleteSession(rawToken) {
   db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(hashApiKey(rawToken));
 }
 
+// ---- Audit log (Phase 6c) ----
+
+// The only write path into audit_log - nothing else in the app INSERTs,
+// UPDATEs, or DELETEs a row here, so the table is append-only in practice.
+// Callers must never pass a password, temporary password, API key, session
+// token, or room token in `targetLabel` - it's for display only (e.g. a
+// client name or user email at the time of the action).
+function recordAuditLog({ actorUserId, action, targetType, targetId = null, targetLabel = null }) {
+  db.prepare(`
+    INSERT INTO audit_log (actor_user_id, action, target_type, target_id, target_label, created_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(actorUserId, action, targetType, targetId, targetLabel, Date.now());
+}
+
+function getAuditLogForTarget(targetType, targetId, limit = 20) {
+  return db.prepare(`
+    SELECT audit_log.id, audit_log.action, audit_log.target_type, audit_log.target_id,
+           audit_log.target_label, audit_log.created_at, users.email AS actor_email
+    FROM audit_log
+    JOIN users ON users.id = audit_log.actor_user_id
+    WHERE audit_log.target_type = ? AND audit_log.target_id = ?
+    ORDER BY audit_log.created_at DESC
+    LIMIT ?
+  `).all(targetType, targetId, limit);
+}
+
 // One-shot bootstrap for the first Platform Administrator human login, for the
 // same reason the Phase 3 platform-admin client bootstrap exists: the
 // production database only lives on Railway's volume, unreachable from a
@@ -701,6 +789,8 @@ module.exports = {
   getClientByName,
   getClientById,
   listClients,
+  getClientsWithCounts,
+  getClientDetail,
   // users
   generateTempPassword,
   createUser,
@@ -715,6 +805,9 @@ module.exports = {
   createSession,
   getSessionUser,
   deleteSession,
+  // audit log
+  recordAuditLog,
+  getAuditLogForTarget,
   // rooms
   createRoom,
   getRoomById,
