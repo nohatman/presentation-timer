@@ -36,8 +36,15 @@
         }
         .header-info {
             display: flex;
+            flex-wrap: wrap;
             gap: 2rem;
             align-items: center;
+        }
+        .header-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            align-items: flex-end;
         }
         .stat {
             text-align: center;
@@ -184,11 +191,38 @@
             font-weight: 600;
             color: #e5e5e5;
         }
+        /* Phase 6b: three-tier visual hierarchy for room-card actions, per explicit
+           decision - every action stays visible and reachable (no menu, nothing
+           hidden), just sized/weighted differently:
+             1. Primary timer action (Start/Pause/Resume) - full width, boldest.
+             2. Open/view actions (Control Panel, Display) - own row, easy to reach,
+                keep their existing distinct colours.
+             3. Secondary/destructive (New Links, Delete) - smaller, muted; Delete
+                keeps its red .danger colour so it still reads as destructive. */
         .room-actions {
+            margin-top: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.6rem;
+        }
+        .room-actions-row {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 0.75rem;
-            margin-top: 1rem;
+            gap: 0.6rem;
+        }
+        .action-btn.primary-action {
+            padding: 14px 16px;
+            font-size: 1rem;
+            font-weight: 700;
+        }
+        .action-btn.secondary-action {
+            padding: 7px 10px;
+            font-size: 0.78rem;
+            font-weight: 500;
+            opacity: 0.9;
+        }
+        .action-btn.secondary-action:hover {
+            opacity: 1;
         }
         .action-btn {
             padding: 10px 16px;
@@ -269,7 +303,22 @@
         }
         .nav-links {
             display: flex;
+            flex-wrap: wrap;
             gap: 1rem;
+        }
+        .create-room-row {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+        .create-room-row input {
+            flex: 1;
+            max-width: 320px;
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: 1px solid #333;
+            background: #101010;
+            color: #e5e5e5;
         }
         .nav-link {
             padding: 8px 16px;
@@ -284,6 +333,56 @@
         .nav-link:hover {
             background: #252525;
             border-color: #4caf50;
+        }
+
+        /* Phase 6b mobile fix. Root causes found by inspection (not guesswork,
+           same method as the Phase 4 control.html fix):
+             1. .rooms-grid used minmax(400px, 1fr) - a hard per-card minimum
+                width that never shrank regardless of viewport.
+             2. body had a flat 20px padding on every side, eating into the
+                already-scarce width on a narrow phone.
+             3. .header-info and .nav-links were flex with no flex-wrap of their
+                own - the outer .header could wrap them as a unit, but nothing
+                inside could wrap further once it landed on its own line.
+           Desktop rules above this block are untouched. */
+        @media (max-width: 700px) {
+            body {
+                padding: 10px;
+            }
+            .header {
+                padding: 1.1rem;
+                margin-bottom: 1rem;
+                gap: 0.75rem;
+            }
+            .header h1 {
+                font-size: 1.3rem;
+            }
+            .header-info {
+                gap: 1rem;
+                width: 100%;
+                justify-content: space-between;
+            }
+            .header-actions {
+                align-items: flex-start;
+                width: 100%;
+            }
+            .nav-link {
+                padding: 6px 12px;
+                font-size: 0.8rem;
+            }
+            .rooms-grid {
+                grid-template-columns: 1fr;
+                gap: 1rem;
+            }
+            .room-card {
+                padding: 1rem;
+            }
+            .create-room-row {
+                flex-direction: column;
+            }
+            .create-room-row input {
+                max-width: 100%;
+            }
         }
     </style>
 </head>
@@ -304,7 +403,7 @@
                 <div class="stat-value" id="totalConnections">0</div>
                 <div class="stat-label">Connections</div>
             </div>
-            <div style="display: flex; flex-direction: column; gap: 0.75rem; align-items: flex-end;">
+            <div class="header-actions">
                 <div class="nav-links">
                     <a href="/" class="nav-link">🏠 Home</a>
                     <button onclick="logout()" class="nav-link" style="cursor:pointer;">🚪 Logout</button>
@@ -316,10 +415,9 @@
                 </div>
             </div>
         </div>
-        <div id="createRoomRow" style="display:flex;gap:0.5rem;margin-top:1rem;">
+        <div id="createRoomRow" class="create-room-row">
             <input type="text" id="newRoomSlug" placeholder="New room name (e.g. main-stage)"
-                   onkeypress="if(event.key==='Enter') createRoom()"
-                   style="flex:1;max-width:320px;padding:8px 12px;border-radius:6px;border:1px solid #333;background:#101010;color:#e5e5e5;">
+                   onkeypress="if(event.key==='Enter') createRoom()">
             <button onclick="createRoom()" class="nav-link" style="background:#2e7d32;border-color:#2e7d32;color:white;cursor:pointer;">➕ Create Room</button>
         </div>
     </div>
@@ -569,10 +667,10 @@
                     ? `<div style="font-size:0.75rem;color:#ba68c8;margin-top:2px;">Client: ${escapeHtml(room.clientName)}</div>`
                     : '';
                 const pauseBtn = room.mode === 'running'
-                    ? `<button onclick="toggleRoomTimer('${escapeHtml(room.id)}', 'running')" class="action-btn" style="background:#ff9800;border-color:#ff9800;color:white;">⏸️ Pause</button>`
+                    ? `<button onclick="toggleRoomTimer('${escapeHtml(room.id)}', 'running')" class="action-btn primary-action" style="background:#ff9800;border-color:#ff9800;color:white;">⏸️ Pause</button>`
                     : room.mode === 'paused'
-                        ? `<button onclick="toggleRoomTimer('${escapeHtml(room.id)}', 'paused')" class="action-btn" style="background:#4caf50;border-color:#4caf50;color:white;">▶️ Resume</button>`
-                        : `<button onclick="toggleRoomTimer('${escapeHtml(room.id)}', 'stopped')" class="action-btn" style="background:#4caf50;border-color:#4caf50;color:white;">▶️ Start</button>`;
+                        ? `<button onclick="toggleRoomTimer('${escapeHtml(room.id)}', 'paused')" class="action-btn primary-action" style="background:#4caf50;border-color:#4caf50;color:white;">▶️ Resume</button>`
+                        : `<button onclick="toggleRoomTimer('${escapeHtml(room.id)}', 'stopped')" class="action-btn primary-action" style="background:#4caf50;border-color:#4caf50;color:white;">▶️ Start</button>`;
 
                 return `
                     <div class="room-card ${room.mode}"
@@ -619,18 +717,22 @@
 
                         <div class="room-actions">
                             ${pauseBtn}
-                            <a href="${room.controlUrl}" class="action-btn control" target="_blank">
-                                📱 Control Panel
-                            </a>
-                            <a href="${room.displayUrl}" class="action-btn display" target="_blank">
-                                🖥️ Display
-                            </a>
-                            <button onclick="regenerateLinks('${escapeHtml(room.id)}')" class="action-btn" style="background:#455a64;border-color:#455a64;color:white;">
-                                🔄 New Links
-                            </button>
-                            <button onclick="deleteRoom('${escapeHtml(room.id)}')" class="action-btn danger">
-                                🗑️ Delete
-                            </button>
+                            <div class="room-actions-row">
+                                <a href="${room.controlUrl}" class="action-btn control" target="_blank">
+                                    📱 Control Panel
+                                </a>
+                                <a href="${room.displayUrl}" class="action-btn display" target="_blank">
+                                    🖥️ Display
+                                </a>
+                            </div>
+                            <div class="room-actions-row">
+                                <button onclick="regenerateLinks('${escapeHtml(room.id)}')" class="action-btn secondary-action" style="background:#455a64;border-color:#455a64;color:white;">
+                                    🔄 New Links
+                                </button>
+                                <button onclick="deleteRoom('${escapeHtml(room.id)}')" class="action-btn danger secondary-action">
+                                    🗑️ Delete
+                                </button>
+                            </div>
                         </div>
                     </div>
                 `;

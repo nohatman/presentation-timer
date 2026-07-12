@@ -6,6 +6,47 @@ full design brief this work follows.
 
 ## Completed phases
 
+### Phase 6b — Master Dashboard responsive redesign
+- Root causes of mobile overflow, found by inspection (same method as the
+  Phase 4 control.html fix): `.rooms-grid`'s `minmax(400px, 1fr)` never
+  shrank below 400px per card regardless of viewport; `body` had a flat 20px
+  padding on every side; `.header-info` and `.nav-links` were flex with no
+  `flex-wrap` of their own (only the outer `.header` wrapped); `#createRoomRow`/
+  `#newRoomSlug` used inline `style=""` attributes, which would have silently
+  defeated any later `@media` override (inline styles beat any selector short
+  of `!important`) - converted to CSS classes (`.create-room-row`) first.
+- Room-card actions restructured into an explicit three-tier visual hierarchy,
+  per approved decision - every action stays visible and reachable on mobile,
+  nothing hidden behind a menu: (1) primary timer action (Start/Pause/Resume)
+  full-width and boldest; (2) Control Panel/Display on their own row, easy to
+  reach, keeping their existing distinct colours; (3) New Links/Delete smaller
+  and muted, with Delete keeping its red `.danger` colour so it still reads as
+  destructive.
+- `@media (max-width: 700px)` block added (same breakpoint convention as the
+  Phase 4 control.html fix): reduced body/header padding, `.rooms-grid`
+  collapses to a single column, header info/nav/bulk-action controls wrap and
+  compact, room-creation input/button stack vertically. Desktop rules above
+  the media query are untouched.
+- Verified with Playwright (22/22 checks passed): no horizontal overflow at
+  360px/390px/430px in both normal-client and Platform-Administrator dashboard
+  views; 1400px desktop grid confirmed still multi-column and visually
+  unchanged; full functionality regression - room creation, individual timer
+  Start/Pause/Resume (state-toggle-aware, not a fixed-target assertion),
+  Control Panel/Display links, New Links (regenerate), Delete, Start All/Stop
+  All/Start Selected, and drag-reorder - all confirmed working, plus
+  Phase 3's "Start All doesn't exist for Platform Admin" rule confirmed still
+  intact. A pre-existing, unrelated quirk was found (not a Phase 6b
+  regression - the drag-reorder JS was not touched by this phase): dragging a
+  card onto its immediate right-hand neighbour is a no-op because
+  `handleDrop` re-inserts the dragged item *before* the target, which lands
+  it back in its original slot when there are only two cards; dragging onto a
+  left-hand neighbour works correctly. Not fixed as part of this phase (out
+  of the approved scope).
+- Did not build the Platform Admin client-management area (Phase 6c) or the
+  licence/entitlement system (Phase 8), per explicit instruction.
+- **Approved and complete**, per direct browser/Playwright testing including
+  visual screenshot review at every required width.
+
 ### Phase 6a — Session authentication backend + human login
 - New `users` table: every user (including platform admins) links to a `client_id`
   NOT NULL - a platform-admin user is linked to whichever client already carries
@@ -71,9 +112,6 @@ full design brief this work follows.
 - **Deployed to Railway and browser-tested - approved.** Human login, forced
   password change, session persistence (reload/new tab), and logout all
   confirmed working in the real deployed environment, not just locally.
-- **Phase 6b (dashboard mobile responsive pass) not started** - explicitly
-  deferred until after the email-correction script below is deployed and
-  confirmed.
 
 ### Phase 1 — Data model & persistence (SQLite)
 - Replaced the flat `rooms.json` file with SQLite (`better-sqlite3`), via `db.js`.
@@ -218,13 +256,8 @@ invalidates all of that user's existing sessions).
 
 ## Known bugs / UX issues (captured, not fixed)
 
-- **Master Dashboard mobile responsive layout.** On initial mobile load, the
-  dashboard renders wider than the viewport and appears partially cropped/
-  zoomed; elements then shift and the layout settles into a better position
-  after a moment. Header controls and room cards need a proper responsive
-  layout for small screens. Not a Phase 4 regression - pre-existing. Deferred
-  as its own future UI/UX task; deliberately not bundled into any phase to
-  avoid a broad dashboard redesign as a side effect of unrelated work.
+- ~~Master Dashboard mobile responsive layout~~ **FIXED** (Phase 6b). See
+  Phase 6b above for root causes and verification detail.
 - ~~Control panel mobile responsive layout~~ **FIXED** (Phase 4 mobile pass).
   Root cause was `.container`'s `grid-template-columns: repeat(2,
   minmax(320px, 1fr))` and `.timer-control-row`'s fixed `185px 155px 1fr`
@@ -262,12 +295,6 @@ invalidates all of that user's existing sessions).
 - **Phase 5 - Active Rooms visibility.** Fold fully into the authenticated
   dashboard (largely already true post-Phase 2/3); add an optional per-room
   "hidden from Active Rooms" operational flag (not a security control).
-- **Phase 6b - Dashboard mobile responsive pass.** Not started - explicitly
-  deferred until 6a is deployed and browser-tested. Same method as the
-  control.html mobile fix in Phase 4: identify the actual offending
-  grid/width rules via inspection, not guesswork, then a scoped media-query
-  fix. Also removes the (now session-login-redundant) header space the old
-  API-key button used to occupy.
 - **Phase 6c (candidate) - Platform Admin client-management UI.** Client list
   view, client detail page, client profile/API-key management from the UI
   (currently CLI-only). Not started, not yet approved as its own phase - the
@@ -299,3 +326,42 @@ invalidates all of that user's existing sessions).
     controller/observer binary) - would likely require real per-operator
     identity, not just a shared control token. Noted as a distinct, larger,
     undesigned idea - not part of the Shared Control candidate phase above.
+- **Phase 8 (candidate) - Client licence / entitlement system.** Captured only
+  (this message), not designed in detail, not implemented, not scheduled. The
+  product may be offered commercially, free, or on a limited-time trial, so a
+  licence/entitlement concept is needed - **architecturally separate from
+  login authentication and user roles** (Phase 6a's `users`/`sessions`/
+  `is_platform_admin`). Authentication answers "who is this"; entitlement
+  answers "what are they allowed to have" - conflating the two would make
+  both harder to reason about independently. The natural home is almost
+  certainly on `clients` (the billing/licensing unit) rather than on
+  individual users, but the actual schema is deliberately not designed yet.
+  Requirements to design against when this phase is taken up:
+  - **Client plan**: Trial / Free / Standard / Pro (or equivalent) - a named
+    tier per client.
+  - **Licence status**: Trial / Active / Expired / Suspended / Cancelled -
+    distinct from plan (a client can be on the Pro plan but Suspended).
+  - Trial start and expiry dates; optional subscription/licence expiry
+    (not every plan need expire).
+  - Configurable limits: rooms, events, users (per-client caps, presumably
+    enforced at the same points that already create these entities today -
+    `POST /api/rooms`, `scripts/create-user.js`, etc.).
+  - Future feature entitlements - potentially Companion access, Shared
+    Control (Phase 7 above), branding, or other premium functionality. Not
+    designed now; flagged so Phase 7/Phase 6c work doesn't accidentally
+    assume universal access to every client.
+  - Clear in-app display of current plan/status and trial time remaining -
+    visible to the client, not just inferred from a 403 error.
+  - Platform Administrator visibility and management of each client's
+    licence - likely belongs alongside the Phase 6c client-management UI
+    once that exists, though the two are separate phases.
+  - **Graceful trial/licence expiry**: login and existing data must remain
+    accessible - only restricted actions (creating/operating rooms) get
+    blocked, with a clear renewal/contact message, not a hard lockout of the
+    account or a data-loss risk.
+  - **Manual licence activation initially** - no self-service billing flow,
+    consistent with the "manually provisioned" philosophy the rest of the
+    product already follows.
+  - **Payment-provider integration and pricing are explicitly deferred** -
+    not part of this phase's design scope until the commercial model itself
+    is decided.
