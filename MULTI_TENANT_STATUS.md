@@ -6,6 +6,57 @@ full design brief this work follows.
 
 ## Completed phases
 
+### Phase 6c.3 — Client status and API key rotation
+- Suspend/reactivate: `db.suspendClient(id)`/`db.reactivateClient(id)`, exposed
+  via `POST /api/admin/clients/:id/suspend` and `.../reactivate`
+  (`adminClientAuth`-gated, audit-logged as `client.suspend`/
+  `client.reactivate`). No data is deleted - only `clients.status` changes;
+  suspend also deletes that client's session rows outright, and
+  `db.getSessionUser()` now independently enforces `users.status = 'active'
+  AND clients.status = 'active'` on every lookup, not just session expiry -
+  closes the exact gap this phase existed to fix (a suspended client's
+  already-logged-in users no longer keep working for up to 30 days). New
+  human logins are blocked too: `verifyUserPassword()` now checks the linked
+  client's status, not just the user's.
+- Socket-level enforcement: `auth.resolveSocketAccess()` (the single function
+  `io.on('connection')` calls to gate every handshake) now rejects a
+  suspended client's control/display tokens - `db.getRoomByToken()` joins in
+  the owning client's status for this. Already-connected sockets are handled
+  separately: the suspend route calls a new `disconnectAllSocketsForClient()`,
+  mirroring the existing regenerate-tokens/delete-room disconnect pattern.
+- API key rotation promoted from CLI-only (`scripts/rotate-client-key.js`,
+  still works unchanged) to `POST /api/admin/clients/:id/rotate-key`
+  (audit-logged as `client.rotate_api_key`, never logging the raw key). New
+  key shown once via a calmly-worded result modal on the client detail page
+  ("For security, this key cannot be viewed again...") - Copy-only, no Share
+  button, matching the current admin secret-result pattern (Share is Phase 9
+  scope, not this phase).
+- API key timestamp metadata, decided during this phase's approval: two
+  nullable columns, `clients.api_key_created_at` and
+  `clients.api_key_rotated_at` (via `ensureColumn()`, no backfill). New
+  clients/keys get an accurate `api_key_created_at`; every rotation (CLI or
+  UI) stamps `api_key_rotated_at`; a client that predates these columns shows
+  both as `null`, rendered as "Not recorded" in the UI - never invented from
+  `clients.created_at`.
+- Client detail page: a Suspend/Reactivate button in the header (toggles by
+  current status, Suspend has its own confirm step explaining the
+  consequences), and a new "API Key" section showing both timestamps plus a
+  Rotate API Key button with its own confirm step.
+- Verified this session against a live server on a disposable scratch
+  database (not the shared dev/production database): a 32-check HTTP-level
+  script covering login/session/suspend/reactivate/rotate/audit-log/timestamp
+  behaviour, plus a 7-check direct verification of
+  `auth.resolveSocketAccess()` before/after suspension and after
+  reactivation. All 39 checks passed. Also confirmed: a normal client user
+  gets 403 from every Platform Admin client-management endpoint; a Bearer API
+  key (even with no cookie at all) gets 401 from the same endpoints, since
+  `requireAdminSession` still has no Bearer branch; no raw API key appears in
+  the audit log or any GET response.
+- **Browser-tested: pending.** Implementation complete and verified via
+  automated script (HTTP + direct socket-resolver checks); this phase is
+  intentionally stopped here awaiting your own browser click-through and
+  deployment approval before Phase 9 or Phase 10 begin.
+
 ### Phase 6c.2 — Client and user management
 - New mutations, all behind the same `adminClientAuth` (`requireAdminSession` +
   `requirePlatformAdmin`) chain as 6c.1's reads, so the no-Bearer/CSRF/404-not-
@@ -399,7 +450,8 @@ invalidates all of that user's existing sessions).
 - ~~A client list view for Platform Admin (currently CLI-only via
   `list-clients.js`/`list-users.js`)~~ **DONE (Phase 6c.1)**.
 - ~~Client profile management from the UI (create, edit name, users)~~ **DONE
-  (Phase 6c.2)**. Client status/API key rotation still CLI-only - Phase 6c.3.
+  (Phase 6c.2)**.
+- ~~Client status/API key rotation still CLI-only~~ **DONE (Phase 6c.3)**.
 - ~~Events and rooms shown under each client in the UI~~ **DONE (Phase 6c.1)**,
   on the client detail page.
 
@@ -408,20 +460,6 @@ invalidates all of that user's existing sessions).
 - **Phase 5 - Active Rooms visibility.** Fold fully into the authenticated
   dashboard (largely already true post-Phase 2/3); add an optional per-room
   "hidden from Active Rooms" operational flag (not a security control).
-- **Phase 6c.3 (approved, not started) - Client status and API key
-  management.** Suspend/reactivate (no data deletion; invalidates all human
-  sessions and rejects API-key/control-token/display-token access immediately,
-  including currently-connected sockets, not just new connections;
-  reactivation restores access without regenerating any credentials) and API
-  key rotation (old key dead immediately, new key shown once via the same
-  custom modal pattern). Highest-risk slice of Phase 6c since it touches live
-  auth enforcement - saved for last once the surrounding UI is already
-  trusted. Requires fixing a real gap found during the Phase 6c design review:
-  `getSessionUser()` currently checks only session expiry, not `users.status`
-  or the linked client's `status` - only the API-key path
-  (`getClientByApiKey`) enforces `status === 'active'` today, so a suspended
-  client's already-logged-in session-authenticated users would otherwise keep
-  working until their session naturally expires (up to 30 days).
 - **Phase 7 (candidate) - Optional per-room Shared control mode.** Analysis
   given (not implemented), decided **not** to build now. Binding constraints
   for whenever it is built:
@@ -486,3 +524,95 @@ invalidates all of that user's existing sessions).
   - **Payment-provider integration and pricing are explicitly deferred** -
     not part of this phase's design scope until the commercial model itself
     is decided.
+  - **Local-edition implication (noted, not designed):** a future Local Event
+    Server (Phase 10) will need offline-capable entitlement checking - most
+    likely activate-once online with a locally cached, signed entitlement, so
+    a licence-server outage never disables a live event. Exact offline grace
+    period, trial-tamper-resistance, and schema are deliberately left to this
+    phase's own design work, not decided here.
+- **Phase 9 (candidate) - UX consistency pass.** Not yet started. Four small,
+  independently-shippable items, deliberately kept separate from Phase 6c.3:
+  - Show/hide controls on every password field (`login.html`,
+    `change-password.html`) - accessible toggle with clear "Show
+    password"/"Hide password" labelling, not a browser-native prompt,
+    preserves the entered value and focus when toggled, doesn't touch
+    validation/authentication/storage.
+  - Consistent custom Copy/Share treatment across room links, temporary
+    passwords, and API-key result surfaces - porting the dashboard's Room
+    Links modal pattern (readonly input + Copy + `navigator.share`
+    feature-detected Share, not UA-sniffed) to `control.html`'s Share Links
+    button and the Platform Admin secret-result modals, both of which
+    currently fall short of that pattern.
+  - Replacing remaining native `alert()`/`confirm()`/`prompt()` calls in
+    those same affected flows, where appropriate.
+  - Companion setup guidance and documentation (install/connect steps,
+    Server URL vs Client API Key fields, how Railway-hosted and future
+    local-server URLs differ, connection-status meaning, troubleshooting) -
+    documentation only, no application code.
+- **Phase 10 (candidate) - Local Event Server.** Not yet started, not
+  designed in detail. Goal: an internet-independent Windows edition that
+  operates across a private venue LAN without Railway, with no terminal, npm
+  command, or manual `localhost` entry required from end users. A July 2026
+  repository review confirmed the large majority of the existing app already
+  supports this unchanged - dynamic control/display link generation from the
+  request host, an environment-aware session-cookie `Secure` flag (already
+  works over plain local HTTP), no CDN dependencies anywhere in the frontend,
+  and no hardcoded Railway hostnames anywhere in the codebase. Recommended
+  architecture:
+  - Same existing application/codebase - not a rewrite.
+  - v1 uses an independent local SQLite database, with no relationship to any
+    hosted/Railway data (no sync in v1).
+  - A packaged Node server (repairing/replacing the existing `portable/`
+    `pkg` build, which is currently stale - targets Node 18 against an
+    `engines: 20.x` app and predates all session-auth work, so it cannot
+    authenticate against the current server) plus a lightweight Windows
+    launcher/tray interface. Not Electron, not Tauri, not a Windows Service -
+    none offer enough benefit over this codebase's existing plain
+    Express/Socket.IO/better-sqlite3 shape to justify their added complexity.
+  - A `/health` endpoint is an early prerequisite (doesn't exist today) so
+    the launcher can detect successful startup.
+  - Automatic dashboard opening in the default browser on launch.
+  - LAN IP and server-status display in the launcher/tray.
+  - Later refinements once v1 is proven: QR-code access, safe SQLite backup
+    (online backup API / WAL-checkpoint-safe, not a raw file copy - a prior
+    test found raw copies can miss recent writes still sitting in the
+    `-wal`/`-shm` files), restart/stop controls, and clear network guidance.
+  - A dedicated travel router/access point is the recommended configuration
+    for dependable venue use - venue Wi-Fi client isolation can silently
+    defeat LAN discovery even when devices are "on the same network," and
+    mDNS (`*.local` hostnames) is not reliable enough across Android/iOS/
+    Windows to depend on.
+  - Model 2 (prepare an event online, sign in locally while internet is
+    available, download an event package, operate offline, optionally
+    upload afterward) is explicitly deferred until independent local v1 has
+    been proven in real use - not part of this phase.
+  - Model 3 (automatic Railway-to-local failover) is explicitly deferred
+    indefinitely, not merely sequenced later - split-brain risk from
+    conflicting live timer commands makes this a net-negative feature unless
+    a specific, concrete need justifies the server-authority/reconciliation
+    work it would require.
+
+## Deferred / research-only items (not phases)
+
+- **Physical Hive Industries display support (research only).** No
+  implementation phase is proposed. Likely eventual architecture, if the
+  external unknowns below resolve favourably: a separate local bridge
+  process subscribing to a room as a specialised read-only display-token
+  client (the same mechanism `display.html` already uses), translating
+  Socket.IO timer state to whatever the hardware protocol turns out to
+  require - keeping USB/serial/XLR code out of the hosted Railway server
+  entirely. Confirmed via repository search: no existing code, docs, or
+  comments reference Hive Industries, Irisdown, XLR, or a hardware bridge
+  anywhere in this repo or the Companion module repo - this is unexplored
+  territory. Blocked on external information before any phase can be scoped:
+  USB/serial protocol to the Hive Expander, Ethernet protocol for Connect
+  Ether (port, packet format, and whether it's documented/open or
+  proprietary even when targeting Hive hardware from third-party software),
+  any available SDK/API, supported hardware/firmware models, and licensing
+  terms for interfacing with the hardware from third-party software.
+- **Short room-link aliases - deferred.** Existing secure token URLs
+  (`/control?token=...`, `/display?token=...`) plus the Phase 9 Copy/Share
+  consistency work and future QR codes are considered sufficient. Revisit
+  only if that combination proves insufficient in practice; human-readable
+  slugs remain unsuitable as a sole credential since they are guessable and
+  already exist only as a display label, not a security boundary.

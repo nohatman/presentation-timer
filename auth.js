@@ -39,9 +39,15 @@ function resolveOwnedRoom(req, res, next) {
 // Socket.IO handshake resolver - given a token (either a control_token or a
 // display_token), returns { room, role, roomId } or null. `role` is derived from
 // which column matched, never from anything the client declared.
+//
+// Phase 6c.3: also rejects a token belonging to a suspended client's room, so
+// new control/display connections stop working immediately on suspend -
+// already-connected sockets are handled separately by server.js explicitly
+// disconnecting them at the moment of suspension.
 function resolveSocketAccess(token) {
   const access = db.getRoomByToken(token);
   if (!access) return null;
+  if (access.room.client_status !== 'active') return null;
   return { room: access.room, role: access.role, roomId: String(access.room.id) };
 }
 

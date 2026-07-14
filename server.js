@@ -472,6 +472,24 @@ function checkAndCleanupRoom(roomId) {
   }
 }
 
+// Phase 6c.3: forces every currently-connected control/display socket for a
+// client's rooms to drop, at the moment of suspension - the socket-level
+// equivalent of resolveSocketAccess() rejecting new connections. Disconnected
+// sockets go through the normal 'disconnect' handler above (controller
+// promotion, controller-count broadcast), same as regenerate-tokens/delete-room.
+function disconnectAllSocketsForClient(clientId) {
+  const rooms = db.getRoomsForClient(clientId);
+  for (const room of rooms) {
+    const roomId = String(room.id);
+    const socketsInRoom = io.sockets.adapter.rooms.get(roomId);
+    if (!socketsInRoom) continue;
+    for (const socketId of socketsInRoom) {
+      const socket = io.sockets.sockets.get(socketId);
+      if (socket) socket.disconnect(true);
+    }
+  }
+}
+
 // Timer tick - send updates every second for all running timers
 setInterval(() => {
   timerRooms.forEach((timerState, roomId) => {
@@ -867,7 +885,10 @@ app.post('/api/admin/clients', ...adminClientAuth, (req, res) => {
   const client = db.getClientById(created.id);
   res.json({
     ok: true,
-    client: { id: client.id, name: client.name, status: client.status, created_at: client.created_at },
+    client: {
+      id: client.id, name: client.name, status: client.status, created_at: client.created_at,
+      api_key_created_at: client.api_key_created_at, api_key_rotated_at: client.api_key_rotated_at
+    },
     apiKey: created.apiKey
   });
 });
@@ -982,6 +1003,81 @@ app.post('/api/admin/users/:id/change-email', ...adminClientAuth, (req, res) => 
   });
 
   res.json({ ok: true, user: { id: user.id, oldEmail: result.oldEmail, newEmail: result.newEmail } });
+});
+
+// ---- Phase 6c.3: client status and API key rotation ----
+
+app.post('/api/admin/clients/:id/suspend', ...adminClientAuth, (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    return res.status(400).json({ ok: false, error: 'Invalid client id' });
+  }
+  const existing = db.getClientById(id);
+  if (!existing) {
+    return res.status(404).json({ ok: false, error: 'Client not found' });
+  }
+
+  db.suspendClient(id);
+  // Belt-and-braces alongside getSessionUser()'s status check: drops sockets
+  // already connected at the moment of suspension, which a per-request status
+  // check can't reach on its own (a socket handshake only happens once).
+  disconnectAllSocketsForClient(id);
+
+  db.recordAuditLog({
+    actorUserId: req.user.id,
+    action: 'client.suspend',
+    targetType: 'client',
+    targetId: id,
+    targetLabel: existing.name
+  });
+
+  const client = db.getClientById(id);
+  res.json({ ok: true, client: { id: client.id, name: client.name, status: client.status } });
+});
+
+app.post('/api/admin/clients/:id/reactivate', ...adminClientAuth, (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    return res.status(400).json({ ok: false, error: 'Invalid client id' });
+  }
+  const existing = db.getClientById(id);
+  if (!existing) {
+    return res.status(404).json({ ok: false, error: 'Client not found' });
+  }
+
+  db.reactivateClient(id);
+  db.recordAuditLog({
+    actorUserId: req.user.id,
+    action: 'client.reactivate',
+    targetType: 'client',
+    targetId: id,
+    targetLabel: existing.name
+  });
+
+  const client = db.getClientById(id);
+  res.json({ ok: true, client: { id: client.id, name: client.name, status: client.status } });
+});
+
+app.post('/api/admin/clients/:id/rotate-key', ...adminClientAuth, (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    return res.status(400).json({ ok: false, error: 'Invalid client id' });
+  }
+  const existing = db.getClientById(id);
+  if (!existing) {
+    return res.status(404).json({ ok: false, error: 'Client not found' });
+  }
+
+  const rotated = db.rotateClientApiKeyById(id);
+  db.recordAuditLog({
+    actorUserId: req.user.id,
+    action: 'client.rotate_api_key',
+    targetType: 'client',
+    targetId: id,
+    targetLabel: existing.name
+  });
+
+  res.json({ ok: true, client: { id: rotated.id, name: rotated.name }, apiKey: rotated.apiKey });
 });
 
 // ============================================

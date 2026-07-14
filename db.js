@@ -113,6 +113,14 @@ function ensureColumn(table, column, definition) {
   }
 }
 ensureColumn('clients', 'is_platform_admin', 'INTEGER NOT NULL DEFAULT 0');
+// Phase 6c.3: API key metadata. Both nullable with no default/backfill - an
+// existing client migrated onto these columns has no recorded history for its
+// current key, and must show that honestly (e.g. "Not recorded" in the UI)
+// rather than being assigned an invented date. api_key_created_at is set once,
+// the first time a client actually receives a key; api_key_rotated_at is set
+// only on an actual rotation event and stays NULL until the first one happens.
+ensureColumn('clients', 'api_key_created_at', 'INTEGER');
+ensureColumn('clients', 'api_key_rotated_at', 'INTEGER');
 
 // ============================================
 // Tokens / API keys
@@ -165,8 +173,8 @@ function createClient(name, { isPlatformAdmin = false } = {}) {
   const now = Date.now();
   const rawKey = generateApiKey();
   const info = db.prepare(
-    'INSERT INTO clients (name, api_key_hash, status, created_at, is_platform_admin) VALUES (?, ?, ?, ?, ?)'
-  ).run(name, hashApiKey(rawKey), 'active', now, isPlatformAdmin ? 1 : 0);
+    'INSERT INTO clients (name, api_key_hash, status, created_at, is_platform_admin, api_key_created_at) VALUES (?, ?, ?, ?, ?, ?)'
+  ).run(name, hashApiKey(rawKey), 'active', now, isPlatformAdmin ? 1 : 0, now);
   const clientId = info.lastInsertRowid;
   const eventId = getOrCreateDefaultEvent(clientId);
   return { id: clientId, name, apiKey: rawKey, eventId, isPlatformAdmin };
@@ -224,7 +232,7 @@ function renameClient(id, newName) {
 // overview, not a place that should surface bearer credentials.
 function getClientDetail(id) {
   const client = db.prepare(
-    'SELECT id, name, status, is_platform_admin, created_at FROM clients WHERE id = ?'
+    'SELECT id, name, status, is_platform_admin, created_at, api_key_created_at, api_key_rotated_at FROM clients WHERE id = ?'
   ).get(id);
   if (!client) return null;
 
@@ -248,14 +256,53 @@ function getClientDetail(id) {
   return { client, users, events, rooms };
 }
 
-// Generates a brand new key for an existing client, invalidating the old one.
-// Returns null if no client with that name exists.
+// Shared by both rotation entry points below - stamps api_key_rotated_at with
+// the real moment of rotation. Never touches api_key_created_at: that column
+// records when the client's very first key was minted, which rotation doesn't
+// change.
+function _rotateApiKeyForClient(client) {
+  const rawKey = generateApiKey();
+  db.prepare('UPDATE clients SET api_key_hash = ?, api_key_rotated_at = ? WHERE id = ?')
+    .run(hashApiKey(rawKey), Date.now(), client.id);
+  return { id: client.id, name: client.name, apiKey: rawKey };
+}
+
+// CLI entry point (scripts/rotate-client-key.js). Returns null if no client
+// with that name exists.
 function rotateClientApiKey(name) {
   const client = db.prepare('SELECT * FROM clients WHERE name = ?').get(name);
   if (!client) return null;
-  const rawKey = generateApiKey();
-  db.prepare('UPDATE clients SET api_key_hash = ? WHERE id = ?').run(hashApiKey(rawKey), client.id);
-  return { id: client.id, name: client.name, apiKey: rawKey };
+  return _rotateApiKeyForClient(client);
+}
+
+// Platform Admin UI entry point (Phase 6c.3). Returns null if the id doesn't exist.
+function rotateClientApiKeyById(id) {
+  const client = getClientById(id);
+  if (!client) return null;
+  return _rotateApiKeyForClient(client);
+}
+
+// Phase 6c.3: suspend/reactivate. No data is deleted - only clients.status
+// changes, plus (on suspend) an immediate purge of that client's human
+// sessions so already-logged-in browsers stop working on their very next
+// request, not just once their session naturally expires. getSessionUser()
+// below independently enforces the same status check, so this deletion is
+// belt-and-braces immediacy, not the only thing standing in the way.
+// Passwords, the API key, and room tokens are never touched by either
+// function - reactivation needs no credential regeneration.
+function suspendClient(id) {
+  const client = getClientById(id);
+  if (!client) return null;
+  db.prepare('UPDATE clients SET status = ? WHERE id = ?').run('suspended', id);
+  db.prepare('DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE client_id = ?)').run(id);
+  return { id, name: client.name };
+}
+
+function reactivateClient(id) {
+  const client = getClientById(id);
+  if (!client) return null;
+  db.prepare('UPDATE clients SET status = ? WHERE id = ?').run('active', id);
+  return { id, name: client.name };
 }
 
 function getClientByApiKey(rawKey) {
@@ -282,8 +329,8 @@ function getOrCreateLegacyClient() {
     const now = Date.now();
     const rawKey = generateApiKey();
     const info = db.prepare(
-      'INSERT INTO clients (name, api_key_hash, status, created_at) VALUES (?, ?, ?, ?)'
-    ).run('Legacy', hashApiKey(rawKey), 'active', now);
+      'INSERT INTO clients (name, api_key_hash, status, created_at, api_key_created_at) VALUES (?, ?, ?, ?, ?)'
+    ).run('Legacy', hashApiKey(rawKey), 'active', now, now);
     client = db.prepare('SELECT * FROM clients WHERE id = ?').get(info.lastInsertRowid);
     console.log(`📦 Created Legacy client (id=${client.id})`);
     console.log(`🔑 Legacy client API key (shown once - store it now):\n   ${rawKey}`);
@@ -292,7 +339,7 @@ function getOrCreateLegacyClient() {
 
   if (!client.api_key_hash) {
     const rawKey = generateApiKey();
-    db.prepare('UPDATE clients SET api_key_hash = ? WHERE id = ?').run(hashApiKey(rawKey), client.id);
+    db.prepare('UPDATE clients SET api_key_hash = ?, api_key_created_at = ? WHERE id = ?').run(hashApiKey(rawKey), Date.now(), client.id);
     console.log(`🔑 Legacy client had no API key (Phase 1 leftover) - generated one now (shown once - store it now):\n   ${rawKey}`);
   }
 
@@ -381,6 +428,8 @@ function listUsers() {
 async function verifyUserPassword(email, password) {
   const user = getUserByEmail(email);
   if (!user || user.status !== 'active') return null;
+  const client = getClientById(user.client_id);
+  if (!client || client.status !== 'active') return null;
   const ok = await bcrypt.compare(password, user.password_hash);
   return ok ? user : null;
 }
@@ -517,12 +566,25 @@ function createSession(userId) {
 
 // Hashes the presented cookie value and looks up by hash - the raw token
 // itself is never stored or queried directly.
+//
+// Phase 6c.3: also requires users.status = 'active' AND the linked client's
+// status = 'active' - previously this only checked session expiry, so a
+// suspended client's already-logged-in users would keep working until their
+// session naturally expired (up to 30 days). This one fix closes that gap for
+// every session-authenticated route (requireSession, requireDashboardAuth's
+// session branch, requireAdminSession all call this), since a suspended
+// client's session becomes unusable on its very next authenticated request,
+// not just eventually. suspendClient() additionally deletes the affected
+// sessions outright, so this status check is defense-in-depth, not the only
+// thing enforcing it.
 function getSessionUser(rawToken) {
   if (!rawToken) return null;
   const row = db.prepare(`
     SELECT users.* FROM sessions
     JOIN users ON users.id = sessions.user_id
+    JOIN clients ON clients.id = users.client_id
     WHERE sessions.token_hash = ? AND sessions.expires_at > ?
+      AND users.status = 'active' AND clients.status = 'active'
   `).get(hashApiKey(rawToken), Date.now());
   return row || null;
 }
@@ -682,11 +744,26 @@ function getRoomById(id) {
 
 // Token can be either a control_token or a display_token - the matching column
 // determines the caller's role. Returns null if the token doesn't match anything.
+// Also joins in the owning client's status (as room.client_status) - Phase
+// 6c.3's socket-connection gate (auth.resolveSocketAccess) needs it to reject
+// a suspended client's rooms; every other existing caller field is unchanged.
 function getRoomByToken(token) {
   if (!token) return null;
-  let room = db.prepare('SELECT * FROM rooms WHERE control_token = ?').get(token);
+  let room = db.prepare(`
+    SELECT rooms.*, clients.status AS client_status
+    FROM rooms
+    JOIN events ON events.id = rooms.event_id
+    JOIN clients ON clients.id = events.client_id
+    WHERE rooms.control_token = ?
+  `).get(token);
   if (room) return { room, role: 'control' };
-  room = db.prepare('SELECT * FROM rooms WHERE display_token = ?').get(token);
+  room = db.prepare(`
+    SELECT rooms.*, clients.status AS client_status
+    FROM rooms
+    JOIN events ON events.id = rooms.event_id
+    JOIN clients ON clients.id = events.client_id
+    WHERE rooms.display_token = ?
+  `).get(token);
   if (room) return { room, role: 'display' };
   return null;
 }
@@ -796,6 +873,9 @@ module.exports = {
   createClient,
   createPlatformAdmin,
   rotateClientApiKey,
+  rotateClientApiKeyById,
+  suspendClient,
+  reactivateClient,
   getClientByApiKey,
   getClientByName,
   getClientById,
