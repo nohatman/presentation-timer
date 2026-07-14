@@ -199,7 +199,11 @@
             const response = await fetch(url, options);
 
             if (response.status === 401) {
-                window.location.href = '/login';
+                // A session can also fail here because its user/client access is
+                // currently paused, not just missing/expired - flagged via reason
+                // so /login can show a clear message instead of a dead-cookie feel.
+                const data = await response.clone().json().catch(() => null);
+                window.location.href = (data && data.reason === 'account_suspended') ? '/login?reason=account_suspended' : '/login';
                 return response;
             }
 
@@ -255,13 +259,20 @@
             }
         }
 
+        // Presentation-language only - the underlying clients.status value stays
+        // 'active'/'suspended' everywhere in the API/DB; this just controls what
+        // a human reads. Keep in sync with the identical mapper in admin-client-detail.html.
+        function statusLabel(status) {
+            return status === 'active' ? 'Active' : 'Access Paused';
+        }
+
         function renderClientCard(client) {
             const statusClass = client.status === 'active' ? 'active' : 'suspended';
             return `
                 <a href="/admin/clients/${client.id}" class="client-card">
                     <div class="client-card-header">
                         <div class="client-name">${escapeHtml(client.name)}</div>
-                        <span class="status-badge ${statusClass}">${escapeHtml(client.status)}</span>
+                        <span class="status-badge ${statusClass}">${escapeHtml(statusLabel(client.status))}</span>
                     </div>
                     <div class="client-counts">
                         <div class="count-item">

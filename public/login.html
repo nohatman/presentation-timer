@@ -95,6 +95,22 @@
             margin-bottom: 1.2rem;
             display: none;
         }
+        /* Calmer, non-alarming tone for a known account/organisation status,
+           distinct from .error's red "you made a mistake" styling. */
+        .notice {
+            color: #ffcc80;
+            background: rgba(255, 152, 0, 0.12);
+            border: 1px solid rgba(255, 152, 0, 0.3);
+            border-radius: 8px;
+            padding: 10px 14px;
+            font-size: 0.9rem;
+            margin-bottom: 1.2rem;
+            display: none;
+        }
+        .notice strong {
+            display: block;
+            margin-bottom: 2px;
+        }
         .footer-note {
             text-align: center;
             margin-top: 1.5rem;
@@ -108,6 +124,7 @@
         <h1>⏱️ Sign In</h1>
         <p class="subtitle">Foxy's Presentation Timer - Master Dashboard</p>
 
+        <div class="notice" id="noticeMessage"></div>
         <div class="error" id="errorMessage"></div>
 
         <form id="loginForm">
@@ -128,16 +145,35 @@
     <script>
         const form = document.getElementById('loginForm');
         const errorEl = document.getElementById('errorMessage');
+        const noticeEl = document.getElementById('noticeMessage');
         const submitBtn = document.getElementById('submitBtn');
 
+        const PAUSED_ACCESS_TITLE = 'Access currently paused';
+        const PAUSED_ACCESS_BODY = "Your organisation's access is currently paused. Please contact your administrator for assistance.";
+
         function showError(message) {
+            noticeEl.style.display = 'none';
             errorEl.textContent = message;
             errorEl.style.display = 'block';
+        }
+
+        function showPausedNotice() {
+            errorEl.style.display = 'none';
+            noticeEl.innerHTML = `<strong>${PAUSED_ACCESS_TITLE}</strong>${PAUSED_ACCESS_BODY}`;
+            noticeEl.style.display = 'block';
+        }
+
+        // Reached when an already-logged-in session gets signed out because its
+        // access was paused mid-session (authFetch on the dashboard/admin pages
+        // redirects here with this reason instead of a bare, unexplained /login).
+        if (new URLSearchParams(window.location.search).get('reason') === 'account_suspended') {
+            showPausedNotice();
         }
 
         form.addEventListener('submit', async (event) => {
             event.preventDefault();
             errorEl.style.display = 'none';
+            noticeEl.style.display = 'none';
             submitBtn.disabled = true;
             submitBtn.textContent = 'Signing in...';
 
@@ -158,7 +194,14 @@
 
                 const data = await response.json();
                 if (!data.ok) {
-                    showError(data.error || 'Invalid email or password');
+                    // Only ever set once the password has already verified correct
+                    // (see db.verifyUserPassword) - never a way to tell whether an
+                    // arbitrary email/password pair belongs to a real account.
+                    if (data.reason === 'account_suspended') {
+                        showPausedNotice();
+                    } else {
+                        showError(data.error || 'Invalid email or password');
+                    }
                     return;
                 }
 

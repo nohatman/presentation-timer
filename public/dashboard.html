@@ -461,8 +461,12 @@
             const response = await fetch(url, options);
 
             if (response.status === 401) {
-                // No valid session (never logged in, or it expired/was revoked).
-                window.location.href = '/login';
+                // No valid session (never logged in, expired, or revoked) - OR a
+                // session that's still technically valid but whose user/client
+                // access is currently paused, flagged via reason so /login can
+                // show a clear message instead of looking like a dead cookie.
+                const data = await response.clone().json().catch(() => null);
+                window.location.href = (data && data.reason === 'account_suspended') ? '/login?reason=account_suspended' : '/login';
                 return response;
             }
 

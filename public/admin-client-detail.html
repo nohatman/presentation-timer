@@ -252,7 +252,11 @@
             const response = await fetch(url, options);
 
             if (response.status === 401) {
-                window.location.href = '/login';
+                // A session can also fail here because its user/client access is
+                // currently paused, not just missing/expired - flagged via reason
+                // so /login can show a clear message instead of a dead-cookie feel.
+                const data = await response.clone().json().catch(() => null);
+                window.location.href = (data && data.reason === 'account_suspended') ? '/login?reason=account_suspended' : '/login';
                 return response;
             }
 
@@ -282,6 +286,13 @@
             const div = document.createElement('div');
             div.textContent = String(str);
             return div.innerHTML;
+        }
+
+        // Presentation-language only - the underlying clients.status value stays
+        // 'active'/'suspended' everywhere in the API/DB; this just controls what
+        // a human reads. Keep in sync with the identical mapper in admin-clients.html.
+        function statusLabel(status) {
+            return status === 'active' ? 'Active' : 'Access Paused';
         }
 
         function formatDate(ms) {
@@ -329,12 +340,12 @@
             const statusClass = client.status === 'active' ? 'active' : 'suspended';
             document.getElementById('clientTitle').innerHTML = `
                 🏢 ${escapeHtml(client.name)}
-                <span class="status-badge ${statusClass}">${escapeHtml(client.status)}</span>
+                <span class="status-badge ${statusClass}">${escapeHtml(statusLabel(client.status))}</span>
                 ${client.is_platform_admin ? '<span class="status-badge" style="background:#6a1b9a;">PLATFORM ADMIN</span>' : ''}
                 <button id="editNameBtn" onclick="openEditNameModal(this)" class="mini-btn">✏️ Edit name</button>
                 ${client.status === 'active'
-                    ? `<button id="suspendBtn" onclick="openSuspendConfirm(this)" class="mini-btn" style="border-color:#b71c1c;color:#ff8a80;">⏸ Suspend</button>`
-                    : `<button id="reactivateBtn" onclick="submitReactivate(this)" class="mini-btn" style="border-color:#2e7d32;color:#81c784;">▶ Reactivate</button>`}
+                    ? `<button id="suspendBtn" onclick="openSuspendConfirm(this)" class="mini-btn" style="border-color:#b71c1c;color:#ff8a80;">⏸ Pause Access</button>`
+                    : `<button id="reactivateBtn" onclick="submitReactivate(this)" class="mini-btn" style="border-color:#2e7d32;color:#81c784;">▶ Restore Access</button>`}
             `;
             document.getElementById('clientSubtitle').textContent = `Client since ${formatDate(client.created_at)}`;
 
@@ -349,7 +360,7 @@
                         </div>
                         <div class="profile-item">
                             <div class="profile-label">Status</div>
-                            <div class="profile-value">${escapeHtml(client.status)}</div>
+                            <div class="profile-value">${escapeHtml(statusLabel(client.status))}</div>
                         </div>
                         <div class="profile-item">
                             <div class="profile-label">Users</div>
@@ -716,11 +727,11 @@
 
         function renderSuspendConfirm(clientName) {
             return `
-                <h2 id="modalTitle" style="margin:0 0 12px 0;font-size:1.2rem;color:#fafafa;">Suspend "${escapeHtml(clientName)}"?</h2>
-                <p style="margin:0 0 20px 0;color:#ccc;font-size:0.9rem;line-height:1.5;">This immediately blocks all access for this client: dashboard sessions are signed out, API requests are rejected, and any connected control/display screens are disconnected. Nothing is deleted - no clients, users, events, rooms, or credentials. Reactivating restores access using the same login and API key, with nothing to regenerate.</p>
+                <h2 id="modalTitle" style="margin:0 0 12px 0;font-size:1.2rem;color:#fafafa;">Pause access for "${escapeHtml(clientName)}"?</h2>
+                <p style="margin:0 0 20px 0;color:#ccc;font-size:0.9rem;line-height:1.5;">This immediately blocks all access for this client: dashboard sessions are signed out, API requests are rejected, and any connected control/display screens are disconnected. Nothing is deleted - no clients, users, events, rooms, or credentials. Restoring access uses the same login and API key, with nothing to regenerate.</p>
                 ${modalButtonRow(`
                     <button onclick="closeModal()" style="${CANCEL_BTN_STYLE}">Cancel</button>
-                    <button onclick="confirmSuspend()" style="${DANGER_BTN_STYLE}">Suspend Client</button>
+                    <button onclick="confirmSuspend()" style="${DANGER_BTN_STYLE}">Pause Access</button>
                 `)}
             `;
         }

@@ -283,18 +283,21 @@ function rotateClientApiKeyById(id) {
 }
 
 // Phase 6c.3: suspend/reactivate. No data is deleted - only clients.status
-// changes, plus (on suspend) an immediate purge of that client's human
-// sessions so already-logged-in browsers stop working on their very next
-// request, not just once their session naturally expires. getSessionUser()
-// below independently enforces the same status check, so this deletion is
-// belt-and-braces immediacy, not the only thing standing in the way.
-// Passwords, the API key, and room tokens are never touched by either
-// function - reactivation needs no credential regeneration.
+// changes. Session ROWS are deliberately left alone (not deleted) on suspend -
+// getSessionUser() independently requires clients.status = 'active' on every
+// lookup, so an already-logged-in browser stops working on its very next
+// request regardless, without needing the row removed. Leaving it in place is
+// what lets isSessionSuspended() explain WHY that browser got logged out
+// (see auth.respondUnauthenticated) - deleting it here would erase that
+// context and leave the browser looking like a plain expired/invalid cookie.
+// It also means reactivation quietly resumes the same still-cookied browser
+// session with no re-login required, consistent with "restores access using
+// existing credentials, nothing to regenerate" - passwords, the API key, and
+// room tokens are never touched by either function either.
 function suspendClient(id) {
   const client = getClientById(id);
   if (!client) return null;
   db.prepare('UPDATE clients SET status = ? WHERE id = ?').run('suspended', id);
-  db.prepare('DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE client_id = ?)').run(id);
   return { id, name: client.name };
 }
 
@@ -425,13 +428,26 @@ function listUsers() {
 // ticks are trying to run. Returns the user row on success, null on any
 // failure (unknown email, wrong password, inactive user) - callers must treat
 // all three identically so a login failure never reveals which was wrong.
+// Returns { ok: true, user } on success, or { ok: false, reason? } on failure.
+// reason is only ever set to 'account_suspended', and only AFTER the password
+// has been verified correct - bcrypt.compare() always runs for a known email
+// regardless of status, so a wrong password on a suspended account fails
+// identically to a wrong password on an active one or an unknown email
+// (immediate { ok: false } below, no reason). This is deliberate: only
+// someone who already knows the correct password ever learns an account is
+// suspended, so the distinction can never be used to enumerate accounts.
 async function verifyUserPassword(email, password) {
   const user = getUserByEmail(email);
-  if (!user || user.status !== 'active') return null;
+  if (!user) return { ok: false };
+
+  const passwordOk = await bcrypt.compare(password, user.password_hash);
+  if (!passwordOk) return { ok: false };
+
   const client = getClientById(user.client_id);
-  if (!client || client.status !== 'active') return null;
-  const ok = await bcrypt.compare(password, user.password_hash);
-  return ok ? user : null;
+  if (user.status !== 'active' || !client || client.status !== 'active') {
+    return { ok: false, reason: 'account_suspended' };
+  }
+  return { ok: true, user };
 }
 
 // Used by the forced first-login change flow. Verifies currentPassword,
@@ -592,6 +608,28 @@ function getSessionUser(rawToken) {
 function deleteSession(rawToken) {
   if (!rawToken) return;
   db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(hashApiKey(rawToken));
+}
+
+// UX correction (Phase 6c.3): lets a request that carries an otherwise-valid,
+// unexpired session cookie be told WHY it's no longer authenticated - the
+// user or their client went inactive - rather than getting the same bare
+// "not authenticated" as an expired/missing/forged cookie. Deliberately
+// ignores expiry (a suspended reason is pointless to report on a session
+// that was going to fail anyway for an unrelated cause) but still requires
+// an exact token_hash match, i.e. only reachable by whoever already holds
+// the real (high-entropy, unguessable) session token - never a new way to
+// probe for suspended accounts.
+function isSessionSuspended(rawToken) {
+  if (!rawToken) return false;
+  const row = db.prepare(`
+    SELECT users.status AS user_status, clients.status AS client_status
+    FROM sessions
+    JOIN users ON users.id = sessions.user_id
+    JOIN clients ON clients.id = users.client_id
+    WHERE sessions.token_hash = ? AND sessions.expires_at > ?
+  `).get(hashApiKey(rawToken), Date.now());
+  if (!row) return false;
+  return row.user_status !== 'active' || row.client_status !== 'active';
 }
 
 // ---- Audit log (Phase 6c) ----
@@ -898,6 +936,7 @@ module.exports = {
   // sessions
   createSession,
   getSessionUser,
+  isSessionSuspended,
   deleteSession,
   // audit log
   recordAuditLog,

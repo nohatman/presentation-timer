@@ -10,14 +10,41 @@ full design brief this work follows.
 - Suspend/reactivate: `db.suspendClient(id)`/`db.reactivateClient(id)`, exposed
   via `POST /api/admin/clients/:id/suspend` and `.../reactivate`
   (`adminClientAuth`-gated, audit-logged as `client.suspend`/
-  `client.reactivate`). No data is deleted - only `clients.status` changes;
-  suspend also deletes that client's session rows outright, and
-  `db.getSessionUser()` now independently enforces `users.status = 'active'
-  AND clients.status = 'active'` on every lookup, not just session expiry -
-  closes the exact gap this phase existed to fix (a suspended client's
-  already-logged-in users no longer keep working for up to 30 days). New
+  `client.reactivate`). No data is deleted - only `clients.status` changes.
+  Session rows are deliberately left in place (not deleted) on suspend:
+  `db.getSessionUser()` independently enforces `users.status = 'active' AND
+  clients.status = 'active'` on every lookup, not just session expiry - this
+  alone closes the exact gap this phase existed to fix (a suspended client's
+  already-logged-in users stop working on their very next request, not after
+  up to 30 days) - and leaving the row in place is what lets the app explain
+  *why* to a still-cookied browser (see the UX correction below) instead of
+  it just looking like a dead cookie. It also means reactivation quietly
+  resumes the same already-open browser session, no re-login required. New
   human logins are blocked too: `verifyUserPassword()` now checks the linked
   client's status, not just the user's.
+- **UX correction, made after initial browser approval**: a suspended
+  client's user was getting an unexplained "invalid" login or a bare
+  logged-out redirect, indistinguishable from a broken password. Fixed
+  without weakening login security - `verifyUserPassword()` now always runs
+  the bcrypt password check first for a known email, *regardless* of
+  status, and only branches to `reason: 'account_suspended'` after the
+  password has verified correct; a wrong password or unknown email is
+  therefore identical whether or not the account happens to be suspended, so
+  this can never be used to enumerate accounts. `db.isSessionSuspended()`
+  gives the same explanation for an already-logged-in session, but is only
+  reachable by whoever already holds that exact (unguessable) session
+  cookie. The frontend shows this as a calm, non-alarming in-page notice
+  (`.notice`, distinct from the red `.error` style) on `/login` - "Access
+  currently paused / Your organisation's access is currently paused. Please
+  contact your administrator for assistance." - never a native `alert()`.
+  Reached either via a `reason=account_suspended` query param (session
+  redirect) or directly in the login response body (fresh login attempt).
+  Also renamed every user-facing string for this feature to calmer language
+  at the same time (Platform Admin buttons: "Pause Access" / "Restore
+  Access"; status badge: "Access Paused") - **presentation only**, the
+  underlying `clients.status` value, route paths, function names, and audit
+  action names all remain `suspend`/`suspended`/`reactivate` unchanged, no
+  migration.
 - Socket-level enforcement: `auth.resolveSocketAccess()` (the single function
   `io.on('connection')` calls to gate every handshake) now rejects a
   suspended client's control/display tokens - `db.getRoomByToken()` joins in
@@ -42,20 +69,24 @@ full design brief this work follows.
   current status, Suspend has its own confirm step explaining the
   consequences), and a new "API Key" section showing both timestamps plus a
   Rotate API Key button with its own confirm step.
-- Verified this session against a live server on a disposable scratch
-  database (not the shared dev/production database): a 32-check HTTP-level
-  script covering login/session/suspend/reactivate/rotate/audit-log/timestamp
-  behaviour, plus a 7-check direct verification of
-  `auth.resolveSocketAccess()` before/after suspension and after
-  reactivation. All 39 checks passed. Also confirmed: a normal client user
-  gets 403 from every Platform Admin client-management endpoint; a Bearer API
-  key (even with no cookie at all) gets 401 from the same endpoints, since
-  `requireAdminSession` still has no Bearer branch; no raw API key appears in
-  the audit log or any GET response.
-- **Browser-tested: pending.** Implementation complete and verified via
-  automated script (HTTP + direct socket-resolver checks); this phase is
-  intentionally stopped here awaiting your own browser click-through and
-  deployment approval before Phase 9 or Phase 10 begin.
+- Verified against a live server on a disposable scratch database (not the
+  shared dev/production database): a 39-check HTTP-level script covering
+  login/session/suspend/reactivate/rotate/audit-log/timestamp behaviour plus
+  the anti-enumeration properties above (wrong password and unknown email on
+  a suspended account both get the identical generic error), and a 7-check
+  direct verification of `auth.resolveSocketAccess()` before/after
+  suspension and after reactivation. All 46 checks passed. Also confirmed: a
+  normal client user gets 403 from every Platform Admin client-management
+  endpoint; a Bearer API key (even with no cookie at all) gets 401 from the
+  same endpoints, since `requireAdminSession` still has no Bearer branch; no
+  raw API key appears in the audit log or any GET response. A first version
+  of suspend/reactivate (without the login-message correction above) was
+  separately confirmed correct in your own browser before this correction
+  was requested.
+- **Browser-tested and approved locally**: suspension/reactivation behaviour
+  confirmed correct; the login-message correction above verified by
+  automated script only so far, not yet re-confirmed in your browser.
+  Railway deployment pending.
 
 ### Phase 6c.2 — Client and user management
 - New mutations, all behind the same `adminClientAuth` (`requireAdminSession` +

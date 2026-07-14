@@ -537,12 +537,21 @@ app.post('/api/auth/login', async (req, res) => {
   }
 
   // Unknown email and wrong password both fail identically - db.verifyUserPassword
-  // returns null for both cases, so there is nothing here that could leak which.
-  const user = await db.verifyUserPassword(email, password);
-  if (!user) {
+  // only ever sets `reason` after the password has already checked out correct
+  // (see its own comment), so this can never be used to enumerate accounts.
+  const result = await db.verifyUserPassword(email, password);
+  if (!result.ok) {
     recordLoginAttempt(ip);
+    if (result.reason === 'account_suspended') {
+      return res.status(401).json({
+        ok: false,
+        error: "Your organisation's access is currently paused. Please contact your administrator for assistance.",
+        reason: 'account_suspended'
+      });
+    }
     return res.status(401).json({ ok: false, error: 'Invalid email or password' });
   }
+  const user = result.user;
 
   const { rawToken, expiresAt } = db.createSession(user.id);
   auth.setSessionCookie(req, res, rawToken, expiresAt);

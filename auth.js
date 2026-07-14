@@ -125,6 +125,22 @@ function clearSessionCookie(res) {
   res.setHeader('Set-Cookie', `${SESSION_COOKIE}=; Path=/; HttpOnly; Max-Age=0`);
 }
 
+// UX correction (Phase 6c.3): a session cookie that's failed getSessionUser()
+// might belong to a client/user that just went inactive, not one that's
+// missing/expired/forged - db.isSessionSuspended() distinguishes the two
+// safely (see its own comment). Shared by every session gate below so the
+// wording/reason code stays in exactly one place.
+function respondUnauthenticated(res, rawToken, fallbackError) {
+  if (db.isSessionSuspended(rawToken)) {
+    return res.status(401).json({
+      ok: false,
+      error: "Your organisation's access is currently paused. Please contact your administrator for assistance.",
+      reason: 'account_suspended'
+    });
+  }
+  return res.status(401).json({ ok: false, error: fallbackError });
+}
+
 // Bare session check - no must-change-password gate, no Bearer fallback. Used
 // only by the endpoints a not-yet-fully-set-up account must still be able to
 // reach: /api/auth/logout and /api/auth/change-password.
@@ -132,7 +148,7 @@ function requireSession(req, res, next) {
   const rawToken = parseCookies(req)[SESSION_COOKIE];
   const user = db.getSessionUser(rawToken);
   if (!user) {
-    return res.status(401).json({ ok: false, error: 'Not logged in' });
+    return respondUnauthenticated(res, rawToken, 'Not logged in');
   }
   req.user = user;
   req.sessionToken = rawToken;
@@ -176,7 +192,7 @@ function requireDashboardAuth(req, res, next) {
   const rawToken = parseCookies(req)[SESSION_COOKIE];
   const user = db.getSessionUser(rawToken);
   if (!user) {
-    return res.status(401).json({ ok: false, error: 'Not authenticated' });
+    return respondUnauthenticated(res, rawToken, 'Not authenticated');
   }
 
   if (['POST', 'DELETE', 'PUT', 'PATCH'].includes(req.method) && !isSameOrigin(req)) {
@@ -215,7 +231,7 @@ function requireAdminSession(req, res, next) {
   const rawToken = parseCookies(req)[SESSION_COOKIE];
   const user = db.getSessionUser(rawToken);
   if (!user) {
-    return res.status(401).json({ ok: false, error: 'Not authenticated' });
+    return respondUnauthenticated(res, rawToken, 'Not authenticated');
   }
 
   if (['POST', 'DELETE', 'PUT', 'PATCH'].includes(req.method) && !isSameOrigin(req)) {
