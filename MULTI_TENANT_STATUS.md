@@ -35,10 +35,13 @@ full design brief this work follows.
   reachable by whoever already holds that exact (unguessable) session
   cookie. The frontend shows this as a calm, non-alarming in-page notice
   (`.notice`, distinct from the red `.error` style) on `/login` - "Access
-  currently paused / Your organisation's access is currently paused. Please
-  contact your administrator for assistance." - never a native `alert()`.
-  Reached either via a `reason=account_suspended` query param (session
-  redirect) or directly in the login response body (fresh login attempt).
+  currently paused / Your organisation's access to the app is currently
+  paused. Your rooms and settings remain safely stored. Please contact
+  Business Shows for assistance. Once access has been restored, you can sign
+  in again as normal." (exact wording finalised after review) - never a
+  native `alert()`. Reached either via a `reason=account_suspended` query
+  param (session redirect) or directly in the login response body (fresh
+  login attempt).
   Also renamed every user-facing string for this feature to calmer language
   at the same time (Platform Admin buttons: "Pause Access" / "Restore
   Access"; status badge: "Access Paused") - **presentation only**, the
