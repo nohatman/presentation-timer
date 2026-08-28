@@ -86,10 +86,11 @@ full design brief this work follows.
   of suspend/reactivate (without the login-message correction above) was
   separately confirmed correct in your own browser before this correction
   was requested.
-- **Browser-tested and approved locally**: suspension/reactivation behaviour
-  confirmed correct; the login-message correction above verified by
-  automated script only so far, not yet re-confirmed in your browser.
-  Railway deployment pending.
+- **Deployed to Railway and browser-tested - approved.** Suspension/
+  reactivation behaviour confirmed correct in the deployed environment; the
+  login-message correction above (including the final paused-access wording
+  that names "Business Shows", commit `83ecb89`) was also deployed and
+  browser-tested successfully.
 
 ### Phase 6c.2 — Client and user management
 - New mutations, all behind the same `adminClientAuth` (`requireAdminSession` +
@@ -144,7 +145,7 @@ full design brief this work follows.
   API key or temp password appears in any subsequent `GET` response; no
   horizontal overflow at 360/390/430px on either page, including with the
   modals open.
-- **Browser-tested and approved locally; Railway deployment pending.**
+- **Deployed to Railway and browser-tested - approved.**
 
 ### Phase 6c.1 — Platform Admin client-management UI (read-only)
 - New pages `/admin/clients` (list) and `/admin/clients/:id` (detail), reachable
@@ -201,7 +202,7 @@ full design brief this work follows.
   users); no horizontal overflow at 360/390/430px or 1400px on either page;
   "Manage Clients" nav entry visible only for platform admins; normal Master
   Dashboard regression-checked and confirmed unaffected.
-- **Browser-tested and approved locally; Railway deployment pending.**
+- **Deployed to Railway and browser-tested - approved.**
 
 ### Phase 6b — Master Dashboard responsive redesign
 - Root causes of mobile overflow, found by inspection (same method as the
@@ -241,9 +242,7 @@ full design brief this work follows.
   of the approved scope).
 - Did not build the Platform Admin client-management area (Phase 6c) or the
   licence/entitlement system (Phase 8), per explicit instruction.
-- **Browser-tested and approved locally; Railway deployment pending.** Will be
-  marked fully complete once deployed and verified in production, consistent
-  with every earlier phase's completion criteria.
+- **Deployed to Railway and browser-tested - approved.**
 
 ### Phase 6a — Session authentication backend + human login
 - New `users` table: every user (including platform admins) links to a `client_id`
@@ -343,8 +342,17 @@ full design brief this work follows.
   legitimately reuse the same room name with zero bleed (verified directly).
 - All REST endpoints (room CRUD, Companion-style start/pause/rundown/message
   actions) are authenticated and ownership-scoped.
-- Companion module updated to v1.2.0: sends the client API key as a Bearer
-  header; a rejected key surfaces as a distinct `AuthenticationFailure` status.
+- Server-side API-key authentication (this bullet's REST endpoints, including
+  `/api/rooms/:roomId/companion`) is **deployed and live** - every Companion
+  request must now carry `Authorization: Bearer <client API key>`.
+- The matching **Companion module changes (v1.2.0)** - a Client API Key
+  config field, the Bearer header on every poll and action request, and a
+  distinct `AuthenticationFailure` status on a rejected key - currently exist
+  only as **verified-but-uncommitted working-tree changes** in the separate
+  `companion-module-foxy-presentation-timer` repo (last commit there is still
+  v1.1.x). They have been reviewed and build-verified but not yet committed
+  or repackaged; until they are, the published module cannot authenticate
+  against the current server.
 - CLI: `scripts/create-client.js`, `scripts/rotate-client-key.js`,
   `scripts/list-room-links.js` (list/regenerate a client's room links).
 
@@ -564,8 +572,11 @@ invalidates all of that user's existing sessions).
     a licence-server outage never disables a live event. Exact offline grace
     period, trial-tamper-resistance, and schema are deliberately left to this
     phase's own design work, not decided here.
-- **Phase 9 (candidate) - UX consistency pass.** Not yet started. Four small,
-  independently-shippable items, deliberately kept separate from Phase 6c.3:
+- **Phase 9 (candidate) - UX consistency pass.** **Not started** (confirmed
+  against the repo - no implementation work exists for any item below; the
+  dashboard Room Links modal, commit `3f703f3`, predates and is not part of
+  Phase 9). Four small, independently-shippable items, deliberately kept
+  separate from Phase 6c.3:
   - Show/hide controls on every password field (`login.html`,
     `change-password.html`) - accessible toggle with clear "Show
     password"/"Hide password" labelling, not a browser-native prompt,
