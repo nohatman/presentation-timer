@@ -1,0 +1,23 @@
+{
+  "name": "cdether-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local helper: subscribes read-only to ONE Presentation Timer room via its DISPLAY token and emits empirically-derived 3-byte CDEther UDP frames on the LAN. Not production. Not an official Hive protocol implementation.",
+  "type": "commonjs",
+  "main": "bridge.js",
+  "scripts": {
+    "start": "node bridge.js",
+    "test": "node --test \"test/*.test.js\"",
+    "send-frame": "node tools/send-frame.js",
+    "list-adapters": "node bridge.js --list-adapters"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "socket.io-client": "^4.8.1"
+  },
+  "devDependencies": {
+    "socket.io": "^4.8.1"
+  }
+}

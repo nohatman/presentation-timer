@@ -636,25 +636,92 @@ invalidates all of that user's existing sessions).
     conflicting live timer commands makes this a net-negative feature unless
     a specific, concrete need justifies the server-authority/reconciliation
     work it would require.
+  - **Physical Display Output (CDEther) is a separate, earlier workstream** -
+    a standalone local helper, proven and being productised independently of
+    this phase (see "Items outside the numbered phases" below). It shares surface
+    area with the launcher (Windows packaging toolchain, tray UI, NIC/broadcast
+    selection, "no terminal" philosophy, travel-router guidance, code signing),
+    and its bridge core is kept as a self-contained module so it can later be
+    offered as a panel inside this launcher for the single-PC case without a
+    rewrite. Not a dependency in either direction.
 
-## Deferred / research-only items (not phases)
+## Items outside the numbered phases
 
-- **Physical Hive Industries display support (research only).** No
-  implementation phase is proposed. Likely eventual architecture, if the
-  external unknowns below resolve favourably: a separate local bridge
-  process subscribing to a room as a specialised read-only display-token
-  client (the same mechanism `display.html` already uses), translating
-  Socket.IO timer state to whatever the hardware protocol turns out to
-  require - keeping USB/serial/XLR code out of the hosted Railway server
-  entirely. Confirmed via repository search: no existing code, docs, or
-  comments reference Hive Industries, Irisdown, XLR, or a hardware bridge
-  anywhere in this repo or the Companion module repo - this is unexplored
-  territory. Blocked on external information before any phase can be scoped:
-  USB/serial protocol to the Hive Expander, Ethernet protocol for Connect
-  Ether (port, packet format, and whether it's documented/open or
-  proprietary even when targeting Hive hardware from third-party software),
-  any available SDK/API, supported hardware/firmware models, and licensing
-  terms for interfacing with the hardware from third-party software.
+- **Physical Display Output (CDEther) - POC physically proven; productisation
+  begun as a standalone helper.** Supersedes the earlier "research only /
+  blocked on obtaining the Ethernet protocol" status. Not a numbered
+  multi-tenant phase; not blocked on, nor a blocker for, Phase 10.
+  - **Architecture (as predicted, now built):** a separate local bridge
+    process subscribes to one room as a read-only display-token Socket.IO
+    client (the same mechanism `display.html` uses) and emits hardware frames
+    on the LAN. No USB/serial/XLR code in the hosted Railway server, ever.
+    Implementation: `tools/cdether-bridge/` (own `package.json`, one runtime
+    dependency, deletable; moved from `experimental/` during P1 hardening).
+    Full design + phased plan: `tools/cdether-bridge/NEXT-STEPS.md`; P1 plan:
+    `tools/cdether-bridge/P1-PLAN.md`.
+  - **Proven chain (2026-09-09):** Railway Presentation Timer -> authenticated
+    read-only display-token Socket.IO -> local bridge -> UDP -> CDEther -> XLR
+    -> Hive physical display.
+  - **Empirically decoded CDEther frame** (our own rig, *not* an official Hive
+    spec): UDP **subnet-directed broadcast**, verified at `192.168.8.255:36700`
+    on the test LAN. Frame is **exactly 3 bytes** - byte 1 = minutes, byte 2 =
+    seconds, each as **nibble-swapped BCD** (`MM:SS`); byte 3 = state,
+    physically verified as `0x01` green / `0x02` red / `0x03` amber / `0x04`
+    off.
+  - **Physically verified behaviour:** live countdown; stop / hold at `00:00`;
+    Pause/Resume; time nudge; live amber/red threshold changes made in the
+    Presentation Timer; clock / time-of-day mode -> OFF; Ctrl+C clean shutdown
+    -> OFF; Ethernet loss and recovery.
+  - **Frame-timeout test (done on hardware):** Ethernet was physically
+    unplugged mid-countdown so no OFF frame could be delivered. The Hive
+    display **froze on the last received value and held it for 5+ minutes**; on
+    reconnect the bridge recovered automatically and the display immediately
+    resumed at the correct current value, with no bridge or CDEther restart.
+    Conclusion: **CDEther/display retains the last valid frame indefinitely
+    when UDP stops.** The design therefore does **not** use a supervisor to
+    attempt "fail dark" on unexpected loss (an OFF packet cannot cross a broken
+    Ethernet path anyway). Unexpected loss = display holds last value +
+    operator UI reports it + automatic recovery on return. Only an
+    **intentional** Stop/Exit sends `0x04` OFF then closes.
+  - **Still unverified** (empirical, out of v1 scope): overtime / minus-sign
+    representation; time-of-day representation; other byte-3 states; behaviour
+    above `99:59`; other CDEther/Hive hardware generations; any further
+    protocol features.
+  - **Productisation decisions (2026-09-09):** proceed toward a standalone
+    helper - component name **"Foxy CDEther Bridge"**, user-facing
+    **"Physical Display Output"**, **CDEther** as the selected interface type -
+    **before** and independent of Phase 10. Lightweight tray app + loopback-only
+    local web control panel, not Electron. Installer / code-signing spend
+    deferred until the operator-friendly version is proven on our own machines
+    (runs in place until then). **v1 = CDEther only**; the older Hive USB
+    Expander is explicitly **not** implemented. Stays in the `presentation-timer`
+    repo. No short-link / licensing / Local Event Server / Hive-USB work rides
+    along with this.
+  - **P1 (core hardening) - physically verified on the rig and approved
+    2026-09-09.** Built: moved to `tools/cdether-bridge/`; explicit NIC
+    selection with the UDP socket bound to the chosen interface (rig-confirmed:
+    bound to Ethernet `192.168.8.238`, directed broadcast `192.168.8.255:36700`,
+    Wi-Fi still up); directed broadcast derived/validated; Connected/Output/Error
+    status model; bounded log ring buffer; clean `engine`/`status`/`net` core API
+    for the later UI; corrected failure semantics (intentional stop/exit -> one
+    OFF; unexpected loss -> cease + report degraded, no OFF attempt; reconnect ->
+    resume from fresh authoritative state; auth failure -> best-effort OFF then
+    fatal). Still terminal-run, no UI, no packaging, no production-server change.
+    70 automated unit/integration tests pass; full hardware regression passed
+    (`tools/cdether-bridge/RIG-REGRESSION.md`). **Uncommitted** pending file-list
+    review for the first CDEther commit.
+  - **P2 (next, not started) - local control panel + in-app status.** Tray app +
+    loopback-only web control panel, **plus** a compact "Physical Display Output"
+    status indicator on the PT room Control page (states: Off / Connecting /
+    Live / Degraded / Error). The bridge would report status to the server for
+    the first time - design must find the smallest secure mechanism (candidate:
+    a status-only, room-scoped token distinct from the display token, on a
+    dedicated heartbeat endpoint), keep the bridge structurally read-only w.r.t.
+    timer control, scope status per room / tenant-safe (clients see only their
+    own rooms; Platform Admin may later see a compact column on the Master
+    Dashboard), auto-expire stale status, and **never claim the physical Hive
+    display is connected** (CDEther gives no link feedback). See
+    `tools/cdether-bridge/NEXT-STEPS.md` §18.
 - **Short room-link aliases - deferred.** Existing secure token URLs
   (`/control?token=...`, `/display?token=...`) plus the Phase 9 Copy/Share
   consistency work and future QR codes are considered sufficient. Revisit
