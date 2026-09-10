@@ -27,6 +27,12 @@ function state(over = {}) {
 }
 const mss = (f) => [f.minutes, f.seconds, f.colour];
 
+// Constructs a timestamp that reads as h:m:s in THIS machine's local
+// timezone, so clock-mode tests are timezone-independent - deriveFrame uses
+// local Date methods (new Date(nowCorrected).getHours()/.getMinutes()),
+// same basis as display.html's own clock rendering.
+const localTime = (h, m, sec = 0) => new Date(2026, 0, 1, h, m, sec, 0).getTime();
+
 test('stopped + idle=duration -> armed duration in green', () => {
   const f = deriveFrame(state({ durationMs: 20 * 60 * 1000 }), NOW, 0, { idleBehaviour: 'duration' });
   assert.deepEqual(mss(f), [20, 0, 'green']);
@@ -77,9 +83,41 @@ test('accumulatedPauseMs is honoured', () => {
   assert.deepEqual(mss(deriveFrame(s, NOW, 0, {})), [6, 0, 'green']);
 });
 
-test('clock mode -> off (both flags)', () => {
-  assert.equal(deriveFrame(state({ showClock: true }), NOW, 0, {}).colour, 'off');
-  assert.equal(deriveFrame(state({ outputMode: 'clock' }), NOW, 0, {}).colour, 'off');
+// ---- P1.1: time-of-day / clock mode -> HH:MM green (reuses the proven BCD encoding) ----
+
+test('clock mode: 00:00 -> HH:MM green (both flags)', () => {
+  assert.deepEqual(mss(deriveFrame(state({ showClock: true }), localTime(0, 0), 0, {})), [0, 0, 'green']);
+  assert.deepEqual(mss(deriveFrame(state({ outputMode: 'clock' }), localTime(0, 0), 0, {})), [0, 0, 'green']);
+});
+
+test('clock mode: 09:05 -> HH:MM green (native leading-zero suppression is accepted display behaviour, not our concern)', () => {
+  assert.deepEqual(mss(deriveFrame(state({ showClock: true }), localTime(9, 5), 0, {})), [9, 5, 'green']);
+});
+
+test('clock mode: 12:00 -> HH:MM green', () => {
+  assert.deepEqual(mss(deriveFrame(state({ showClock: true }), localTime(12, 0), 0, {})), [12, 0, 'green']);
+});
+
+test('clock mode: 23:59 -> HH:MM green', () => {
+  assert.deepEqual(mss(deriveFrame(state({ showClock: true }), localTime(23, 59), 0, {})), [23, 59, 'green']);
+});
+
+test('clock mode: server clock offset is applied (bridge-local clock differs from server)', () => {
+  // Bridge-local wall clock reads 23:58; the server is 4 minutes ahead, so
+  // the server-corrected time is 00:02 (the next day).
+  const bridgeLocalNow = localTime(23, 58);
+  const clockOffsetMs = 4 * 60 * 1000;
+  assert.deepEqual(mss(deriveFrame(state({ showClock: true }), bridgeLocalNow, clockOffsetMs, {})), [0, 2, 'green']);
+});
+
+test('clock mode always outputs green, regardless of the room\'s countdown thresholds', () => {
+  const s = state({ showClock: true, amberThresholdMs: 999999999, redThresholdMs: 999999999 });
+  assert.equal(deriveFrame(s, localTime(9, 5), 0, {}).colour, 'green');
+});
+
+test('overlay message still overrides clock mode -> off', () => {
+  const s = state({ showClock: true, messageMode: 'overlay', message: 'STAND BY' });
+  assert.equal(deriveFrame(s, localTime(9, 5), 0, {}).colour, 'off');
 });
 
 test('overlay message -> off; ticker message -> timer still shown', () => {

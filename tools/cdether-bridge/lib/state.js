@@ -61,17 +61,30 @@ function deriveFrame(s, nowMs, clockOffsetMs = 0, opts = {}) {
   const idleBehaviour = opts.idleBehaviour || 'duration';
   const off = (reason) => ({ minutes: 0, seconds: 0, colour: 'off', reason });
 
-  // --- non-timer display states -> OFF (byte 3 = 0x04) ---
-  // Overlay message hides the timer entirely on the real display screen.
+  // --- non-timer display states ---
+  // Overlay message hides the timer entirely on the real display screen ->
+  // OFF (byte 3 = 0x04). Checked first so it also overrides clock mode.
   if (s.messageMode === 'overlay' && s.message) return off('overlay-message');
-  // Time-of-day clock mode is not bridged in the POC (unverified on this hardware).
-  if (s.showClock || s.outputMode === 'clock') return off('clock-mode');
+
+  const nowCorrected = nowMs + (clockOffsetMs || 0);
+
+  // Time-of-day / clock mode (P1.1, rig-proven): ordinary four-digit BCD
+  // frames already render arbitrary values correctly (12:00 / 23:59 / 00:00 /
+  // 09:05 confirmed on the rig) - no new frame values, same encoding as the
+  // countdown path. 24-hour, always green, no colon/blink/brightness (all
+  // unverified and out of scope). Uses the server-corrected clock (same basis
+  // as every other frame in this file), in the bridge machine's local
+  // timezone. Native leading-zero suppression (e.g. "9:05") is accepted
+  // physical-display behaviour, not something this code needs to handle.
+  if (s.showClock || s.outputMode === 'clock') {
+    const d = new Date(nowCorrected);
+    return { minutes: d.getHours(), seconds: d.getMinutes(), colour: 'green', reason: 'clock' };
+  }
 
   const idle = s.mode === 'stopped' || !s.startTime;
   if (idle && idleBehaviour === 'off') return off('idle-off');
 
   // --- normal timer output ---
-  const nowCorrected = nowMs + (clockOffsetMs || 0);
   const { remainingMs, finished } = computeRemaining(s, nowCorrected);
 
   const amber = Number.isFinite(s.amberThresholdMs) ? s.amberThresholdMs : 0;

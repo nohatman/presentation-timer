@@ -13,7 +13,9 @@
 //   * on reconnect -> wait for a fresh authoritative timerState, then resume at
 //     the correct current value
 //   * auth/token failure -> best-effort OFF while the path still exists, then fatal
-//   * clock mode / overlay message -> OFF each tick (path is up; physically tested)
+//   * overlay message -> OFF each tick (path is up; physically tested)
+//   * clock mode (P1.1) -> server-corrected local HH:MM, green, each tick -
+//     reuses the already-proven 4-digit BCD encoding, no new frame values
 //
 // No supervisor process. No independent countdown - every frame is a function
 // of the latest authoritative state + server clock offset + wall clock.

@@ -708,20 +708,67 @@ invalidates all of that user's existing sessions).
     resume from fresh authoritative state; auth failure -> best-effort OFF then
     fatal). Still terminal-run, no UI, no packaging, no production-server change.
     70 automated unit/integration tests pass; full hardware regression passed
-    (`tools/cdether-bridge/RIG-REGRESSION.md`). **Uncommitted** pending file-list
-    review for the first CDEther commit.
-  - **P2 (next, not started) - local control panel + in-app status.** Tray app +
-    loopback-only web control panel, **plus** a compact "Physical Display Output"
-    status indicator on the PT room Control page (states: Off / Connecting /
-    Live / Degraded / Error). The bridge would report status to the server for
-    the first time - design must find the smallest secure mechanism (candidate:
-    a status-only, room-scoped token distinct from the display token, on a
-    dedicated heartbeat endpoint), keep the bridge structurally read-only w.r.t.
-    timer control, scope status per room / tenant-safe (clients see only their
-    own rooms; Platform Admin may later see a compact column on the Master
-    Dashboard), auto-expire stale status, and **never claim the physical Hive
-    display is connected** (CDEther gives no link feedback). See
+    (`tools/cdether-bridge/RIG-REGRESSION.md`). Committed 2026-09-09 as
+    `0a1b581` (bridge + this status file; no production-code change).
+  - **P1.1 - time-of-day: DONE, physically proven end-to-end (2026-09-11).**
+    Clock mode now outputs the current `HH:MM` in the bridge computer's own
+    local timezone (24-hour, always green), with the underlying clock
+    corrected against the Presentation Timer server (the same
+    `clockOffsetMs` mechanism already used for countdown accuracy) - not
+    the bridge machine's uncorrected system clock. Reuses the existing
+    4-digit nibble-swapped BCD encoding unchanged, no new frame values.
+    Rig-confirmed: correct `HH:MM` in green; Timer <-> Time of Day switches
+    both directions immediately with no bridge restart; overlay message
+    still overrides clock mode -> OFF and clearing it restores the clock;
+    Ctrl+C still sends one OFF frame and exits cleanly; normal countdown
+    behaviour confirmed unchanged. 105 automated tests pass. See
+    `tools/cdether-bridge/P1.1-PROTOCOL-INVESTIGATION.md` §3.2/§7.
+  - **P1.1 - negative/overtime and `>99:59` - PAUSED, unresolved.**
+    Negative/overtime count past `00:00` and durations `>99:59` remain
+    experimentally unestablished; the bridge stays conservative (`00:00`
+    red / clamp to `99:59`) until an encoding is physically proven - not
+    guessed. **Paused 2026-09-10**: sending an undocumented `byte3` value
+    during raw probing left the Hive display persistently dimmed - a
+    change to the display's own retained configuration state, not a
+    one-frame glitch. No further raw-frame sweeps of unknown byte values
+    until this is better understood, in coordination with Hive/Interspace
+    support. **Recovery confirmed:** a documented brightness-reset command
+    (from Dave's reference PDF) was sent via PowerShell -> UDP -> CDEther ->
+    XLR and successfully restored full display brightness - the dimming
+    was recoverable configuration state, not physical damage. The `--raw`
+    frame sender, `sniff.js`, and their tests remain in the tree for
+    controlled, deliberate investigation only - not casual use. Does not
+    block P2. Procedures + route recommendation + results log + the pause
+    note: `tools/cdether-bridge/P1.1-PROTOCOL-INVESTIGATION.md`.
+  - **P2.1 (bridge status heartbeat + Control page indicator) - IMPLEMENTED,
+    COMMITTED 2026-09-10 as `92cb563`** (pushed to origin/main). The room
+    Control page now shows a compact "Physical Display Output" status pill
+    (states: Off / Connecting / Live / Degraded / Error). Design: the
+    bridge reports status by riding its existing read-only display-token
+    Socket.IO connection with a new, strictly-typed, rate-limited
+    `bridgeStatus` event (no new token type, no DB change, no persistence -
+    in-memory per-room map with a heartbeat TTL, mirroring the existing
+    `timerRooms`/`roomControllers` pattern in `server.js`); room-scoping and
+    tenant-safety come for free from the existing server-derived
+    `socket.roomId`, so cross-room spoofing is structurally impossible, not
+    just policy-enforced. Keeps the bridge structurally read-only w.r.t.
+    timer control, auto-expires stale status, handles multiple simultaneous
+    bridges per room as an explicit "Degraded - multiple sources" warning,
+    and **never claims the physical Hive display is connected** (CDEther
+    gives no link feedback) - the Control page always reports on the
+    bridge's own state, never the hardware's. 131 automated tests pass
+    (unit + a real in-process server/socket.io integration suite); also
+    verified visually in a real browser (Playwright against the system
+    Edge) against a locally-run server. **Live Railway/production
+    deployment validation has not yet been evidenced in this session** -
+    that check remains outstanding. Full design (architecture, heartbeat
+    wire format, security analysis, UI/config design, exact file list,
+    rollout sequencing, test plan, and implementation slices):
+    `tools/cdether-bridge/P2-PLAN.md`. See also
     `tools/cdether-bridge/NEXT-STEPS.md` §18.
+  - **P2.2 (local tray + loopback-only web control panel) - NOT STARTED.**
+    First-run wizard, live status, Start/Stop, Send Test Display, config
+    storage, packaging - none of this exists yet. Explicitly not begun.
 - **Short room-link aliases - deferred.** Existing secure token URLs
   (`/control?token=...`, `/display?token=...`) plus the Phase 9 Copy/Share
   consistency work and future QR codes are considered sufficient. Revisit

@@ -56,3 +56,22 @@ display.
 For each row: pass / fail + any surprise. Particular attention to **13, 15, 16,
 17, 20** — these are the P1 semantic changes. If all pass, we prepare the first
 CDEther commit for your review.
+
+---
+
+This checklist covers only the **shipped** P1 behaviour. Time-of-day / clock
+mode has since been implemented and physically proven end-to-end (P1.1,
+2026-09-11) — it is no longer one of the unsupported functions. Negative /
+overtime and `>99:59` remain unresolved and unsupported (bridge stays
+conservative: `00:00` red / clamps to `99:59`) — see
+`P1.1-PROTOCOL-INVESTIGATION.md`.
+
+**Post-P1 rig incident (P1.1 raw-byte probing, since resolved):** during
+Priority-1 raw `byte3` probing, sending an undocumented value left the Hive
+display persistently dimmed - not a one-frame glitch, but a change to the
+display's own retained state. **Recovery:** a documented brightness-reset
+command (from Dave's reference PDF) was sent via PowerShell → UDP → CDEther →
+XLR and successfully restored full display brightness. This confirmed the
+dimming was recoverable configuration state, not physical damage, but it is
+exactly why further undocumented-`byte3` probing is paused - see
+`P1.1-PROTOCOL-INVESTIGATION.md` for the current pause status.

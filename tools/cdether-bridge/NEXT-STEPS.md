@@ -4,8 +4,14 @@
 against real CDEther / XLR / Hive hardware (2026-09-09), including the
 frame-timeout test in §11. **P1 core hardening is implemented and physically
 verified on the rig (2026-09-09) — approved** (`P1-PLAN.md`, `RIG-REGRESSION.md`).
-The productisation decisions in §17 were taken on 2026-09-09. Next: prepare the
-first CDEther commit for review; then **P2** (§18). No P2 code until approved.
+The productisation decisions in §17 were taken on 2026-09-09. P1 was committed
+as `0a1b581`. **P2.1 (§18) is implemented and committed as `92cb563`** (see
+`P2-PLAN.md` for the design) — the room Control page now shows a compact
+Physical Display Output status pill fed by a room-scoped bridge-status
+heartbeat. Live Railway/production deployment validation has not yet been
+evidenced in this session. **P2.2** (the local tray/loopback operator UI)
+**has not started.** P1.1 time-of-day (§19) is separately done and physically
+proven end-to-end; negative/overtime and `>99:59` remain paused.
 
 Component name: **Foxy CDEther Bridge** (internal / code). User-facing
 terminology: **"Physical Display Output"**, with **CDEther** as the selected
@@ -377,8 +383,10 @@ delete" holds until P3.
 | Step | Scope | Exit criteria to proceed |
 |---|---|---|
 | **P0 — done** | experimental bridge, physically proven (incl. frame-timeout test) | ✅ complete |
-| **P1 — harden the core** ✅ *physically verified on the rig + approved 2026-09-09* | moved to `tools/cdether-bridge/`; `lib/net.js` (adapter enumeration + directed broadcast); `UdpSender` bind-to-interface; `lib/status.js` (Connected/Output/Error); `lib/log.js` (ring buffer); `lib/engine.js` (clean core API, corrected OFF semantics); `CDETHER_INTERFACE` config; 70 unit/integration tests; rig regression PASSED. Still terminal-run, no server changes. | prepare first CDEther commit → P2 |
-| **P2 — local control panel + in-app status** | one app process: tray + loopback web UI (first-run wizard, live status, Start/Stop, Send test frame, profiles); **plus** a compact Physical Display Output status indicator on the PT room Control page fed by a small secure room-scoped, auto-stale status report from the bridge (**§18**). | dogfooded by a non-developer at a real event; P2 security review covers the new bridge→server channel |
+| **P1 — harden the core** ✅ *physically verified on the rig + approved, committed 2026-09-09 (`0a1b581`)* | moved to `tools/cdether-bridge/`; `lib/net.js` (adapter enumeration + directed broadcast); `UdpSender` bind-to-interface; `lib/status.js` (Connected/Output/Error); `lib/log.js` (ring buffer); `lib/engine.js` (clean core API, corrected OFF semantics); `CDETHER_INTERFACE` config; 70 unit/integration tests; rig regression PASSED. Still terminal-run, no server changes. | — |
+| **P1.1 — protocol-extension investigation** *(negative/overtime and `>99:59` paused; time-of-day done, does not block P2)* | **Time-of-day: DONE**, physically proven end-to-end 2026-09-11 — bridge outputs `HH:MM` in the bridge computer's own local timezone, clock-corrected against the Presentation Timer server, green, in clock mode. Negative/overtime count and `>99:59`: rig experiments **paused** — an undocumented `byte3` value left the Hive display persistently dimmed (its own retained configuration, not a one-frame glitch); a documented brightness-reset command was sent via PowerShell → UDP → CDEther → XLR and successfully restored full brightness. Conservative bridge behaviour (`00:00` red / `99:59` clamp) **unchanged** until an encoding is physically proven; the `--raw` sender/`sniff.js`/their tests remain for controlled investigation only. Procedures + results log: `P1.1-PROTOCOL-INVESTIGATION.md`. §19. | remaining items: each proven encoding → a scoped follow-up (verified-table + `lib/` change spec + tests + rig re-check), not an immediate edit |
+| **P2.1 — bridge status heartbeat + Control page indicator** ✅ *implemented, committed as `92cb563`* | a compact Physical Display Output status indicator on the PT room Control page fed by a small secure, room-scoped, auto-stale status heartbeat from the bridge (**§18**). 131 automated tests pass; verified in a real browser locally. | live Railway/production deployment validation (not yet evidenced in this session) |
+| **P2.2 — local control panel** *(not started)* | one app process: tray + loopback web UI (first-run wizard, live status, Start/Stop, Send test frame, profiles). | dogfooded by a non-developer at a real event; P2.2 security review |
 | **P3 — operator-friendly, run-in-place** | polish the wizard, error text, profile handling; "run in place" folder + launcher; written setup instructions. **This is the point it is usable as a supported feature by our own operators.** | 2+ real events run by a non-developer using only the written instructions |
 | **P4 — packaged executable + installer + signing** | Node SEA build; NSIS/MSI installer; `%APPDATA%`; EV signing; clean-VM install/run/uninstall; SmartScreen + AV check | spend approved; aligned with Phase 10 toolchain |
 | **P5 — field hardening** | reconnect edge cases, NIC-change handling, clock/overlay transitions, diagnostics export, soak testing | 3+ events with no operator-visible failure |
@@ -480,9 +488,12 @@ P5; the Phase 10 packaging toolchain decision (P4).
 
 ---
 
-## 18. P2 scope — in-app Physical Display Output status (requirement, not yet designed)
+## 18. P2 scope — in-app Physical Display Output status (P2.1: DONE, committed `92cb563`)
 
-Added 2026-09-09 after the P1 rig pass. **P2 only — do not start.**
+Added 2026-09-09 after the P1 rig pass. Original requirement below; design in
+`P2-PLAN.md`; **P2.1 (the server-side status heartbeat + Control page pill)
+is implemented and committed.** The local tray/loopback operator UI (**P2.2**)
+described in this requirement **has not started.**
 
 The normal Presentation Timer operator must be able to see Physical Display
 Output status **from within the Presentation Timer itself**, on the room
@@ -529,5 +540,66 @@ ability to affect room state; Master Dashboard rollout (later).
 
 ---
 
-Next: prepare the first CDEther commit for review, then **P2 (§18)**. No P2
-code until approved.
+## 19. P1.1 — protocol-extension investigation (investigation only)
+
+Added 2026-09-09 after the P1 commit. **Investigation only — no bridge or
+production change. Runs in parallel with P2 planning; does not block it.**
+
+> **PAUSED 2026-09-10 — negative/overtime and `>99:59` only.** Sending an
+> **undocumented `byte3` value during raw probing left the Hive display
+> persistently dimmed** - a change to the display's own retained
+> configuration, not a one-frame glitch. **No further raw-frame sweeps of
+> unknown byte values until this is better understood**, in coordination
+> with Hive/Interspace support — see the pause note at the top of
+> `P1.1-PROTOCOL-INVESTIGATION.md`. **Recovery confirmed:** a documented
+> brightness-reset command (from Dave's reference PDF) was sent via
+> PowerShell → UDP → CDEther → XLR and successfully restored full display
+> brightness - the dimming was recoverable configuration state, not physical
+> damage. Bridge behaviour for negative/overtime and `>99:59` is unchanged;
+> P2 does not depend on this pause resolving. The `--raw` sender, `sniff.js`,
+> and their tests remain in the tree for controlled, deliberate investigation
+> only.
+>
+> **Time-of-day (§3.2) is DONE — implemented and physically proven
+> end-to-end on the rig (2026-09-11).** It never touched the paused raw-byte
+> work (zero new/undocumented frame values), so it wasn't affected by the
+> pause. See item 2 below and `P1.1-PROTOCOL-INVESTIGATION.md` §3.2/§7.
+
+Three PT functions were deliberately unsupported on the physical Hive display;
+each needed to be established **experimentally, not guessed**:
+
+1. **Negative / overtime count** — PT continues past zero (`00:00 → -00:01 …`).
+   The bridge holds `00:00` red. Determine: does the protocol carry a
+   minus/overtime indication; how is it encoded; is the sign a digit-position
+   glyph or a flag/state bit; does colour stay independently controllable; what
+   happens past the negative limit. **Unresolved, paused.**
+2. **Time of day** — PT has a clock mode. **Done.** Plain four-digit BCD
+   frames render arbitrary `HH:MM` correctly (rig-confirmed); no protocol
+   extension needed — reuses the existing green (`0x01`) state as-is. Output
+   is in the bridge computer's own local timezone, with the clock itself
+   corrected against the Presentation Timer server (the same `clockOffsetMs`
+   mechanism used for countdown accuracy). Colon behaviour was not
+   investigated (out of scope; no colon-related `byte3` value is used).
+   Implemented in `lib/state.js`, physically proven end-to-end 2026-09-11.
+3. **`> 99:59`** (lower priority) — is there a long-form mode, or is the
+   `99:59` clamp the real physical limit. **Unresolved, paused.**
+
+**Rule (still governs items 1 and 3):** the bridge's conservative behaviour
+does not change until a representation is physically proven on the rig. A
+proof yields a *scoped follow-up* (new verified frames, a `lib/cdether.js` +
+`lib/state.js` change spec, new unit tests, a rig re-check) — never an
+immediate edit. Time-of-day (item 2) went through exactly this lifecycle and
+is now complete.
+
+Full experiment procedures, hypotheses, the route recommendation (reference
+capture via Irisdown/KUMA vs direct controlled packet experiments), the
+passive instruments, and the results log (time-of-day filled in; negative/
+overtime and `>99:59` still blank pending the pause resolving):
+[`P1.1-PROTOCOL-INVESTIGATION.md`](./P1.1-PROTOCOL-INVESTIGATION.md).
+
+---
+
+Current state: **P1.1 time-of-day is DONE** (physically proven end-to-end);
+**P1.1 negative/overtime and `>99:59` remain paused** (dim-display recovery
+confirmed, but no further raw probing yet); **P2.1 is implemented and
+committed** (`92cb563`); **P2.2 has not started.**

@@ -203,15 +203,19 @@ test('server-initiated disconnect: room-unavailable + periodic reconnect', async
   await engine.dispose();
 });
 
-test('clock mode -> OFF frames each tick (path is up)', async () => {
+test('clock mode (P1.1) -> HH:MM green frames each tick, not OFF', async () => {
   const { pt, sender, engine } = makeEngine();
   engine.connect();
   engine.start();
   pt.arrive(runningState({ showClock: true }));
   await sleep(60);
+  const duringClockMode = sender.sent.slice();
   await engine.dispose();
-  const timerFrames = sender.sent.filter((b) => b[2] !== 0x04);
-  assert.equal(timerFrames.length, 0, 'all frames are OFF while in clock mode');
+  assert.ok(duringClockMode.length >= 2, 'frames were sent while in clock mode');
+  assert.ok(duringClockMode.every((b) => b[2] === 0x01), 'every clock-mode frame is green (0x01), none are OFF');
+  // dispose() still sends its own best-effort OFF afterward (intentional-stop
+  // semantics are unrelated to, and unaffected by, clock mode).
+  assert.equal(hex(sender.sent.at(-1)), hex(OFF_FRAME));
 });
 
 test('dispose while output active sends a best-effort OFF', async () => {

@@ -9,6 +9,7 @@
     "start": "node bridge.js",
     "test": "node --test \"test/*.test.js\"",
     "send-frame": "node tools/send-frame.js",
+    "sniff": "node tools/sniff.js",
     "list-adapters": "node bridge.js --list-adapters"
   },
   "engines": {

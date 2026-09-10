@@ -1,8 +1,14 @@
 # cdether-bridge
 
-> **Not production, not committed yet.** Own `package.json` / `node_modules`;
-> deletable with no effect on the Presentation Timer app. It does **not** modify
-> `server.js`, `display.html`, room auth, or Companion.
+> **P1 committed (`0a1b581`); P2.1 committed (`92cb563`).** Own `package.json` /
+> `node_modules` for the bridge process itself, which stays a fully separate,
+> deletable program with no `require()` dependency on the main app. As of P2.1,
+> `server.js` and `public/control.html` do carry a small, narrowly-scoped
+> **status-reporting** addition (see `P2-PLAN.md`) - room-scoped, read-only
+> with respect to timer control, and additive (deleting this bridge folder
+> would not break the main app; the Control page's status pill would simply
+> never receive anything to show). `auth.js`, `db.js`, `display.html`, and
+> Companion remain untouched.
 
 Subscribes **read-only** to one Presentation Timer room via that room's
 **DISPLAY token** and emits empirically-derived 3-byte CDEther UDP frames on the
@@ -35,10 +41,25 @@ the socket role from the token and every control handler is gated on the
   2026-09-09** (`RIG-REGRESSION.md`). 70 automated tests pass. NIC bind (Ethernet
   `192.168.8.238` → directed broadcast `192.168.8.255:36700` with Wi-Fi still up),
   status model, corrected failure semantics all confirmed on real hardware.
-  **Uncommitted** pending the first CDEther commit's file-list review.
-- Productisation plan (standalone **"Physical Display Output"** helper — tray +
-  loopback web panel, not Electron, CDEther only): `NEXT-STEPS.md`. **P2** adds
-  an in-app Physical Display Output status indicator on the room Control page.
+  Committed as `0a1b581`.
+- **P1.1 — time-of-day: DONE, physically proven end-to-end (2026-09-11).**
+  Clock mode sends the current `HH:MM` in the bridge computer's own local
+  timezone (24-hour, always green), with the clock corrected against the
+  Presentation Timer server (same `clockOffsetMs` mechanism as countdown
+  accuracy) — reuses the existing BCD encoding, no new frame values.
+- **P1.1 — negative/overtime and `>99:59`: PAUSED.** Investigation-only, no
+  bridge behaviour change (still `00:00` red / `99:59` clamp). Paused because
+  an undocumented `byte3` value left the Hive display persistently dimmed
+  during raw probing (a change to its own retained configuration, not a
+  one-frame glitch); a documented brightness-reset command was successfully
+  sent via PowerShell → UDP → CDEther → XLR to restore full brightness. The
+  `--raw` sender and `sniff.js` remain for controlled investigation only —
+  `P1.1-PROTOCOL-INVESTIGATION.md`.
+- **P2.1 — bridge status heartbeat + Control page indicator: IMPLEMENTED,
+  COMMITTED** (`92cb563`). The room Control page now shows a compact Physical
+  Display Output status pill (Off/Connecting/Live/Degraded/Error). Local
+  operator UI (tray app, loopback web panel) remains future work — **P2.2 has
+  not started.** Productisation plan: `NEXT-STEPS.md`.
 
 ## ⚠️ The CDEther protocol here is EMPIRICAL
 
@@ -58,12 +79,36 @@ nibble-swapped BCD (low nibble = tens digit); byte 3 = `01` green · `02` red ·
 `03` amber · `04` off. UDP **subnet-directed broadcast** to port 36700.
 
 Conservative handling of the unverified cases: `>99:59` → clamp to `99:59`;
-overtime → hold `00:00` red; clock / time-of-day mode → OFF; overlay message →
-OFF; ticker message → timer still shown.
+overtime → hold `00:00` red; overlay message → OFF; ticker message → timer
+still shown. Clock / time-of-day mode is **no longer** one of these — see
+below.
 
-**Still unverified:** overtime / minus-sign, time-of-day representation,
-byte-3 states beyond `01`–`04`, `>99:59`, min/max frame rate, unicast vs
-broadcast, other Hive hardware generations.
+**Time-of-day (P1.1, done):** clock mode sends the current time as `HH:MM`
+in the bridge computer's own local timezone (24-hour, always green), with
+the clock itself corrected against the Presentation Timer server, using the
+exact same BCD encoding above — no new frame values. Physically proven
+end-to-end on the rig (2026-09-11). Overlay message still overrides clock
+mode (→ OFF).
+
+**Still unverified:** overtime / minus-sign representation, byte-3 states
+beyond `01`–`04`, `>99:59`, min/max frame rate, unicast vs broadcast, other
+Hive hardware generations.
+
+**P1.1 — protocol-extension investigation (negative/overtime and `>99:59`
+only; time-of-day is done, see above):** negative/overtime count and
+`>99:59` remain under experimental investigation on the rig, currently
+**paused** — an undocumented `byte3` value sent during raw probing left the
+Hive display persistently dimmed (a change to its own retained
+configuration state, not a one-frame glitch); a documented brightness-reset
+command was successfully sent via PowerShell → UDP → CDEther → XLR and
+restored full brightness, confirming the dimming was recoverable, not
+physical damage. Further raw sweeps of unknown byte values stay paused until
+this is better understood, in coordination with Hive/Interspace support. The
+bridge's conservative handling for these two does **not** change until an
+encoding is physically proven. The `--raw` sender, `sniff.js`, and their
+tests remain in the tree for controlled, deliberate investigation only.
+Experiment procedures and the results log:
+[`P1.1-PROTOCOL-INVESTIGATION.md`](./P1.1-PROTOCOL-INVESTIGATION.md).
 
 ## Config
 
@@ -89,7 +134,7 @@ a multi-homed PC.
 ```bash
 cd tools/cdether-bridge
 npm install
-npm test                                   # 70 unit + integration tests, no hardware
+npm test                                   # 105 unit + integration tests, no hardware
 
 node bridge.js --list-adapters             # see adapter names / computed broadcasts
 node --env-file=.env bridge.js             # the bridge (connects + starts output)
@@ -161,7 +206,7 @@ lib/log.js             bounded event-log ring buffer
 lib/ptClient.js        read-only socket.io-client wrapper
 lib/engine.js          1 Hz loop + Start/Stop + failure semantics + status wiring
 tools/send-frame.js    manual frame sender (rig bring-up)
-test/*.test.js         encode · state · net · status · engine · integration  (70 tests)
+test/*.test.js         encode · state · net · status · engine · integration · instruments  (105 tests)
 NEXT-STEPS.md          productisation design + phased plan + decisions
 P1-PLAN.md             the P1 hardening plan (this milestone)
 RIG-REGRESSION.md      the hardware checklist to run before the first commit
