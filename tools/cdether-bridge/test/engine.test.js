@@ -41,22 +41,34 @@ class FakePt extends EventEmitter {
     this.started = false;
     this.stopped = false;
     this.reconnects = 0;
+    this.connected = false;   // P2.1: mirrors socket.connected for sendStatus()
+    this.statusSent = [];     // P2.1: every payload passed to sendStatus()
   }
   start() { this.started = true; this.emit('connecting'); }
   reconnect() { this.reconnects++; this.emit('connecting'); }
-  stop() { this.stopped = true; }
+  stop() { this.stopped = true; this.connected = false; }
+
+  // P2.1: mirrors PtClient.sendStatus() - no-op while "disconnected".
+  sendStatus(payload) {
+    if (!this.connected) return false;
+    this.statusSent.push(payload);
+    return true;
+  }
 
   // helpers used by tests
   arrive(state = runningState()) {
+    this.connected = true;
     this.lastState = state;
     this.emit('connected');
     this.emit('state', state, this.clockOffsetMs);
   }
   dropUnexpected(reason = 'transport close') {
+    this.connected = false;
     this.lastState = null;
     this.emit('disconnected', { reason, intentional: false, serverInitiated: false });
   }
   dropServerInitiated() {
+    this.connected = false;
     this.lastState = null;
     this.emit('disconnected', { reason: 'io server disconnect', intentional: false, serverInitiated: true });
   }
@@ -211,4 +223,61 @@ test('dispose while output active sends a best-effort OFF', async () => {
   await engine.dispose();
   assert.equal(hex(sender.sent.at(-1)), hex(OFF_FRAME));
   assert.ok(pt.stopped);
+});
+
+// ---- P2.1: bridge -> Presentation Timer status heartbeat ----
+
+test('heartbeat: reports a status on every StatusModel change', async () => {
+  const { pt, engine } = makeEngine();
+  engine.connect();
+  pt.arrive(); // status.setPt('connected', ...) -> a 'change'
+  await sleep(10);
+  assert.ok(pt.statusSent.length > 0, 'at least one status reported on a state transition');
+  const last = pt.statusSent.at(-1);
+  assert.equal(last.v, 1);
+  assert.ok(['off', 'connecting', 'live', 'degraded', 'error'].includes(last.overall));
+  await engine.dispose();
+});
+
+test('heartbeat: also fires on a fixed interval even with no state change', async () => {
+  const { pt, engine } = makeEngine({ heartbeatIntervalMs: 20 });
+  engine.connect();
+  pt.arrive();
+  await sleep(15);
+  const countAfterChange = pt.statusSent.length;
+  await sleep(60); // no further state changes; the interval alone should add more
+  assert.ok(pt.statusSent.length > countAfterChange, 'unconditional heartbeat keeps reporting on a steady state');
+  await engine.dispose();
+});
+
+test('heartbeat: silently does nothing while the PT connection is down (no throw, no queue)', async () => {
+  const { pt, engine } = makeEngine({ heartbeatIntervalMs: 20 });
+  engine.connect(); // pt.connected stays false until arrive()
+  await sleep(50);
+  assert.equal(pt.statusSent.length, 0, 'no heartbeat sent while disconnected');
+  await engine.dispose();
+});
+
+test('heartbeat payload carries the configured bridgeId/bridgeVersion/interface', async () => {
+  const { pt, engine } = makeEngine({ bridgeId: 'abc123', bridgeVersion: '9.9.9', getInterfaceName: () => 'Ethernet' });
+  engine.connect();
+  pt.arrive();
+  await sleep(10);
+  const last = pt.statusSent.at(-1);
+  assert.equal(last.bridgeId, 'abc123');
+  assert.equal(last.bridgeVersion, '9.9.9');
+  assert.equal(last.interfaceName, 'Ethernet');
+  await engine.dispose();
+});
+
+test('heartbeat stops after dispose()', async () => {
+  const { pt, engine } = makeEngine({ heartbeatIntervalMs: 15 });
+  engine.connect();
+  pt.arrive();
+  await sleep(10);
+  await engine.dispose();
+  pt.connected = true; // simulate the socket staying nominally "up" post-dispose
+  const before = pt.statusSent.length;
+  await sleep(60);
+  assert.equal(pt.statusSent.length, before, 'no further heartbeats fire once disposed');
 });

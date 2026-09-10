@@ -37,6 +37,7 @@ async function startFakePt() {
   const io = new Server(httpServer, { cors: { origin: '*' } });
   const state = { current: baseState() };
   const clientEmits = [];
+  const bridgeStatusPayloads = [];
 
   io.on('connection', (socket) => {
     const token = socket.handshake.auth && socket.handshake.auth.token;
@@ -45,8 +46,13 @@ async function startFakePt() {
       socket.disconnect(true);
       return;
     }
-    // anything the client emits (other than the handshake) is a read-only violation
-    socket.onAny((ev) => clientEmits.push(ev));
+    // P2.1: 'bridgeStatus' is the one narrowly-scoped, whitelisted exception
+    // to "the bridge emits nothing to the server" - anything else the client
+    // emits is a read-only violation.
+    socket.onAny((ev, payload) => {
+      clientEmits.push(ev);
+      if (ev === 'bridgeStatus') bridgeStatusPayloads.push(payload);
+    });
     socket.join('room');
     socket.emit('timerState', { ...state.current, serverNow: Date.now(), roomInfo: { slug: 'BALLROOM' } });
   });
@@ -57,6 +63,7 @@ async function startFakePt() {
   return {
     url,
     clientEmits,
+    bridgeStatusPayloads,
     push(over) {
       state.current = baseState(over);
       io.to('room').emit('timerState', { ...state.current, serverNow: Date.now() });
@@ -84,12 +91,15 @@ function buildEngine(ptUrl, udpPort, token = 'GOOD') {
   const sender = new UdpSender({ address: '127.0.0.1', port: udpPort, bindAddress: '127.0.0.1' });
   const engine = new BridgeEngine({
     ptClient: pt, sender, status: new StatusModel(), log: new RingLog(), deriveFrame,
-    options: { frameIntervalMs: 40, serverRetryMs: 60 },
+    options: {
+      frameIntervalMs: 40, serverRetryMs: 60,
+      bridgeId: 'testbridge01', bridgeVersion: '0.0.1-test', getInterfaceName: () => 'TestNIC',
+    },
   });
   return { pt, sender, engine };
 }
 
-test('end-to-end: subscribe, follow countdown, reflect state changes, read-only', async (t) => {
+test('end-to-end: subscribe, follow countdown, reflect state changes, read-only except the P2.1 status heartbeat', async (t) => {
   const ptServer = await startFakePt();
   const udp = await startUdpListener();
   const { sender, engine } = buildEngine(ptServer.url, udp.port);
@@ -111,7 +121,20 @@ test('end-to-end: subscribe, follow countdown, reflect state changes, read-only'
   await sleep(150);
   assert.ok(udp.frames.at(-1).endsWith(' 02'), `red near end, got ${udp.frames.at(-1)}`);
 
-  assert.deepEqual(ptServer.clientEmits, [], 'bridge emitted nothing to the server (structurally read-only)');
+  const nonStatusEmits = ptServer.clientEmits.filter((ev) => ev !== 'bridgeStatus');
+  assert.deepEqual(nonStatusEmits, [], 'bridge emits nothing to the server except the whitelisted bridgeStatus heartbeat (P2.1) - structurally read-only otherwise');
+
+  assert.ok(ptServer.bridgeStatusPayloads.length > 0, 'bridge reports its own status heartbeat');
+  const lastStatus = ptServer.bridgeStatusPayloads.at(-1);
+  assert.equal(lastStatus.overall, 'live');
+  assert.equal(lastStatus.output, 'running');
+  assert.equal(lastStatus.ptConnected, true);
+  assert.equal(lastStatus.bridgeId, 'testbridge01');
+  assert.equal(lastStatus.interfaceName, 'TestNIC');
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(lastStatus, 'roomId'), false,
+    'the heartbeat payload must never carry a room identifier - the server derives room only from the authenticated socket',
+  );
 });
 
 test('end-to-end: intentional stop sends exactly one OFF then silence', async (t) => {

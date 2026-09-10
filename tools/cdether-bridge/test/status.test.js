@@ -39,6 +39,12 @@ test('running, then PT lost -> degraded with "holding its last value" wording', 
   assert.match(snap.overall.reason, /holding its last value/i);
 });
 
+test('running, never yet connected -> connecting, not degraded (P2.1)', () => {
+  const s = new StatusModel();
+  s.setOutput('running');
+  assert.equal(s.snapshot().overall.state, 'connecting');
+});
+
 test('running, PT reconnecting -> degraded', () => {
   const s = new StatusModel();
   s.setPt('connected', { room: 'X' });
@@ -47,8 +53,16 @@ test('running, PT reconnecting -> degraded', () => {
   assert.equal(s.snapshot().overall.state, 'degraded');
 });
 
-test('server-unreachable while running -> degraded', () => {
+test('server-unreachable while running, never yet connected -> connecting (P2.1)', () => {
   const s = new StatusModel();
+  s.setOutput('running');
+  s.setPt('server-unreachable');
+  assert.equal(s.snapshot().overall.state, 'connecting');
+});
+
+test('server-unreachable after having been live -> degraded', () => {
+  const s = new StatusModel();
+  s.setPt('connected', { room: 'X' });
   s.setOutput('running');
   s.setPt('server-unreachable');
   assert.equal(s.snapshot().overall.state, 'degraded');
@@ -88,7 +102,7 @@ test('emits change only on an actual transition', () => {
   s.on('change', () => { changes++; });
   s.setPt('connecting');            // change
   s.setPt('connecting');            // no change
-  s.setOutput('running');           // change (overall idle->degraded: running w/o PT)
+  s.setOutput('running');           // change (overall idle->connecting: running, never yet live)
   s.noteSend(true);                 // no overall change
   assert.equal(changes, 2);
 });

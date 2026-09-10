@@ -20,8 +20,10 @@
 
 const { EventEmitter } = require('node:events');
 const { encodeFrame, describeFrame, OFF_FRAME } = require('./cdether');
+const { buildBridgeStatusPayload } = require('./reporter');
 
 const SERVER_INITIATED_RETRY_MS = 15000;
+const HEARTBEAT_INTERVAL_MS = 10000; // P2.1: unconditional keepalive, on top of change-driven reports
 
 class BridgeEngine extends EventEmitter {
   constructor({ ptClient, sender, status, log, deriveFrame, options = {} }) {
@@ -35,6 +37,14 @@ class BridgeEngine extends EventEmitter {
     this.idleBehaviour = options.idleBehaviour || 'duration';
     this.serverRetryMs = options.serverRetryMs || SERVER_INITIATED_RETRY_MS;
 
+    // P2.1: bridge -> Presentation Timer status heartbeat, riding the same
+    // read-only display-token connection (see lib/ptClient.js sendStatus()).
+    this.bridgeId = options.bridgeId || null;
+    this.bridgeVersion = options.bridgeVersion || null;
+    this.getInterfaceName = typeof options.getInterfaceName === 'function' ? options.getInterfaceName : () => null;
+    this.heartbeatIntervalMs = options.heartbeatIntervalMs || HEARTBEAT_INTERVAL_MS;
+    this._heartbeatTimer = null;
+
     this._outputActive = false;   // operator intent: Start pressed, Stop not
     this._ptConnected = false;    // socket up AND authoritative state in hand
     this._tick = null;
@@ -45,7 +55,10 @@ class BridgeEngine extends EventEmitter {
     this._fatalled = false;
     this._inflight = null;
 
-    this.status.on('change', (snap) => this.emit('status', snap));
+    this.status.on('change', (snap) => {
+      this.emit('status', snap);
+      this._reportStatus();
+    });
     this._wirePt();
   }
 
@@ -54,6 +67,28 @@ class BridgeEngine extends EventEmitter {
   /** Begin the connection. Output is NOT started until start() is called. */
   connect() {
     this.pt.start();
+    if (!this._heartbeatTimer) {
+      this._heartbeatTimer = setInterval(() => this._reportStatus(), this.heartbeatIntervalMs);
+      if (this._heartbeatTimer.unref) this._heartbeatTimer.unref();
+    }
+  }
+
+  /**
+   * P2.1: report the current status snapshot to the Presentation Timer over
+   * the existing read-only connection. Called on every StatusModel 'change'
+   * and on a fixed interval regardless of change, so a steady state (e.g.
+   * "Live" with nothing transitioning) still refreshes the server's
+   * heartbeat clock. Silently does nothing while disconnected - the next
+   * successful heartbeat naturally catches the server up.
+   */
+  _reportStatus() {
+    if (!this.pt || typeof this.pt.sendStatus !== 'function') return;
+    const payload = buildBridgeStatusPayload(this.status.snapshot(), {
+      bridgeId: this.bridgeId,
+      bridgeVersion: this.bridgeVersion,
+      interfaceName: this.getInterfaceName(),
+    });
+    this.pt.sendStatus(payload);
   }
 
   /** Operator: Start Output. */
@@ -90,6 +125,7 @@ class BridgeEngine extends EventEmitter {
     this._disposed = true;
     this._clearTick();
     if (this._retryTimer) { clearInterval(this._retryTimer); this._retryTimer = null; }
+    if (this._heartbeatTimer) { clearInterval(this._heartbeatTimer); this._heartbeatTimer = null; }
     const wasActive = this._outputActive;
     this._outputActive = false;
     if (this._inflight) { try { await this._inflight; } catch { /* ignore */ } }

@@ -114,7 +114,11 @@ class StatusModel extends EventEmitter {
     // output running but PT not connected.
     if (PT_TRANSIENT.has(pt)) {
       if (!this._everConnected) {
-        return { state: 'degraded', reason: 'Output on - connecting to the Presentation Timer...' };
+        // P2.1: distinct from 'degraded' - this is a fresh start that has
+        // never yet reached a live PT connection, not a lost one. Reported
+        // to the Control page as "Connecting", one of the required public
+        // states (see tools/cdether-bridge/P2-PLAN.md).
+        return { state: 'connecting', reason: 'Output on - connecting to the Presentation Timer...' };
       }
       // we were live and lost PT: cannot reach the hardware and cannot blank it.
       return {

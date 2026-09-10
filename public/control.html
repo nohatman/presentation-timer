@@ -241,6 +241,36 @@
             background: rgba(220, 53, 69, 0.25);
             color: #f1aeb5;
         }
+        /* Physical Display Output (CDEther) compact status pill - P2.1 */
+        .pdo-badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 5px;
+            font-weight: 700;
+            font-size: 0.72rem;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
+        }
+        .pdo-badge.off {
+            background: rgba(255, 255, 255, 0.08);
+            color: #999;
+        }
+        .pdo-badge.connecting {
+            background: rgba(25, 118, 210, 0.25);
+            color: #90caf9;
+        }
+        .pdo-badge.live {
+            background: rgba(46, 125, 50, 0.3);
+            color: #9be7a1;
+        }
+        .pdo-badge.degraded {
+            background: rgba(255, 193, 7, 0.25);
+            color: #ffda6a;
+        }
+        .pdo-badge.error {
+            background: rgba(220, 53, 69, 0.25);
+            color: #f1aeb5;
+        }
         @keyframes pulse {
             0%, 100% { opacity: 1; }
             50% { opacity: 0.5; }
@@ -399,6 +429,12 @@
                 <span id="controllerStatusBadge" style="padding: 3px 10px; border-radius: 5px; font-weight: 700; font-size: 0.72rem; letter-spacing: 0.5px; white-space: nowrap; background: #2e7d32; color: #fff;">CONTROLLER</span>
                 <span id="controllerStatusCount" style="color: #999; font-size: 0.85rem; white-space: nowrap;"></span>
                 <button id="controllerTakeOverBtn" style="display: none; padding: 5px 14px; font-size: 0.8rem; border-radius: 5px; border: none; background: #1976d2; color: #fff; cursor: pointer; white-space: nowrap;" onclick="openTakeOverModal()">Take Over</button>
+                <!-- Physical Display Output (CDEther) compact status - P2.1. Hidden
+                     until the room has ever reported bridge status this session (a
+                     room with no bridge configured shows nothing extra). Never
+                     claims the physical Hive display itself is connected - only
+                     reports what the bridge software itself knows. -->
+                <span id="pdoStatusBadge" class="pdo-badge" style="display: none;"></span>
                 <button class="button secondary" style="padding: 10px 16px; white-space: nowrap;" onclick="copyRoomLinks(event)">📤 Share Links</button>
             </div>
         </div>
@@ -902,6 +938,41 @@
         socket.on('controllerStatus', ({ activeControllerSocketId }) => {
             isActiveController = (activeControllerSocketId === socket.id);
             renderControllerStatusBar();
+        });
+
+        // Physical Display Output (CDEther) compact status - P2.1. Fed by
+        // 'bridgeStatusUpdate', sent both once directly on connect (if the
+        // room already has a known status) and again on every real change
+        // (room broadcast) - this one handler covers both cases. Wording is
+        // always about the bridge/CDEther output, never "display connected",
+        // since CDEther gives no acknowledgement from the physical display.
+        const PDO_LABELS = {
+            off: 'CDEther: Off',
+            connecting: 'CDEther: Connecting',
+            live: 'CDEther: Live',
+            degraded: 'CDEther: Degraded',
+            error: 'CDEther: Error',
+        };
+
+        function renderPdoStatus(status) {
+            const badge = document.getElementById('pdoStatusBadge');
+            if (!status) {
+                badge.style.display = 'none';
+                return;
+            }
+            const overall = PDO_LABELS[status.overall] ? status.overall : 'error';
+            badge.textContent = PDO_LABELS[overall];
+            badge.className = `pdo-badge ${overall}`;
+            const detail = [];
+            if (status.reason) detail.push(status.reason);
+            if (status.interfaceName) detail.push(`Interface: ${status.interfaceName}`);
+            if (status.bridgeVersion) detail.push(`Bridge v${status.bridgeVersion}`);
+            badge.title = detail.join(' · ');
+            badge.style.display = 'inline-block';
+        }
+
+        socket.on('bridgeStatusUpdate', (status) => {
+            renderPdoStatus(status);
         });
 
         socket.on('controlRejected', ({ message }) => {

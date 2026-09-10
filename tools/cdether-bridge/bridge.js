@@ -20,6 +20,8 @@ const { PtClient } = require('./lib/ptClient');
 const { StatusModel } = require('./lib/status');
 const { RingLog } = require('./lib/log');
 const { BridgeEngine } = require('./lib/engine');
+const { generateBridgeId } = require('./lib/bridgeId');
+const { version: BRIDGE_VERSION } = require('./package.json');
 
 function line(level, msg) {
   console.log(`${new Date().toISOString()} [${level}] ${msg}`);
@@ -39,6 +41,11 @@ async function main() {
     process.exit(1);
   }
 
+  // P2.1: a fresh id per process run - not yet persisted (that's a later
+  // configuration-storage slice); purely a log/support correlation label,
+  // never used for identity or authorization.
+  const bridgeId = generateBridgeId();
+
   line('info', 'cdether-bridge starting');
   line('info', `  server       ${cfg.serverUrl}`);
   if (cfg.dryRun) {
@@ -54,6 +61,7 @@ async function main() {
     }
   }
   line('info', `  interval     ${cfg.frameIntervalMs} ms`);
+  line('info', `  bridge id    ${bridgeId}  (v${BRIDGE_VERSION}) - reported to the Presentation Timer for the Control page's compact status indicator`);
   line('info', `  idle         ${cfg.idleBehaviour}`);
   line('warn', 'CDEther protocol here is EMPIRICAL (rig-derived), not an official Hive spec.');
 
@@ -89,7 +97,13 @@ async function main() {
     status,
     log,
     deriveFrame,
-    options: { frameIntervalMs: cfg.frameIntervalMs, idleBehaviour: cfg.idleBehaviour },
+    options: {
+      frameIntervalMs: cfg.frameIntervalMs,
+      idleBehaviour: cfg.idleBehaviour,
+      bridgeId,
+      bridgeVersion: BRIDGE_VERSION,
+      getInterfaceName: () => cfg.interfaceName || null,
+    },
   });
 
   engine.on('log', ({ level, message }) => line(level, message));

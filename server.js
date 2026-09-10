@@ -6,6 +6,7 @@ const path = require('path');
 const db = require('./db');
 const auth = require('./auth');
 const { buildRoomLinks } = require('./urls');
+const bridgeStatus = require('./bridgeStatus');
 
 const app = express();
 app.set('trust proxy', true); // needed behind Railway's proxy so req.protocol is https, not http
@@ -46,6 +47,19 @@ const timerRooms = new Map();
 // REST/dashboard/Companion actions authenticate via client API key, a separate,
 // higher trust tier, and are deliberately exempt from this entirely.
 const roomControllers = new Map();
+
+// Physical Display Output (CDEther) compact status — P2.1. In-memory only,
+// fed by a narrowly-scoped `bridgeStatus` event from display-role sockets
+// riding their existing read-only connection (see the handler inside
+// io.on('connection', ...) below). Every entry's room identity always comes
+// from that connection's own server-resolved roomId, never from anything in
+// the event payload — cross-room spoofing is structurally impossible here,
+// not just disallowed by convention. Never persisted: a server restart must
+// not resurrect a stale "Live" claim. See tools/cdether-bridge/P2-PLAN.md.
+const bridgeStatusRegistry = bridgeStatus.createBridgeStatusRegistry();
+bridgeStatusRegistry.startSweep((roomId, status) => {
+  io.to(roomId).emit('bridgeStatusUpdate', status);
+});
 
 function broadcastControllerStatus(roomId) {
   io.to(roomId).emit('controllerStatus', { activeControllerSocketId: roomControllers.get(roomId) || null });
@@ -173,6 +187,17 @@ io.on('connection', (socket) => {
     roomInfo = { ...roomInfo, ...buildRoomLinks(baseUrl, access.room) };
   }
   socket.emit('timerState', { ...initialState, serverNow: Date.now(), ...(roomInfo ? { roomInfo } : {}) });
+
+  // A freshly-connected control-role socket should see current Physical
+  // Display Output status immediately (e.g. the Control page was opened or
+  // reloaded after the bridge was already running), not wait for the next
+  // heartbeat or a change to occur. Sent directly to this one socket, not
+  // broadcast - every subsequent update uses the same 'bridgeStatusUpdate'
+  // event via a room broadcast, so the client only needs one listener.
+  if (role === 'control') {
+    const currentPdoStatus = bridgeStatusRegistry.effectiveStatus(roomId);
+    if (currentPdoStatus) socket.emit('bridgeStatusUpdate', currentPdoStatus);
+  }
 
   // Broadcast controller count to all clients in room
   broadcastControllerCount(roomId);
@@ -382,8 +407,33 @@ io.on('connection', (socket) => {
     scheduleSave();
   });
 
+  // ---- Physical Display Output (CDEther) status reporting (P2.1) ----
+  // Read-only reporting: a display-role socket may report its own bridge
+  // status. This cannot mutate room state - it never touches getRoomState,
+  // emitState, or any of the control-mutation handlers above. Room identity
+  // is always this connection's own server-resolved `roomId` (set once at
+  // connection time from the token, above) - nothing here ever reads a room
+  // id from the event payload, so a report can never be attributed to a
+  // different room no matter what the socket sends.
+  socket.on('bridgeStatus', (payload) => {
+    if (socket.clientType !== 'display') return; // structural, not just policy
+    const result = bridgeStatusRegistry.record(roomId, socket.id, payload);
+    if (!result.accepted) return;
+    io.to(roomId).emit('bridgeStatusUpdate', bridgeStatusRegistry.effectiveStatus(roomId));
+  });
+
   socket.on('disconnect', () => {
     console.log(`👋 Client ${socket.id} disconnected from room: ${roomId}`);
+
+    // A departing display-role socket's Physical Display Output status is
+    // cleared immediately (not left to the stale-heartbeat sweep) - an
+    // intentional Stop/Quit or a crash should read as "Off" promptly.
+    if (socket.clientType === 'display') {
+      const hadEntry = bridgeStatusRegistry.clear(roomId, socket.id);
+      if (hadEntry) {
+        io.to(roomId).emit('bridgeStatusUpdate', bridgeStatusRegistry.effectiveStatus(roomId));
+      }
+    }
 
     // If the departing socket was the active controller, promote another
     // connected control-role socket in this room if one exists, else clear the

@@ -6,8 +6,14 @@
 // (auth.resolveSocketAccess) derives role='display' from which token column
 // matched; every mutation handler in server.js is gated on
 // socket.clientType === 'control', so a display-token socket is structurally
-// incapable of starting/pausing/resetting the timer. This client also never
-// emits anything to the server.
+// incapable of starting/pausing/resetting the timer.
+//
+// P2.1 exception: sendStatus() emits one narrowly-scoped 'bridgeStatus'
+// event on this same connection so the Control page can show a compact
+// Physical Display Output indicator - see lib/reporter.js and the server's
+// bridgeStatus.js. This is the only thing this client ever emits; it carries
+// no room identity of its own (the server derives that from this socket's
+// own token, never from the event payload) and cannot mutate room state.
 //
 // Events emitted by this wrapper:
 //   'connecting'                      a (re)connection attempt has begun
@@ -101,6 +107,18 @@ class PtClient extends EventEmitter {
       if (this._stopping || this._fatal) return;
       this.emit('connectError', { err, kind: classifyConnectError(err) });
     });
+  }
+
+  /**
+   * Send one bridgeStatus heartbeat (P2.1), if currently connected. Silently
+   * does nothing when not connected - no queueing, since this is a status
+   * snapshot, not an event log; the next successful heartbeat naturally
+   * catches the server up. Never throws.
+   */
+  sendStatus(payload) {
+    if (!this.socket || !this.socket.connected) return false;
+    this.socket.emit('bridgeStatus', payload);
+    return true;
   }
 
   /** Manual reconnection - needed after an 'io server disconnect'. */
