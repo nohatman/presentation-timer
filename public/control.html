@@ -337,6 +337,7 @@
             grid-template-columns: 1fr 1fr;
             gap: 16px;
         }
+        #endAtTime.draft { border-color: #ff9800; box-shadow: 0 0 0 1px #ff9800; }
         .end-time-display {
             font-size: 0.9rem;
             color: #90caf9;
@@ -488,8 +489,11 @@
                     </div>
                     <div class="mode-row" style="margin-top:6px;">
                         <button class="mode-button" id="modeEndAtBtn" onclick="setTimerMode('endAt')" title="Select an end time first">End At</button>
-                        <input type="time" id="endAtTime">
+                        <input type="time" id="endAtTime" aria-describedby="endAtDraftHint">
+                        <button id="endAtApplyBtn" class="button primary" onclick="applyEndAtDraft()" disabled style="padding:6px 12px;">Set</button>
+                        <button id="endAtCancelBtn" class="button secondary" onclick="cancelEndAtDraft()" hidden title="Discard the unapplied time" style="padding:6px 10px;">✕</button>
                     </div>
+                    <div id="endAtDraftHint" role="status" hidden style="font-size:0.75rem;color:#ff9800;margin-top:-2px;margin-bottom:6px;"></div>
                     <div id="modeApplyHint" hidden style="font-size:0.75rem;color:#888;margin-top:6px;">Timer is running - mode/value changes apply at next Start or Reset.</div>
                 </div>
                 <div>
@@ -702,12 +706,12 @@
 
         function setTimerMode(mode) {
             if (mode === 'endAt') {
-                const target = document.getElementById('endAtTime').value;
-                if (!target) {
+                // Only the COMMITTED target counts; a typed-but-unapplied draft never leaks in here.
+                if (!currentState.endAtTarget) {
                     document.getElementById('endAtTime').focus();
                     return;
                 }
-                socket.emit('updateSettings', { timerMode: 'endAt', endAtTarget: target, endAtTzOffsetMin: tzOffsetMin() });
+                socket.emit('updateSettings', { timerMode: 'endAt' });
             } else {
                 socket.emit('updateSettings', { timerMode: 'duration' });
             }
@@ -718,7 +722,8 @@
             document.getElementById('modeDurationBtn').classList.toggle('active', currentTimerMode === 'duration');
             document.getElementById('modeEndAtBtn').classList.toggle('active', currentTimerMode === 'endAt');
             const endAtEl = document.getElementById('endAtTime');
-            if (document.activeElement !== endAtEl) endAtEl.value = state.endAtTarget || '';
+            if (!endAtDirty) endAtEl.value = state.endAtTarget || ''; // never clobber an unapplied draft
+            refreshEndAtDraftUI();
             const durEl = document.getElementById('duration');
             if (!durationInputFocused) {
                 // While a Duration-mode run is live the field shows the live length
@@ -751,7 +756,7 @@
                 }
             } else {
                 // endAt mode - show the target end time with seconds
-                const endAtTime = document.getElementById('endAtTime').value;
+                const endAtTime = currentState.endAtTarget || '';
                 if (endAtTime) {
                     const [h, m] = endAtTime.split(':');
                     const now = new Date();
@@ -772,13 +777,83 @@
 
         // Update end time calc when duration changes
         document.getElementById('duration').addEventListener('input', updateEndTimeCalc);
-        // Choosing an end time selects End at mode; typing a duration selects
-        // Duration mode. Both are decided by the server (updateSettings), so what
-        // the operator last edited is what Start/Reset will use.
-        document.getElementById('endAtTime').addEventListener('input', () => {
-            const target = document.getElementById('endAtTime').value;
-            if (!target) return;
-            socket.emit('updateSettings', { endAtTarget: target, endAtTzOffsetMin: tzOffsetMin() });
+        // Typing a duration selects Duration mode (server-side, see emitDurationEdit).
+        //
+        // The End-at field is a DRAFT: typing/blur/focus changes never leave this page.
+        // Only Set (button or Enter) sends 'applyEndAt'. A live timer needs an explicit
+        // confirmation showing the current and proposed remaining time.
+        let endAtDirty = false;
+        let serverClockOffsetMs = 0; // server clock - this browser's clock, from the last timerState
+        const serverNowMs = () => Date.now() + serverClockOffsetMs;
+        const endAtEl = document.getElementById('endAtTime');
+        const isValidEndAt = (v) => /^([01]?\d|2[0-3]):[0-5]\d$/.test(v || '');
+
+        function refreshEndAtDraftUI() {
+            const v = endAtEl.value;
+            const incomplete = !!(endAtEl.validity && endAtEl.validity.badInput); // half-typed: value reads as ''
+            endAtDirty = incomplete || v !== (currentState.endAtTarget || '');
+            const valid = !incomplete && isValidEndAt(v);
+            endAtEl.classList.toggle('draft', endAtDirty);
+            document.getElementById('endAtApplyBtn').disabled = !(endAtDirty && valid);
+            document.getElementById('endAtCancelBtn').hidden = !endAtDirty;
+            const hint = document.getElementById('endAtDraftHint');
+            hint.hidden = !endAtDirty;
+            hint.textContent = !endAtDirty ? '' : valid ? 'Not applied yet - press Set (or Enter). Start uses the last applied time.' : 'Enter a complete time to apply.';
+        }
+
+        function cancelEndAtDraft() {
+            endAtEl.value = currentState.endAtTarget || '';
+            refreshEndAtDraftUI();
+        }
+
+        function fmtRemaining(ms) {
+            const neg = ms < 0;
+            const total = Math.floor(Math.abs(ms) / 1000);
+            const h = Math.floor(total / 3600), m = Math.floor((total % 3600) / 60), s = total % 60;
+            const body = h ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}` : `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+            return neg ? `${body} over` : body;
+        }
+
+        function liveRemainingMs(s) {
+            const speed = s.speed || 1;
+            const ref = s.mode === 'paused' ? (s.pauseTime || serverNowMs()) : serverNowMs();
+            return s.durationMs - (ref - s.startTime - (s.accumulatedPauseMs || 0)) * speed;
+        }
+
+        function proposeEndAt(v) {
+            const now = serverNowMs();
+            const [h, m] = v.split(':').map(Number);
+            const t = new Date(now);
+            t.setHours(h, m, 0, 0); // this browser's local time zone = the operator's
+            if (t.getTime() <= now) t.setDate(t.getDate() + 1);
+            return { endMs: t.getTime(), remainingMs: t.getTime() - now, tomorrow: t.getDate() !== new Date(now).getDate() };
+        }
+
+        function applyEndAtDraft() {
+            const v = endAtEl.value;
+            if (!isValidEndAt(v) || v === (currentState.endAtTarget || '')) return;
+            if (currentState.mode !== 'stopped') {
+                const cur = liveRemainingMs(currentState);
+                const p = proposeEndAt(v);
+                if (Math.abs(p.remainingMs - cur) >= 1000) {
+                    const endTxt = new Date(p.endMs).toLocaleTimeString('en-GB') + (p.tomorrow ? ' (tomorrow)' : '');
+                    const ok = confirm(`Change the End-at time of the ${currentState.mode.toUpperCase()} timer?\n\n` +
+                        `Current remaining:  ${fmtRemaining(cur)}\n` +
+                        `Proposed remaining: ${fmtRemaining(p.remainingMs)}\n` +
+                        `Proposed end time:  ${endTxt}\n\n` +
+                        (currentState.mode === 'paused' ? 'The timer is paused; remaining is shown as of now. ' : '') +
+                        'This changes the live timer and every display immediately.');
+                    if (!ok) return; // Cancel: nothing was sent, nothing changed
+                }
+            }
+            socket.emit('applyEndAt', { endAtTarget: v, endAtTzOffsetMin: tzOffsetMin() });
+        }
+
+        endAtEl.addEventListener('input', refreshEndAtDraftUI);
+        endAtEl.addEventListener('keyup', refreshEndAtDraftUI); // half-typed times fire no 'input'; UI-only, sends nothing
+        endAtEl.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); applyEndAtDraft(); }
+            else if (e.key === 'Escape') { cancelEndAtDraft(); }
         });
         // Connect using the control token as the sole credential. Role is derived
         // server-side from which token matched - never trust a client-declared type.
@@ -884,6 +959,7 @@
                 displayLink.href = roomInfo.displayUrl;
             }
 
+            if (typeof state.serverNow === 'number') serverClockOffsetMs = state.serverNow - Date.now();
             currentState = state;
             updateStatus();
             updateTimerPreview();
@@ -1201,9 +1277,7 @@
                 data.timerMode = 'duration';
                 data.durationMs = getDurationMs();
             } else {
-                data.timerMode = 'endAt';
-                data.endAtTarget = document.getElementById('endAtTime').value;
-                data.endAtTzOffsetMin = tzOffsetMin();
+                data.timerMode = 'endAt'; // the last APPLIED target, never an unapplied draft
             }
 
             socket.emit('startTimer', data);
@@ -1829,7 +1903,7 @@
             if (input.id === 'speedSlider') return;
             if (input.id === 'displayScaleSlider') return;
             if (input.id === 'rundownAutoStart') return;
-            if (input.id === 'duration' || input.id === 'endAtTime') return; // own listeners (server-side mode)
+            if (input.id === 'duration' || input.id === 'endAtTime') return; // own listeners (End at is a draft until Set)
             
             input.addEventListener('change', () => {
                 saveSettings();

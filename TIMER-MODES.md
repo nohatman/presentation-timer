@@ -23,9 +23,10 @@ pre-existing fields and are unaffected.
 | Action | Duration mode | End at mode |
 | --- | --- | --- |
 | Edit Duration field (stopped) | sets duration | switches to Duration (last edit wins) |
-| Choose End-at time (stopped) | switches to End at, re-derives time-to-target | re-derives |
+| Set End-at time (**Set** / Enter, see below) | stopped: commits, switches to End at, re-derives time-to-target | same |
+| Set End-at time on a **running/paused** timer | re-targets the live run to the new absolute target after a confirmation (current remaining, proposed remaining, proposed end time) | same |
 | Mode button (stopped) | switches; each mode restores its own value | |
-| Mode button / edits (running or paused) | changes the *configuration only*; the live run is never touched. Applies at next Start/Reset. | |
+| Mode button / Duration edits (running or paused) | changes the *configuration only*; the live run is never touched. Applies at next Start/Reset. | |
 | Start | runs `configDurationMs` | runs time-to-target computed from the server clock at Start |
 | Pause / Resume | freeze / unfreeze; the pause shifts the finish later by the pause length (existing behaviour, shown as "If resumed, ends at") | pause freezes the display only; **the finish stays the absolute wall-clock target** - on Resume the remaining time is target - now (it drops by the pause length, or goes into overrun if the target passed) |
 | Reset | back to `configDurationMs` (a live nudge is *not* kept) | back to time-to-target *now*; target and mode kept |
@@ -33,6 +34,18 @@ pre-existing fields and are unaffected.
 | Nudge (stopped) | adjusts the configured Duration | becomes a fixed Duration of (time-to-target + nudge), so Start does not silently discard it |
 | Take / Prev / Next rundown item | item duration becomes the Duration; Duration mode; End-at target cleared (existing behaviour) | same |
 | Target already passed | rolls to tomorrow (existing behaviour) | |
+
+### End-at is staged (draft), never live-as-you-type
+
+The End-at field is a draft. Typing, blur and focus changes send nothing to the server, so no display
+changes while an operator types. **Set** (or Enter) sends the single `applyEndAt` event
+(`timerModes.applyEndAt`): incomplete/invalid values cannot be applied (Set is disabled; the server also
+refuses them and changes nothing). Stopped: commits directly. Running/paused: the control page first shows
+a confirmation with current remaining, proposed remaining and proposed end time; Cancel sends nothing.
+Confirm updates `endAtTarget`, `runEndAtMs` and `durationMs` in one server step (paused: the frozen display
+moves to "remaining as of now"; Resume still catches up to the fixed target). `Start` and the End At mode
+button use the last *applied* target, never an unapplied draft. ✕ / Escape discards a draft; an unapplied
+draft is not overwritten by state updates from the server.
 
 A stopped End-at timer's `durationMs` is a snapshot taken at edit / Reset / (re)connect;
 **Start always recomputes it from the clock.**
@@ -64,8 +77,10 @@ one-slot "Undo last Replace" (this browser tab only).
 
 ## Manual UI checklist (no browser test infra in the repo)
 
-1. Timer mode: set End at (+10 min) -> Reset -> preview shows ~10:00 and End At stays active. Refresh the
-   page: End At + target still shown. Type a duration: mode flips to Duration.
+1. Timer mode: type an End-at time (+10 min): nothing changes anywhere until you press **Set** (or Enter);
+   blur does not apply. Set -> Reset -> preview shows ~10:00 and End At stays active. Refresh the page: End At +
+   target still shown. Type a duration: mode flips to Duration. On a running timer, Set shows the
+   current/proposed remaining + end-time confirmation; Cancel changes nothing.
 2. Running timer: switch mode; the countdown does not change; hint "applies at next Start or Reset" shows.
 3. Rundown -> Edit: click a name, press Tab: only the `MM` of the time is selected; type `12` -> `12:xx`.
    Click into a time with the mouse: normal caret, nothing force-selected.

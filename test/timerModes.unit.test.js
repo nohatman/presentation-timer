@@ -263,3 +263,68 @@ test('End-at: a live nudge moves the absolute finish and survives pause/resume; 
   tm.loadRundownItem(s, 0, false, NOW + 17 * MIN);
   assert.equal(s.runEndAtMs, null);
 });
+
+test('applyEndAt (stopped): commits target + mode + time-to-target; does not start anything', () => {
+  const s = fresh();
+  assert.deepEqual(tm.applyEndAt(s, { endAtTarget: '14:30', endAtTzOffsetMin: BST }, NOW), { ok: true });
+  assert.equal(s.timerMode, 'endAt');
+  assert.equal(s.endAtTarget, '14:30');
+  assert.equal(s.durationMs, 30 * MIN);
+  assert.equal(s.mode, 'stopped');
+  assert.equal(s.runEndAtMs == null, true);
+});
+
+test('applyEndAt: invalid / incomplete values are refused and change NOTHING', () => {
+  for (const bad of [undefined, null, {}, { endAtTarget: '' }, { endAtTarget: '14:' }, { endAtTarget: '25:00' }, { endAtTarget: 'ab:cd' }, { endAtTarget: 1430 }]) {
+    const s = fresh();
+    tm.applyTimerConfig(s, { endAtTarget: '14:30', endAtTzOffsetMin: BST }, NOW);
+    tm.startTimer(s, {}, NOW);
+    const before = JSON.stringify(s);
+    assert.equal(tm.applyEndAt(s, bad, NOW + MIN).ok, false, JSON.stringify(bad));
+    assert.equal(JSON.stringify(s), before, 'state untouched for ' + JSON.stringify(bad));
+  }
+});
+
+test('applyEndAt (running, from a Duration run): re-targets the live run atomically to the absolute target', () => {
+  const s = fresh();
+  tm.applyTimerConfig(s, { durationMs: 10 * MIN }, NOW);
+  tm.startTimer(s, {}, NOW);
+  const at = NOW + 2 * MIN; // 2 min in; 8 min left before
+  assert.equal(tm.applyEndAt(s, { endAtTarget: '14:30', endAtTzOffsetMin: BST }, at).ok, true);
+  assert.equal(s.mode, 'running');
+  assert.equal(s.startTime, NOW, 'run not restarted');
+  assert.equal(s.runEndAtMs, NOW + 30 * MIN);
+  assert.equal(s.startTime + s.accumulatedPauseMs + s.durationMs / s.speed, NOW + 30 * MIN, 'finish = target');
+  assert.equal(s.durationMs - (at - s.startTime - s.accumulatedPauseMs) * s.speed, 28 * MIN, 'remaining = target - now');
+});
+
+test('applyEndAt (running, speed 2): finish still lands on the wall-clock target', () => {
+  const s = fresh({ speed: 2 });
+  tm.applyTimerConfig(s, { durationMs: 10 * MIN }, NOW);
+  tm.startTimer(s, {}, NOW);
+  tm.applyEndAt(s, { endAtTarget: '14:30', endAtTzOffsetMin: BST }, NOW + MIN);
+  assert.equal(s.startTime + s.accumulatedPauseMs + s.durationMs / 2, NOW + 30 * MIN);
+});
+
+test('applyEndAt (paused): frozen remaining is "as of now"; Resume then keeps the fixed target (ab9d70d semantics)', () => {
+  const s = fresh();
+  tm.applyTimerConfig(s, { endAtTarget: '14:30', endAtTzOffsetMin: BST }, NOW);
+  tm.startTimer(s, {}, NOW);
+  s.mode = 'paused'; s.pauseTime = NOW + 5 * MIN;
+  const at = NOW + 10 * MIN;
+  tm.applyEndAt(s, { endAtTarget: '14:45', endAtTzOffsetMin: BST }, at); // new target = NOW + 45 min
+  assert.equal(s.mode, 'paused');
+  assert.equal(s.runEndAtMs, NOW + 45 * MIN);
+  assert.equal(s.durationMs - (s.pauseTime - s.startTime - s.accumulatedPauseMs) * s.speed, 35 * MIN, 'paused display = target - now');
+  tm.resumeTimer(s, NOW + 20 * MIN);
+  assert.equal(s.startTime + s.accumulatedPauseMs + s.durationMs / s.speed, NOW + 45 * MIN, 'finish stays the target after Resume');
+  assert.equal(s.durationMs - (NOW + 20 * MIN - s.startTime - s.accumulatedPauseMs) * s.speed, 25 * MIN);
+});
+
+test('applyEndAt: a target at or before now means tomorrow', () => {
+  const s = fresh();
+  tm.applyTimerConfig(s, { durationMs: 10 * MIN }, NOW);
+  tm.startTimer(s, {}, NOW);
+  tm.applyEndAt(s, { endAtTarget: '13:59', endAtTzOffsetMin: BST }, NOW);
+  assert.equal(s.runEndAtMs, NOW + (24 * 60 - 1) * MIN);
+});

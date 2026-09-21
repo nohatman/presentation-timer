@@ -147,6 +147,30 @@ function resumeTimer(state, nowMs) {
   return state;
 }
 
+// Explicit, atomic "Set End at" (the control page's Apply). Stopped: commits the
+// target and re-derives time-to-target. Running/paused: re-targets the LIVE run so
+// it finishes at the new absolute wall-clock target - runEndAtMs and durationMs
+// change together in this one call. Paused: the frozen display is moved to "as of
+// now" (remaining = target - now); Resume still catches up to the target as usual.
+// A target at or before now means tomorrow. -> { ok } (false: invalid target, no change)
+function applyEndAt(state, data, nowMs) {
+  const t = parseEndAt(data && data.endAtTarget);
+  if (!t) return { ok: false };
+  normalizeState(state);
+  state.endAtTarget = t.text;
+  if (Number.isFinite(data.endAtTzOffsetMin)) state.endAtTzOffsetMin = data.endAtTzOffsetMin;
+  state.timerMode = 'endAt';
+  if (state.mode === 'stopped') {
+    syncStoppedDuration(state, nowMs);
+    return { ok: true };
+  }
+  const ms = endAtDurationMs(state.endAtTarget, state.endAtTzOffsetMin, nowMs);
+  state.runEndAtMs = nowMs + ms;
+  if (state.mode === 'paused') state.pauseTime = nowMs;
+  state.durationMs = (state.runEndAtMs - state.startTime - state.accumulatedPauseMs) * (state.speed || 1);
+  return { ok: true };
+}
+
 // Reset returns to the configured value of the active mode. The end-at target
 // is kept (it is configuration, not run state).
 function resetTimer(state, nowMs) {
@@ -203,6 +227,7 @@ module.exports = {
   syncStoppedDuration,
   setDuration,
   applyTimerConfig,
+  applyEndAt,
   startTimer,
   resumeTimer,
   resetTimer,

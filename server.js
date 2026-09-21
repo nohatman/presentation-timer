@@ -343,6 +343,17 @@ io.on('connection', (socket) => {
   // Payload: the items array (as always), or { items, resetIndex: true } when the
   // whole rundown is being replaced - the old "current item" then points at an
   // unrelated row, so it is cleared. The running timer itself is not touched.
+  // Explicit "Set End at" from the control page (typing in the field never sends
+  // anything). Applies atomically to a stopped OR live timer - see timerModes.applyEndAt.
+  socket.on('applyEndAt', (data) => {
+    if (!requireActiveController()) return;
+    const timerState = getRoomState(roomId);
+    if (!timerState) return;
+    if (!timerModes.applyEndAt(timerState, data || {}, Date.now()).ok) return;
+    emitState(roomId, timerState);
+    scheduleSave();
+  });
+
   socket.on('setRundown', (payload) => {
     if (!requireActiveController()) return;
     const timerState = getRoomState(roomId);

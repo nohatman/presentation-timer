@@ -65,7 +65,7 @@ async function createRoom() {
   });
   const body = await res.json();
   assert.ok(body.ok, JSON.stringify(body));
-  return { slug, controlToken: new URL(body.controlUrl).searchParams.get('token') };
+  return { slug, controlToken: new URL(body.controlUrl).searchParams.get('token'), displayToken: new URL(body.displayUrl).searchParams.get('token') };
 }
 async function rest(room, method, route, body) {
   const res = await fetch(`${BASE_URL}/api/rooms/${room.slug}/${route}`, {
@@ -327,4 +327,52 @@ test('End-at pause/resume over the wire: finish stays on the target (socket + RE
     s = await c.send('resumeTimer');
     assert.ok(s.accumulatedPauseMs >= 500, 'Duration pause accumulated: ' + s.accumulatedPauseMs);
   } finally { c.socket.close(); }
+});
+
+test('applyEndAt over the wire: stopped commits; live re-targets atomically and every client (display) sees it; invalid is ignored', async () => {
+  const { room, c } = await newControl();
+  const disp = connectControl(room.displayToken); // display-role socket: receives the same authoritative broadcasts
+  try {
+    await disp.ready;
+    const target1 = targetInMinutes(20);
+    let s = await c.send('applyEndAt', { endAtTarget: target1, endAtTzOffsetMin: tz() });
+    assert.equal(s.mode, 'stopped'); assert.equal(s.timerMode, 'endAt'); assert.equal(s.endAtTarget, target1);
+    // invalid/incomplete: no broadcast, nothing changes
+    let broadcasts = 0; c.socket.on('timerState', () => { broadcasts += 1; });
+    c.socket.emit('applyEndAt', { endAtTarget: '' });
+    c.socket.emit('applyEndAt', { endAtTarget: '9:' });
+    c.socket.emit('applyEndAt', null);
+    await sleep(200);
+    assert.equal(broadcasts, 0, 'invalid applyEndAt produced no state change');
+    // live retarget
+    await c.send('startTimer', { timerMode: 'endAt' });
+    const target2 = targetInMinutes(45);
+    const seen = new Promise((resolve) => { const h = (st) => { if (st.endAtTarget === target2) { disp.socket.off('timerState', h); resolve(st); } }; disp.socket.on('timerState', h); });
+    s = await c.send('applyEndAt', { endAtTarget: target2, endAtTzOffsetMin: tz() });
+    const dispState = await seen;
+    for (const st of [s, dispState]) {
+      assert.equal(st.mode, 'running'); assert.equal(st.endAtTarget, target2);
+      assert.equal(st.startTime + st.accumulatedPauseMs + st.durationMs, st.runEndAtMs);
+      assert.ok(Math.abs(st.runEndAtMs - Date.now() - 45 * MIN) < 45000);
+    }
+    assert.equal(dispState.runEndAtMs, s.runEndAtMs, 'display got the same authoritative state');
+    // pause + fixed-target resume still holds after a retarget
+    await c.send('pauseTimer'); await sleep(400);
+    s = await c.send('resumeTimer');
+    assert.equal(s.startTime + s.accumulatedPauseMs + s.durationMs, s.runEndAtMs);
+  } finally { c.socket.close(); disp.socket.close(); }
+});
+
+test('applyEndAt from an observer (non-active controller) is rejected and changes nothing', async () => {
+  const { room, c } = await newControl();
+  const obs = connectControl(room.controlToken);
+  try {
+    await obs.ready;
+    await sleep(100);
+    const rejected = new Promise((resolve) => obs.socket.once('controlRejected', resolve));
+    const before = JSON.stringify((await rest(room, 'GET', 'state')).state);
+    obs.socket.emit('applyEndAt', { endAtTarget: targetInMinutes(10), endAtTzOffsetMin: tz() });
+    await rejected;
+    assert.equal(JSON.stringify((await rest(room, 'GET', 'state')).state), before);
+  } finally { c.socket.close(); obs.socket.close(); }
 });
