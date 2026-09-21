@@ -7,6 +7,7 @@ const db = require('./db');
 const auth = require('./auth');
 const { buildRoomLinks } = require('./urls');
 const bridgeStatus = require('./bridgeStatus');
+const timerModes = require('./timerModes');
 
 const app = express();
 app.set('trust proxy', true); // needed behind Railway's proxy so req.protocol is https, not http
@@ -94,7 +95,7 @@ function loadRooms() {
     let count = 0;
     for (const [roomId, state] of loaded.entries()) {
       // Merge with defaults so any new fields added later are present
-      timerRooms.set(roomId, { ...createDefaultTimerState(), ...state });
+      timerRooms.set(roomId, timerModes.normalizeState({ ...createDefaultTimerState(), ...state }));
       count++;
     }
     if (count > 0) console.log(`✅ Loaded ${count} room(s) from database`);
@@ -116,6 +117,9 @@ function createDefaultTimerState() {
     amberThresholdMs: 5 * 60 * 1000, // 5 minutes
     redThresholdMs: 2 * 60 * 1000, // 2 minutes
     endAtTarget: null,
+    timerMode: 'duration', // 'duration' | 'endAt' - see timerModes.js
+    configDurationMs: 30 * 60 * 1000, // operator's Duration-mode value (survives End at)
+    endAtTzOffsetMin: null, // operator's Date#getTimezoneOffset() for endAtTarget
     countUp: false,
     showClock: false,
     outputMode: 'timer', // 'timer' | 'clock'
@@ -180,6 +184,9 @@ io.on('connection', (socket) => {
   // the shared emitState() broadcast (io.to(roomId)), since that reaches
   // display-role sockets too, who must never see the control link.
   const initialState = getRoomState(roomId);
+  // A stopped End at timer's time-to-target is a snapshot; refresh it so a
+  // freshly-loaded control/display never shows a stale value.
+  if (initialState) timerModes.syncStoppedDuration(initialState, Date.now());
   let roomInfo = { slug: access.room.slug };
   if (role === 'control') {
     const proto = socket.handshake.headers['x-forwarded-proto'] || (socket.handshake.secure ? 'https' : 'http');
@@ -244,26 +251,13 @@ io.on('connection', (socket) => {
     if (!requireActiveController()) return;
     const timerState = getRoomState(roomId);
     if (!timerState) return;
-    timerState.mode = 'running';
-    timerState.startTime = Date.now();
-    timerState.pauseTime = null;
-    timerState.accumulatedPauseMs = 0;
-    if (data.durationMs !== undefined) timerState.durationMs = data.durationMs;
+    data = data || {};
+    // Mode/duration/end-at handling (incl. computing the End at run length from
+    // the server clock + operator timezone) lives in timerModes.js.
+    timerModes.startTimer(timerState, data, Date.now());
     if (data.speed !== undefined) timerState.speed = data.speed;
     if (data.amberThresholdMs !== undefined) timerState.amberThresholdMs = data.amberThresholdMs;
     if (data.redThresholdMs !== undefined) timerState.redThresholdMs = data.redThresholdMs;
-    if (data.durationMs === undefined && data.endAtTarget) {
-      timerState.endAtTarget = data.endAtTarget;
-      // Compute duration from endAtTarget (supports next day)
-      const now = new Date();
-      const endTime = new Date(now);
-      const [h, m] = data.endAtTarget.split(':');
-      endTime.setHours(parseInt(h), parseInt(m), 0, 0);
-      if (endTime <= now) {
-        endTime.setDate(endTime.getDate() + 1);
-      }
-      timerState.durationMs = endTime.getTime() - now.getTime();
-    }
     if (data.countUp !== undefined) timerState.countUp = data.countUp;
     if (data.showClock !== undefined) timerState.showClock = data.showClock;
 
@@ -291,9 +285,8 @@ io.on('connection', (socket) => {
     const timerState = getRoomState(roomId);
     if (!timerState) return;
     if (typeof deltaMs !== 'number' || !isFinite(deltaMs)) return;
-    // Adjust duration, which effectively adjusts remaining for all modes
-    const newDuration = Math.max(0, (timerState.durationMs || 0) + Math.trunc(deltaMs));
-    timerState.durationMs = newDuration;
+    // Running/paused: adjusts this run. Stopped: becomes the configured Duration.
+    timerModes.nudge(timerState, deltaMs, Date.now());
     emitState(roomId, timerState);
     scheduleSave();
   });
@@ -330,11 +323,7 @@ io.on('connection', (socket) => {
     if (!requireActiveController()) return;
     const timerState = getRoomState(roomId);
     if (!timerState) return;
-    timerState.mode = 'stopped';
-    timerState.startTime = null;
-    timerState.pauseTime = null;
-    timerState.accumulatedPauseMs = 0;
-    timerState.endAtTarget = null;
+    timerModes.resetTimer(timerState, Date.now());
     emitState(roomId, timerState);
     scheduleSave();
   });
@@ -343,26 +332,13 @@ io.on('connection', (socket) => {
     if (!requireActiveController()) return;
     const timerState = getRoomState(roomId);
     if (!timerState) return;
-    if (data.durationMs !== undefined) timerState.durationMs = data.durationMs;
+    timerModes.applyTimerConfig(timerState, data, Date.now());
     if (data.speed !== undefined) timerState.speed = data.speed;
     if (data.amberThresholdMs !== undefined) timerState.amberThresholdMs = data.amberThresholdMs;
     if (data.redThresholdMs !== undefined) timerState.redThresholdMs = data.redThresholdMs;
     if (data.countUp !== undefined) timerState.countUp = data.countUp;
     if (data.showClock !== undefined) timerState.showClock = data.showClock;
     if (data.displayScale !== undefined) timerState.displayScale = data.displayScale;
-
-    // If setting end-at time, calculate duration (supports next day)
-    if (data.durationMs === undefined && data.endAtTarget) {
-      const now = new Date();
-      const endTime = new Date(now);
-      const [hours, minutes] = data.endAtTarget.split(':');
-      endTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
-      if (endTime <= now) {
-        endTime.setDate(endTime.getDate() + 1);
-      }
-      timerState.durationMs = endTime.getTime() - now.getTime();
-      timerState.endAtTarget = data.endAtTarget;
-    }
 
     emitState(roomId, timerState);
     scheduleSave();
@@ -799,9 +775,7 @@ app.post('/api/admin/rooms/:id/start', ...adminRoomAuth, (req, res) => {
   if (timerState.mode === 'running') {
     return res.json({ ok: false, error: 'Timer is already running' });
   }
-  timerState.mode = 'running';
-  timerState.startTime = Date.now();
-  timerState.accumulatedPauseMs = 0;
+  timerModes.startTimer(timerState, {}, Date.now());
   io.to(roomId).emit('timerState', timerState);
   scheduleSave();
   res.json({ ok: true, roomId, slug: room.slug, clientName: room.client_name, state: timerState });
@@ -835,10 +809,7 @@ app.post('/api/admin/rooms/:id/resume', ...adminRoomAuth, (req, res) => {
 
 app.post('/api/admin/rooms/:id/reset', ...adminRoomAuth, (req, res) => {
   const { roomId, timerState, room } = req;
-  timerState.mode = 'stopped';
-  timerState.startTime = null;
-  timerState.pauseTime = null;
-  timerState.accumulatedPauseMs = 0;
+  timerModes.resetTimer(timerState, Date.now());
   io.to(roomId).emit('timerState', timerState);
   scheduleSave();
   res.json({ ok: true, roomId, slug: room.slug, clientName: room.client_name, state: timerState });
@@ -1239,9 +1210,7 @@ app.post('/api/rooms/:roomId/start', ...roomAuth, (req, res) => {
     return res.json({ ok: false, error: 'Timer is already running' });
   }
 
-  timerState.mode = 'running';
-  timerState.startTime = Date.now();
-  timerState.accumulatedPauseMs = 0;
+  timerModes.startTimer(timerState, {}, Date.now()); // End at rooms start with time-to-target
 
   io.to(roomId).emit('timerState', timerState);
   scheduleSave();
@@ -1292,10 +1261,7 @@ app.post('/api/rooms/:roomId/reset', ...roomAuth, (req, res) => {
   const { roomId } = req;
   const timerState = req.timerState;
 
-  timerState.mode = 'stopped';
-  timerState.startTime = null;
-  timerState.pauseTime = null;
-  timerState.accumulatedPauseMs = 0;
+  timerModes.resetTimer(timerState, Date.now());
 
   io.to(roomId).emit('timerState', timerState);
   scheduleSave();
@@ -1318,7 +1284,7 @@ app.post('/api/rooms/:roomId/nudge', ...roomAuth, (req, res) => {
   } else if (timerState.mode === 'paused') {
     timerState.pauseTime -= ms;
   } else {
-    timerState.durationMs = Math.max(0, timerState.durationMs + ms);
+    timerModes.nudge(timerState, ms, Date.now());
   }
 
   io.to(roomId).emit('timerState', timerState);
@@ -1336,7 +1302,7 @@ app.post('/api/rooms/:roomId/set-duration', ...roomAuth, (req, res) => {
 
   const { roomId } = req;
   const timerState = req.timerState;
-  timerState.durationMs = durationMs;
+  timerModes.setDuration(timerState, durationMs, Date.now());
 
   io.to(roomId).emit('timerState', timerState);
   scheduleSave();
@@ -1349,13 +1315,7 @@ app.post('/api/rooms/:roomId/set-duration', ...roomAuth, (req, res) => {
 // ============================================
 
 function loadRundownItem(s, index, autoStart) {
-  s.rundownIndex = index;
-  s.durationMs   = s.rundown[index].durationMs;
-  s.startTime    = autoStart ? Date.now() : null;
-  s.pauseTime    = null;
-  s.accumulatedPauseMs = 0;
-  s.endAtTarget  = null;
-  s.mode         = autoStart ? 'running' : 'stopped';
+  timerModes.loadRundownItem(s, index, autoStart, Date.now());
 }
 
 // POST /api/rooms/:roomId/rundown/prev — load previous item (stops timer)

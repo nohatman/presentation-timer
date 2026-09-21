@@ -490,6 +490,7 @@
                         <button class="mode-button" id="modeEndAtBtn" onclick="setTimerMode('endAt')" title="Select an end time first">End At</button>
                         <input type="time" id="endAtTime">
                     </div>
+                    <div id="modeApplyHint" hidden style="font-size:0.75rem;color:#888;margin-top:6px;">Timer is running - mode/value changes apply at next Start or Reset.</div>
                 </div>
                 <div>
                     <div style="font-size:0.8rem;color:#999;margin-bottom:6px;font-weight:500;text-transform:uppercase;letter-spacing:0.05em;">Quick Presets <span style="color:#444;font-size:0.75rem;text-transform:none;letter-spacing:0;">· Ctrl+Click to save</span></div>
@@ -660,18 +661,47 @@
         let lastRundownHash = null;
         let dragRundownIndex = null;
         let rundownEditMode = false;
-        let pendingTakeUpdate = false; // set by takeCurrentRundownItem so timerState handler syncs duration
 
-        // Timer mode selection
+        // Timer mode selection. The mode lives on the server (timerState.timerMode)
+        // so it survives refresh/restart and is shared by every controller; this
+        // only asks for a change - the buttons follow the server's echo (see
+        // applyServerTimerMode). While running/paused the change applies to the
+        // configuration only (next Start/Reset), never the live run.
+        function tzOffsetMin() { return new Date().getTimezoneOffset(); }
+
         function setTimerMode(mode) {
-            currentTimerMode = mode;
-            document.getElementById('modeDurationBtn').classList.toggle('active', mode === 'duration');
-            document.getElementById('modeEndAtBtn').classList.toggle('active', mode === 'endAt');
-            if (mode === 'endAt' && !document.getElementById('endAtTime').value) {
-                document.getElementById('endAtTime').focus();
+            if (mode === 'endAt') {
+                const target = document.getElementById('endAtTime').value;
+                if (!target) {
+                    document.getElementById('endAtTime').focus();
+                    return;
+                }
+                socket.emit('updateSettings', { timerMode: 'endAt', endAtTarget: target, endAtTzOffsetMin: tzOffsetMin() });
+            } else {
+                socket.emit('updateSettings', { timerMode: 'duration' });
             }
+        }
+
+        function applyServerTimerMode(state) {
+            currentTimerMode = state.timerMode === 'endAt' ? 'endAt' : 'duration';
+            document.getElementById('modeDurationBtn').classList.toggle('active', currentTimerMode === 'duration');
+            document.getElementById('modeEndAtBtn').classList.toggle('active', currentTimerMode === 'endAt');
+            const endAtEl = document.getElementById('endAtTime');
+            if (document.activeElement !== endAtEl) endAtEl.value = state.endAtTarget || '';
+            const durEl = document.getElementById('duration');
+            if (!durationInputFocused) {
+                // While a Duration-mode run is live the field shows the live length
+                // (so nudges are visible). Otherwise it shows the configured Duration
+                // - never an End-at-derived value, so switching modes cannot leave a
+                // stale number behind.
+                const live = (state.mode === 'running' || state.mode === 'paused') && state.timerMode !== 'endAt';
+                const ms = live ? state.durationMs : (state.configDurationMs !== undefined ? state.configDurationMs : state.durationMs);
+                if (ms !== undefined) {
+                    durEl.value = formatTimeInput(Math.floor(ms / 60000), Math.floor((ms % 60000) / 1000));
+                }
+            }
+            document.getElementById('modeApplyHint').hidden = state.mode === 'stopped';
             updateEndTimeCalc();
-            emitSettings();
         }
 
         // Update calculated end time display
@@ -711,15 +741,13 @@
 
         // Update end time calc when duration changes
         document.getElementById('duration').addEventListener('input', updateEndTimeCalc);
-        // Selecting an end time auto-activates End At mode and emits settings
+        // Choosing an end time selects End at mode; typing a duration selects
+        // Duration mode. Both are decided by the server (updateSettings), so what
+        // the operator last edited is what Start/Reset will use.
         document.getElementById('endAtTime').addEventListener('input', () => {
-            if (currentTimerMode !== 'endAt') {
-                currentTimerMode = 'endAt';
-                document.getElementById('modeDurationBtn').classList.remove('active');
-                document.getElementById('modeEndAtBtn').classList.add('active');
-            }
-            updateEndTimeCalc();
-            emitSettings();
+            const target = document.getElementById('endAtTime').value;
+            if (!target) return;
+            socket.emit('updateSettings', { endAtTarget: target, endAtTzOffsetMin: tzOffsetMin() });
         });
         // Connect using the control token as the sole credential. Role is derived
         // server-side from which token matched - never trust a client-declared type.
@@ -857,34 +885,14 @@
                 if (state.countUp !== undefined) {
                     document.getElementById('countUp').checked = !!state.countUp;
                 }
-                // Sync duration from server when stopped (running/paused already handled below)
-                if (state.mode === 'stopped' && state.durationMs !== undefined && !durationInputFocused) {
-                    document.getElementById('duration').value = formatTimeInput(
-                        Math.floor(state.durationMs / 60000),
-                        Math.floor((state.durationMs % 60000) / 1000)
-                    );
-                }
                 slidersInitialised = true;
             }
 
             // Update message UI to reflect current server state
             updateMessageUI(state);
 
-            // Keep duration input in sync with server (nudge, running/paused tick, or Take).
-            if (!durationInputFocused) {
-                const wasTake = pendingTakeUpdate;
-                pendingTakeUpdate = false;
-                const rundownNavigated = state.rundownIndex >= 0 && state.rundownIndex !== currentRundownIndex;
-                if (state.mode === 'running' || state.mode === 'paused' || rundownNavigated || wasTake) {
-                    const min = Math.floor(state.durationMs / 60000);
-                    const sec = Math.floor((state.durationMs % 60000) / 1000);
-                    document.getElementById('duration').value = formatTimeInput(min, sec);
-                    if (wasTake) {
-                        // Switch to duration mode so the field is visible and End At can use it
-                        setTimerMode('duration');
-                    }
-                }
-            }
+            // Mode buttons, End-at field and Duration field all follow the server.
+            applyServerTimerMode(state);
 
             // Sync rundown state — only re-render when data actually changed,
             // and never while an input inside the rundown list has focus (would
@@ -1147,7 +1155,6 @@
         }
 
         function startTimer() {
-            const mode = currentTimerMode;
             const data = {
                 speed: parseFloat(document.getElementById('speed').value) || 1.0,
                 amberThresholdMs: getAmberThresholdMs(),
@@ -1155,19 +1162,15 @@
                 countUp: document.getElementById('countUp').checked
             };
 
-            if (mode === 'duration') {
+            // What is on screen is what runs. End at is resolved by the server
+            // (server clock + this browser's UTC offset), not by this browser's clock.
+            if (currentTimerMode === 'duration') {
+                data.timerMode = 'duration';
                 data.durationMs = getDurationMs();
             } else {
+                data.timerMode = 'endAt';
                 data.endAtTarget = document.getElementById('endAtTime').value;
-                // Compute duration locally to avoid server timezone issues
-                const now = new Date();
-                const end = new Date(now);
-                const [h, m] = (data.endAtTarget || '00:00').split(':');
-                end.setHours(parseInt(h||'0'), parseInt(m||'0'), 0, 0);
-                if (end <= now) {
-                    end.setDate(end.getDate() + 1);
-                }
-                data.durationMs = Math.max(0, end.getTime() - now.getTime());
+                data.endAtTzOffsetMin = tzOffsetMin();
             }
 
             socket.emit('startTimer', data);
@@ -1263,8 +1266,8 @@
             if (currentState.mode !== 'stopped') {
                 socket.emit('resetTimer');
             }
-            setTimerMode('duration');
-            emitSettings();
+            // Explicit duration => Duration mode (server-side); sent after the reset above.
+            socket.emit('updateSettings', { durationMs: durationMs });
         }
 
         // Nudge helpers
@@ -1425,8 +1428,6 @@
 
         function takeCurrentRundownItem() {
             if (currentRundownIndex >= 0 && currentRundownIndex < rundownItems.length) {
-                // Flag the timerState handler to update #duration from the server's authoritative durationMs
-                pendingTakeUpdate = true;
                 goToRundownItem(currentRundownIndex);
             }
         }
@@ -1572,39 +1573,31 @@
             }, 2000);
         }
 
-        // Emit live settings to server when inputs change.
-        // IMPORTANT: never send durationMs while the timer is running or paused —
-        // that would overwrite the live countdown with whatever this device has stored
-        // locally, which is the root cause of sudden "wildly wrong time" jumps when a
-        // second device opens the control panel mid-run.
+        // Emit live (non-timer-length) settings to the server when inputs change.
+        // Timer length/mode is NOT sent from here: the Duration and End-at fields
+        // send their own updates (see their listeners), so an unrelated input event
+        // (message box, rundown edit, ...) can never push this browser's possibly
+        // stale field values over the server's configuration.
         function emitSettings() {
-            const mode = currentTimerMode;
             const speedInput = document.getElementById('speed');
             const speedValue = speedInput ? parseFloat(speedInput.value) : parseFloat(document.getElementById('speedSlider').value);
-            const payload = {
+            socket.emit('updateSettings', {
                 speed: speedValue || 1.0,
                 amberThresholdMs: getAmberThresholdMs(),
                 redThresholdMs: getRedThresholdMs(),
                 countUp: document.getElementById('countUp').checked
-            };
-            // Only push durationMs when stopped — use nudge buttons to adjust a live timer.
-            if (currentState.mode === 'stopped') {
-                if (mode === 'endAt') {
-                    payload.endAtTarget = document.getElementById('endAtTime').value;
-                    const now = new Date();
-                    const end = new Date(now);
-                    const [h, m] = (payload.endAtTarget || '00:00').split(':');
-                    end.setHours(parseInt(h||'0'), parseInt(m||'0'), 0, 0);
-                    if (end <= now) {
-                        end.setDate(end.getDate() + 1);
-                    }
-                    payload.durationMs = Math.max(0, end.getTime() - now.getTime());
-                } else {
-                    payload.durationMs = getDurationMs();
-                }
-            }
-            socket.emit('updateSettings', payload);
+            });
         }
+
+        // Duration field: typing/committing a value selects Duration mode. Only sent
+        // while stopped - to change a live timer use the nudge buttons (a second
+        // device with a stale field must never overwrite a live countdown).
+        function emitDurationEdit() {
+            saveSettings();
+            if (currentState.mode !== 'stopped') return;
+            socket.emit('updateSettings', { durationMs: getDurationMs() });
+        }
+        ['input', 'change'].forEach(evt => document.getElementById('duration').addEventListener(evt, emitDurationEdit));
 
         // Load saved settings from localStorage (for initial display only —
         // server state is authoritative and will overwrite on first timerState).
@@ -1697,6 +1690,7 @@
             if (input.id === 'speedSlider') return;
             if (input.id === 'displayScaleSlider') return;
             if (input.id === 'rundownAutoStart') return;
+            if (input.id === 'duration' || input.id === 'endAtTime') return; // own listeners (server-side mode)
             
             input.addEventListener('change', () => {
                 saveSettings();
@@ -1714,7 +1708,12 @@
         // Track when user is actively editing the duration field so server syncs don't overwrite it
         const durationInput = document.getElementById('duration');
         durationInput.addEventListener('focus', () => durationInputFocused = true);
-        durationInput.addEventListener('blur',  () => durationInputFocused = false);
+        durationInput.addEventListener('blur',  () => {
+            durationInputFocused = false;
+            // While running/paused the field is not editable state (use the nudge
+            // buttons): drop the rejected edit and show the server's value again.
+            if (currentState.mode !== 'stopped') applyServerTimerMode(currentState);
+        });
 
         // ============================================================
         // Message display
