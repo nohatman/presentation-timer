@@ -26,9 +26,11 @@ function functionBody(name) {
 }
 
 test('the only place that emits applyEndAt is applyEndAtDraft', () => {
-  const emits = html.match(/socket\.emit\('applyEndAt'/g) || [];
+  const emits = html.match(/\.emit\('applyEndAt'/g) || [];
   assert.equal(emits.length, 1);
-  assert.ok(functionBody('applyEndAtDraft').includes("socket.emit('applyEndAt'"));
+  assert.ok(functionBody('sendEndAt').includes(".emit('applyEndAt'"));
+  assert.ok(functionBody('applyEndAtDraft').includes('sendEndAt('), 'reached only via applyEndAtDraft');
+  assert.equal((html.match(/sendEndAt\(/g) || []).length, 2, 'defined once, called once (from applyEndAtDraft)');
 });
 
 test('no End-at field listener (input/change/blur/focus/keydown other than Enter) or draft helper emits to the server', () => {

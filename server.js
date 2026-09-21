@@ -345,13 +345,19 @@ io.on('connection', (socket) => {
   // unrelated row, so it is cleared. The running timer itself is not touched.
   // Explicit "Set End at" from the control page (typing in the field never sends
   // anything). Applies atomically to a stopped OR live timer - see timerModes.applyEndAt.
-  socket.on('applyEndAt', (data) => {
-    if (!requireActiveController()) return;
+  // The optional ack callback reports the outcome to the caller so the control page
+  // can show a failure instead of silently leaving the draft "not applied": {ok:true}
+  // (the authoritative state broadcast has already gone out), or {ok:false, reason}
+  // with reason 'observer' | 'invalid' | 'no-room'.
+  socket.on('applyEndAt', (data, ack) => {
+    const reply = typeof ack === 'function' ? ack : () => {};
+    if (!requireActiveController()) return reply({ ok: false, reason: 'observer' });
     const timerState = getRoomState(roomId);
-    if (!timerState) return;
-    if (!timerModes.applyEndAt(timerState, data || {}, Date.now()).ok) return;
+    if (!timerState) return reply({ ok: false, reason: 'no-room' });
+    if (!timerModes.applyEndAt(timerState, data || {}, Date.now()).ok) return reply({ ok: false, reason: 'invalid' });
     emitState(roomId, timerState);
     scheduleSave();
+    reply({ ok: true });
   });
 
   socket.on('setRundown', (payload) => {

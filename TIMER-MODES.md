@@ -47,6 +47,13 @@ moves to "remaining as of now"; Resume still catches up to the fixed target). `S
 button use the last *applied* target, never an unapplied draft. ✕ / Escape discards a draft; an unapplied
 draft is not overwritten by state updates from the server.
 
+`applyEndAt` is a request/acknowledge call: the server answers `{ok:true}` (after broadcasting the new state) or
+`{ok:false, reason: 'observer' | 'invalid' | 'no-room'}`. While waiting the button shows "…"; the draft is
+cleared only once the authoritative state contains the applied value. Any failure keeps the draft and shows a
+red message beside the field: not the active controller ("use Take Over"), invalid time, not connected, or
+**no acknowledgement within 5 s - which means the timer server is running older code and must be restarted**
+(the page files are served fresh, but a running `node server.js` keeps the code it started with).
+
 A stopped End-at timer's `durationMs` is a snapshot taken at edit / Reset / (re)connect;
 **Start always recomputes it from the clock.**
 

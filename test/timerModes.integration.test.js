@@ -24,6 +24,11 @@ process.env.DATABASE_PATH = scratchDbPath;
 process.env.PORT = String(PORT);
 process.env.LEGACY_ROOMS_JSON_PATH = path.join(os.tmpdir(), `pt-timermodes-test-no-such-file-${Date.now()}.json`);
 
+// The in-process server logs every join/leave. Interleaved with the test runner's own result
+// frames on stdout that noise can corrupt them ("Unable to deserialize cloned data"), so keep it quiet.
+const realConsoleLog = console.log;
+console.log = () => {};
+
 const db = require('../db');
 
 let capturedServer = null;
@@ -92,7 +97,9 @@ test.after(async () => {
     capturedServer.close(() => resolve());
   });
   for (const suffix of ['', '-wal', '-shm']) { try { fs.unlinkSync(scratchDbPath + suffix); } catch { /* ignore */ } }
-  process.exit(0); // server.js's 1 Hz interval is not unref'd (see bridgeStatus test)
+  // server.js's 1 Hz interval is not unref'd (see bridgeStatus test), so exit explicitly - but after
+  // a beat, so the test runner's result stream is flushed first (an immediate exit can truncate it).
+  setTimeout(() => process.exit(0), 300);
 });
 
 test('a brand-new room defaults to Duration mode and exposes the new fields additively', async () => {
@@ -376,3 +383,124 @@ test('applyEndAt from an observer (non-active controller) is rejected and change
     assert.equal(JSON.stringify((await rest(room, 'GET', 'state')).state), before);
   } finally { c.socket.close(); obs.socket.close(); }
 });
+
+// ack helper: emit and resolve with the server's acknowledgement (and fail if none arrives)
+function emitAck(c, event, payload, ms = 2000) {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`no ack for ${event}`)), ms);
+    c.socket.emit(event, payload, (res) => { clearTimeout(t); resolve(res); });
+  });
+}
+
+test('STOPPED: applyEndAt on a fresh Duration room configures End at (no Duration timer needed first); Start runs to that applied target', async () => {
+  const { room, c } = await newControl();
+  const disp = connectControl(room.displayToken);
+  try {
+    assert.equal(c.state.timerMode, 'duration');
+    const target = targetInMinutes(20);
+    const seen = waitForState(c, (s) => s.endAtTarget === target);
+    const ack = await emitAck(c, 'applyEndAt', { endAtTarget: target, endAtTzOffsetMin: tz() });
+    assert.deepEqual(ack, { ok: true });
+    let s = await seen;
+    assert.equal(s.mode, 'stopped');
+    assert.equal(s.timerMode, 'endAt', 'mode switched to End at');
+    assert.ok(Math.abs(s.durationMs - 20 * MIN) < 45000, `preview ~20:00, got ${s.durationMs}`);
+    assert.equal(s.runEndAtMs == null, true, 'nothing started');
+    // Start with NO target in the payload: uses the previously applied one
+    s = await c.send('startTimer', { timerMode: 'endAt' });
+    assert.equal(s.mode, 'running');
+    assert.equal(s.endAtTarget, target);
+    assert.ok(Math.abs(s.runEndAtMs - Date.now() - 20 * MIN) < 45000, 'runs toward the applied absolute target');
+    assert.equal(s.startTime + s.accumulatedPauseMs + s.durationMs, s.runEndAtMs);
+  } finally { c.socket.close(); disp.socket.close(); }
+});
+
+test('typing-equivalent traffic never mutates: a room with no applyEndAt keeps its state; Start without an applied target stays Duration', async () => {
+  const { c } = await newControl();
+  try {
+    const before = JSON.stringify((({ timerMode, endAtTarget, durationMs, mode }) => ({ timerMode, endAtTarget, durationMs, mode }))(c.state));
+    await sleep(300);
+    assert.equal(JSON.stringify((({ timerMode, endAtTarget, durationMs, mode }) => ({ timerMode, endAtTarget, durationMs, mode }))(c.state)), before);
+    const s = await c.send('startTimer', { timerMode: 'endAt' }); // no applied target: cannot be End at
+    assert.equal(s.timerMode, 'duration'); assert.equal(s.runEndAtMs, null);
+  } finally { c.socket.close(); }
+});
+
+test('LIVE confirm path: one applyEndAt retargets the running timer, is acknowledged, and control + display get the SAME state', async () => {
+  const { room, c } = await newControl();
+  const disp = connectControl(room.displayToken);
+  try {
+    await disp.ready;
+    await c.send('updateSettings', { durationMs: 30 * MIN });
+    let s = await c.send('startTimer', { timerMode: 'duration', durationMs: 30 * MIN });
+    assert.equal(s.runEndAtMs, null);
+    const target = targetInMinutes(50);
+    const dSeen = waitForState(disp, (x) => x.endAtTarget === target);
+    const cSeen = waitForState(c, (x) => x.endAtTarget === target);
+    const ack = await emitAck(c, 'applyEndAt', { endAtTarget: target, endAtTzOffsetMin: tz() });
+    assert.deepEqual(ack, { ok: true });
+    const [cs, ds] = await Promise.all([cSeen, dSeen]);
+    for (const st of [cs, ds]) {
+      assert.equal(st.mode, 'running'); assert.equal(st.timerMode, 'endAt');
+      assert.ok(Math.abs(st.runEndAtMs - Date.now() - 50 * MIN) < 45000);
+      assert.equal(st.startTime + st.accumulatedPauseMs + st.durationMs, st.runEndAtMs);
+    }
+    for (const k of ['runEndAtMs', 'durationMs', 'startTime', 'accumulatedPauseMs', 'endAtTarget', 'mode']) assert.equal(cs[k], ds[k], k);
+  } finally { c.socket.close(); disp.socket.close(); }
+});
+
+test('LIVE cancel: nothing is sent, nothing changes (the page only calls applyEndAt after the confirmation)', async () => {
+  const { room, c } = await newControl();
+  try {
+    await c.send('startTimer', { timerMode: 'duration', durationMs: 10 * MIN });
+    const before = JSON.stringify((await rest(room, 'GET', 'state')).state);
+    await sleep(300); // (Cancel == no event at all)
+    assert.equal(JSON.stringify((await rest(room, 'GET', 'state')).state), before);
+  } finally { c.socket.close(); }
+});
+
+test('PAUSED confirm: retargets, stays paused, frozen display = target - now, Resume keeps the fixed target', async () => {
+  const { c } = await newControl();
+  try {
+    await c.send('startTimer', { timerMode: 'duration', durationMs: 30 * MIN });
+    await c.send('pauseTimer');
+    const target = targetInMinutes(40);
+    const ack = await emitAck(c, 'applyEndAt', { endAtTarget: target, endAtTzOffsetMin: tz() });
+    assert.deepEqual(ack, { ok: true });
+    await sleep(150);
+    let s = c.state;
+    assert.equal(s.mode, 'paused'); assert.equal(s.endAtTarget, target);
+    const frozenRemaining = s.durationMs - (s.pauseTime - s.startTime - s.accumulatedPauseMs) * s.speed;
+    assert.ok(Math.abs(frozenRemaining - 40 * MIN) < 45000, `frozen remaining ~40:00, got ${frozenRemaining}`);
+    await sleep(400);
+    s = await c.send('resumeTimer');
+    assert.equal(s.startTime + s.accumulatedPauseMs + s.durationMs, s.runEndAtMs);
+  } finally { c.socket.close(); }
+});
+
+test('failure is acknowledged, not silent: invalid => {ok:false,invalid}; observer => {ok:false,observer}; state unchanged', async () => {
+  const { room, c } = await newControl();
+  const obs = connectControl(room.controlToken);
+  try {
+    await obs.ready; await sleep(100);
+    const before = JSON.stringify((await rest(room, 'GET', 'state')).state);
+    assert.deepEqual(await emitAck(c, 'applyEndAt', { endAtTarget: '9:' }), { ok: false, reason: 'invalid' });
+    assert.deepEqual(await emitAck(c, 'applyEndAt', {}), { ok: false, reason: 'invalid' });
+    assert.deepEqual(await emitAck(obs, 'applyEndAt', { endAtTarget: targetInMinutes(10), endAtTzOffsetMin: tz() }), { ok: false, reason: 'observer' });
+    assert.equal(JSON.stringify((await rest(room, 'GET', 'state')).state), before);
+    // and a legacy caller with no ack callback still works
+    c.socket.emit('applyEndAt', { endAtTarget: targetInMinutes(15), endAtTzOffsetMin: tz() });
+    await sleep(200);
+    assert.equal(c.state.timerMode, 'endAt');
+  } finally { c.socket.close(); obs.socket.close(); }
+});
+
+// -- helpers for the tests above
+function waitForState(c, predicate, ms = 3000) {
+  return new Promise((resolve, reject) => {
+    if (c.state && predicate(c.state)) return resolve(c.state);
+    const t = setTimeout(() => { c.socket.off('timerState', h); reject(new Error('timed out waiting for matching state')); }, ms);
+    const h = (st) => { if (predicate(st)) { clearTimeout(t); c.socket.off('timerState', h); resolve(st); } };
+    c.socket.on('timerState', h);
+  });
+}

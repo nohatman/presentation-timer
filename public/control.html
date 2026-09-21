@@ -783,6 +783,8 @@
         // Only Set (button or Enter) sends 'applyEndAt'. A live timer needs an explicit
         // confirmation showing the current and proposed remaining time.
         let endAtDirty = false;
+        let endAtApplying = false; // a Set is in flight, awaiting the server's acknowledgement
+        let endAtError = '';       // last failed Set (draft is kept); cleared by any edit / Cancel / success
         let serverClockOffsetMs = 0; // server clock - this browser's clock, from the last timerState
         const serverNowMs = () => Date.now() + serverClockOffsetMs;
         const endAtEl = document.getElementById('endAtTime');
@@ -794,14 +796,22 @@
             endAtDirty = incomplete || v !== (currentState.endAtTarget || '');
             const valid = !incomplete && isValidEndAt(v);
             endAtEl.classList.toggle('draft', endAtDirty);
-            document.getElementById('endAtApplyBtn').disabled = !(endAtDirty && valid);
+            if (!endAtDirty) endAtError = ''; // draft is gone (applied or discarded): stale error must not linger
             document.getElementById('endAtCancelBtn').hidden = !endAtDirty;
+            document.getElementById('endAtApplyBtn').disabled = !(endAtDirty && valid) || endAtApplying;
+            document.getElementById('endAtApplyBtn').textContent = endAtApplying ? '…' : 'Set';
             const hint = document.getElementById('endAtDraftHint');
-            hint.hidden = !endAtDirty;
-            hint.textContent = !endAtDirty ? '' : valid ? 'Not applied yet - press Set (or Enter). Start uses the last applied time.' : 'Enter a complete time to apply.';
+            hint.hidden = !endAtDirty && !endAtError;
+            hint.style.color = endAtError ? '#f44336' : '#ff9800';
+            hint.textContent = endAtError ? endAtError
+                : !endAtDirty ? ''
+                : endAtApplying ? 'Applying…'
+                : valid ? 'Not applied yet - press Set (or Enter). Start uses the last applied time.'
+                : 'Enter a complete time to apply.';
         }
 
         function cancelEndAtDraft() {
+            endAtError = '';
             endAtEl.value = currentState.endAtTarget || '';
             refreshEndAtDraftUI();
         }
@@ -831,7 +841,7 @@
 
         function applyEndAtDraft() {
             const v = endAtEl.value;
-            if (!isValidEndAt(v) || v === (currentState.endAtTarget || '')) return;
+            if (endAtApplying || !isValidEndAt(v) || v === (currentState.endAtTarget || '')) return;
             if (currentState.mode !== 'stopped') {
                 const cur = liveRemainingMs(currentState);
                 const p = proposeEndAt(v);
@@ -846,10 +856,36 @@
                     if (!ok) return; // Cancel: nothing was sent, nothing changed
                 }
             }
-            socket.emit('applyEndAt', { endAtTarget: v, endAtTzOffsetMin: tzOffsetMin() });
+            sendEndAt(v);
         }
 
-        endAtEl.addEventListener('input', refreshEndAtDraftUI);
+        // One request, one acknowledgement. A failure (server too old to know the event,
+        // not the active controller, connection down, invalid time) is shown next to the
+        // field and the draft is kept; success is confirmed by the authoritative state
+        // broadcast, which is what clears the draft (see applyServerTimerMode).
+        function sendEndAt(v) {
+            endAtError = '';
+            if (!socket.connected) {
+                endAtError = 'Not connected to the server - nothing was changed. Try again when reconnected.';
+                refreshEndAtDraftUI();
+                return;
+            }
+            endAtApplying = true;
+            refreshEndAtDraftUI();
+            socket.timeout(5000).emit('applyEndAt', { endAtTarget: v, endAtTzOffsetMin: tzOffsetMin() }, (err, res) => {
+                endAtApplying = false;
+                if (err) {
+                    endAtError = 'The server did not acknowledge Set - nothing was changed. If this keeps happening the timer server is probably running older software: restart it.';
+                } else if (!res || !res.ok) {
+                    endAtError = res && res.reason === 'observer' ? 'Another operator is in control - use Take Over, then Set again. Nothing was changed.'
+                        : res && res.reason === 'invalid' ? 'Not a valid time - nothing was changed.'
+                        : 'The server refused Set - nothing was changed.';
+                }
+                refreshEndAtDraftUI();
+            });
+        }
+
+        endAtEl.addEventListener('input', () => { endAtError = ''; refreshEndAtDraftUI(); });
         endAtEl.addEventListener('keyup', refreshEndAtDraftUI); // half-typed times fire no 'input'; UI-only, sends nothing
         endAtEl.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') { e.preventDefault(); applyEndAtDraft(); }

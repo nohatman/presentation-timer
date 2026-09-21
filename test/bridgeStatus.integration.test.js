@@ -32,6 +32,9 @@ process.env.PORT = String(PORT);
 // DB must start completely empty, not import unrelated real data.
 process.env.LEGACY_ROOMS_JSON_PATH = path.join(os.tmpdir(), `pt-bridgestatus-test-no-such-file-${Date.now()}.json`);
 
+// Keep the in-process server's join/leave logging from interleaving with the test runner's result frames.
+console.log = () => {};
+
 const db = require('../db');
 
 let capturedServer = null;
