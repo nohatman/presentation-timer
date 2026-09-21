@@ -269,3 +269,34 @@ test('Companion REST parity: start/reset/nudge/set-duration follow the same mode
     assert.ok(g.ok && g.mode === 'running');
   } finally { c.socket.close(); }
 });
+
+test('setRundown: a plain array behaves exactly as before; { items, resetIndex } clears the current item (Replace)', async () => {
+  const { c } = await newControl();
+  try {
+    const items = [{ name: 'A', durationMs: 5 * MIN }, { name: 'B', durationMs: 6 * MIN }, { name: 'C', durationMs: 7 * MIN }];
+    let s = await c.send('setRundown', items);
+    assert.equal(s.rundown.length, 3);
+    s = await c.send('goToRundown', { index: 2, autoStart: false });
+    assert.equal(s.rundownIndex, 2);
+    // legacy shape: same index kept while still in range (unchanged behaviour)
+    s = await c.send('setRundown', [items[2], items[1], items[0]]);
+    assert.equal(s.rundownIndex, 2);
+    assert.deepEqual(s.rundown.map((r) => r.name), ['C', 'B', 'A']);
+    // legacy shape: index clamped when the list shrinks
+    s = await c.send('setRundown', [items[0]]);
+    assert.equal(s.rundownIndex, 0);
+    // Replace shape: pointer cleared, order exactly as sent, timer untouched
+    s = await c.send('startTimer', { timerMode: 'duration', durationMs: 5 * MIN });
+    const startTime = s.startTime;
+    s = await c.send('setRundown', { items: [items[1], items[2], items[0]], resetIndex: true });
+    assert.equal(s.rundownIndex, -1);
+    assert.deepEqual(s.rundown.map((r) => r.name), ['B', 'C', 'A']);
+    assert.equal(s.mode, 'running'); assert.equal(s.startTime, startTime);
+    // garbage payloads are ignored, rundown intact
+    s = await c.send('setRundown', [{ name: 'Z', durationMs: MIN }]);
+    c.socket.emit('setRundown', { items: 'nope' });
+    c.socket.emit('setRundown', null);
+    await sleep(150);
+    assert.deepEqual(c.state.rundown.map((r) => r.name), ['Z']);
+  } finally { c.socket.close(); }
+});

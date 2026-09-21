@@ -344,17 +344,23 @@ io.on('connection', (socket) => {
     scheduleSave();
   });
 
-  socket.on('setRundown', (items) => {
+  // Payload: the items array (as always), or { items, resetIndex: true } when the
+  // whole rundown is being replaced - the old "current item" then points at an
+  // unrelated row, so it is cleared. The running timer itself is not touched.
+  socket.on('setRundown', (payload) => {
     if (!requireActiveController()) return;
     const timerState = getRoomState(roomId);
     if (!timerState) return;
-    if (!Array.isArray(items)) return;
+    const items = Array.isArray(payload) ? payload : (payload && Array.isArray(payload.items) ? payload.items : null);
+    if (!items) return;
     timerState.rundown = items.map(item => ({
       name: String(item.name || '').slice(0, 100),
       durationMs: Math.max(0, Math.floor(Number(item.durationMs) || 0))
     }));
-    // Clamp index if items were removed
-    if (timerState.rundownIndex >= timerState.rundown.length) {
+    if (!Array.isArray(payload) && payload.resetIndex === true) {
+      timerState.rundownIndex = -1;
+    } else if (timerState.rundownIndex >= timerState.rundown.length) {
+      // Clamp index if items were removed
       timerState.rundownIndex = timerState.rundown.length - 1;
     }
     emitState(roomId, timerState);
