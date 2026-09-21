@@ -11,7 +11,7 @@ const BST = -60;
 
 function fresh(over = {}) {
   return tm.normalizeState({
-    mode: 'stopped', durationMs: 30 * MIN, startTime: null, pauseTime: null, accumulatedPauseMs: 0,
+    mode: 'stopped', speed: 1, durationMs: 30 * MIN, startTime: null, pauseTime: null, accumulatedPauseMs: 0,
     endAtTarget: null, rundown: [], rundownIndex: -1, ...over,
   });
 }
@@ -188,4 +188,78 @@ test('setDuration (REST set-duration) selects Duration and keeps live-edit legac
   assert.equal(s.timerMode, 'duration');
   assert.equal(s.durationMs, 6 * MIN);
   assert.equal(s.configDurationMs, 6 * MIN);
+});
+
+test('End-at pause/resume: the finish stays the absolute wall-clock target (pause only freezes the display)', () => {
+  const s = fresh();
+  tm.applyTimerConfig(s, { endAtTarget: '14:30', endAtTzOffsetMin: BST }, NOW); // 30 min away
+  tm.startTimer(s, {}, NOW);
+  const target = NOW + 30 * MIN;
+  assert.equal(s.runEndAtMs, target);
+  s.mode = 'paused'; s.pauseTime = NOW + 5 * MIN; // paused with 25 min left
+  tm.resumeTimer(s, NOW + 15 * MIN); // 10 min pause
+  assert.equal(s.mode, 'running');
+  assert.equal(s.pauseTime, null);
+  const finish = s.startTime + s.accumulatedPauseMs + s.durationMs / s.speed;
+  assert.equal(finish, target, 'finish unchanged by the pause');
+  const remaining = s.durationMs - (NOW + 15 * MIN - s.startTime - s.accumulatedPauseMs) * s.speed;
+  assert.equal(remaining, 15 * MIN, 'remaining = target - now, not the frozen 25 min');
+});
+
+test('Duration pause/resume: unchanged - the pause shifts the finish later', () => {
+  const s = fresh();
+  tm.applyTimerConfig(s, { durationMs: 30 * MIN }, NOW);
+  tm.startTimer(s, {}, NOW);
+  assert.equal(s.runEndAtMs, null);
+  s.mode = 'paused'; s.pauseTime = NOW + 5 * MIN;
+  tm.resumeTimer(s, NOW + 15 * MIN);
+  assert.equal(s.accumulatedPauseMs, 10 * MIN);
+  const remaining = s.durationMs - (NOW + 15 * MIN - s.startTime - s.accumulatedPauseMs) * s.speed;
+  assert.equal(remaining, 25 * MIN, 'still the frozen 25 min');
+});
+
+test('End-at: resuming after the target has passed goes into overrun (no next-day roll)', () => {
+  const s = fresh();
+  tm.applyTimerConfig(s, { endAtTarget: '14:30', endAtTzOffsetMin: BST }, NOW);
+  tm.startTimer(s, {}, NOW);
+  s.mode = 'paused'; s.pauseTime = NOW + 5 * MIN;
+  tm.resumeTimer(s, NOW + 40 * MIN);
+  const remaining = s.durationMs - (NOW + 40 * MIN - s.startTime - s.accumulatedPauseMs) * s.speed;
+  assert.equal(remaining, -10 * MIN);
+});
+
+test('End-at: the run mode is fixed at Start - switching mode while paused does not change how it resumes', () => {
+  const s = fresh();
+  tm.applyTimerConfig(s, { endAtTarget: '14:30', endAtTzOffsetMin: BST }, NOW);
+  tm.startTimer(s, {}, NOW);
+  s.mode = 'paused'; s.pauseTime = NOW + 5 * MIN;
+  tm.applyTimerConfig(s, { timerMode: 'duration' }, NOW + 6 * MIN);
+  tm.resumeTimer(s, NOW + 15 * MIN);
+  assert.equal(s.startTime + s.accumulatedPauseMs + s.durationMs, NOW + 30 * MIN);
+  // and the reverse: a Duration run stays a shift-on-pause run even if End at is configured
+  const d = fresh();
+  tm.applyTimerConfig(d, { durationMs: 30 * MIN, endAtTarget: '14:30', endAtTzOffsetMin: BST }, NOW);
+  tm.applyTimerConfig(d, { timerMode: 'duration' }, NOW);
+  tm.startTimer(d, {}, NOW);
+  d.mode = 'paused'; d.pauseTime = NOW + 5 * MIN;
+  tm.applyTimerConfig(d, { timerMode: 'endAt' }, NOW + 6 * MIN);
+  tm.resumeTimer(d, NOW + 15 * MIN);
+  assert.equal(d.accumulatedPauseMs, 10 * MIN);
+});
+
+test('End-at: a live nudge moves the absolute finish and survives pause/resume; Reset and rundown Take clear it', () => {
+  const s = fresh({ rundown: [{ name: 'A', durationMs: 5 * MIN }] });
+  tm.applyTimerConfig(s, { endAtTarget: '14:30', endAtTzOffsetMin: BST }, NOW);
+  tm.startTimer(s, {}, NOW);
+  tm.nudge(s, 2 * MIN, NOW + MIN);
+  assert.equal(s.runEndAtMs, NOW + 32 * MIN);
+  s.mode = 'paused'; s.pauseTime = NOW + 5 * MIN;
+  tm.resumeTimer(s, NOW + 15 * MIN);
+  assert.equal(s.startTime + s.accumulatedPauseMs + s.durationMs, NOW + 32 * MIN);
+  tm.resetTimer(s, NOW + 16 * MIN);
+  assert.equal(s.runEndAtMs, null);
+  tm.startTimer(s, {}, NOW + 16 * MIN);
+  assert.ok(Number.isFinite(s.runEndAtMs));
+  tm.loadRundownItem(s, 0, false, NOW + 17 * MIN);
+  assert.equal(s.runEndAtMs, null);
 });

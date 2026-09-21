@@ -1080,6 +1080,8 @@
                 if (timerRemaining < 0 && s.countUp) {
                     overrunMs = -timerRemaining;
                     wallEndMs = null;
+                } else if (Number.isFinite(s.runEndAtMs)) {
+                    wallEndMs = s.runEndAtMs; // End-at run: fixed wall-clock target
                 } else if (timerRemaining > 0) {
                     wallEndMs = Date.now() + timerRemaining / speed;
                 }

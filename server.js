@@ -120,6 +120,7 @@ function createDefaultTimerState() {
     timerMode: 'duration', // 'duration' | 'endAt' - see timerModes.js
     configDurationMs: 30 * 60 * 1000, // operator's Duration-mode value (survives End at)
     endAtTzOffsetMin: null, // operator's Date#getTimezoneOffset() for endAtTarget
+    runEndAtMs: null, // absolute finish of a running End-at run (see timerModes.js)
     countUp: false,
     showClock: false,
     outputMode: 'timer', // 'timer' | 'clock'
@@ -308,12 +309,7 @@ io.on('connection', (socket) => {
     const timerState = getRoomState(roomId);
     if (!timerState) return;
     if (timerState.mode === 'paused') {
-      timerState.mode = 'running';
-      // Accumulate paused duration so elapsed accounts for pauses
-      if (timerState.pauseTime) {
-        timerState.accumulatedPauseMs += Date.now() - timerState.pauseTime;
-      }
-      timerState.pauseTime = null;
+      timerModes.resumeTimer(timerState, Date.now());
       emitState(roomId, timerState);
       scheduleSave();
     }
@@ -804,10 +800,7 @@ app.post('/api/admin/rooms/:id/resume', ...adminRoomAuth, (req, res) => {
   if (timerState.mode !== 'paused') {
     return res.json({ ok: false, error: 'Timer is not paused' });
   }
-  const pauseDurationMs = Date.now() - timerState.pauseTime;
-  timerState.accumulatedPauseMs += pauseDurationMs;
-  timerState.mode = 'running';
-  timerState.pauseTime = null;
+  timerModes.resumeTimer(timerState, Date.now());
   io.to(roomId).emit('timerState', timerState);
   scheduleSave();
   res.json({ ok: true, roomId, slug: room.slug, clientName: room.client_name, state: timerState });
@@ -1251,10 +1244,7 @@ app.post('/api/rooms/:roomId/resume', ...roomAuth, (req, res) => {
     return res.json({ ok: false, error: 'Timer is not paused' });
   }
 
-  const pauseDurationMs = Date.now() - timerState.pauseTime;
-  timerState.accumulatedPauseMs += pauseDurationMs;
-  timerState.mode = 'running';
-  timerState.pauseTime = null;
+  timerModes.resumeTimer(timerState, Date.now());
 
   io.to(roomId).emit('timerState', timerState);
   scheduleSave();

@@ -12,6 +12,7 @@ every server restart sees the same mode. Logic lives in [timerModes.js](timerMod
 | `configDurationMs` | The operator's Duration value. Kept while End at is active. |
 | `endAtTarget` | `'HH:MM'` or `null`. Kept while Duration is active, and across Reset. |
 | `endAtTzOffsetMin` | The operator's `Date#getTimezoneOffset()`. `HH:MM` is the *operator's* wall clock even if the server runs in UTC (Railway). |
+| `runEndAtMs` | Epoch ms an End-at run must finish at (set at Start, cleared by Reset / rundown Take; `null` for Duration runs). Which resume behaviour applies is fixed by how the run *started*, not by the mode configured later. |
 | `durationMs` | (existing) length of the current/next run. While stopped it always equals what Start would run. |
 
 All new fields are additive; display, Companion and the CDEther bridge only read the
@@ -26,9 +27,9 @@ pre-existing fields and are unaffected.
 | Mode button (stopped) | switches; each mode restores its own value | |
 | Mode button / edits (running or paused) | changes the *configuration only*; the live run is never touched. Applies at next Start/Reset. | |
 | Start | runs `configDurationMs` | runs time-to-target computed from the server clock at Start |
-| Pause / Resume | freeze / unfreeze (end time moves later by the pause length in both modes - existing behaviour, shown as "If resumed, ends at") | |
+| Pause / Resume | freeze / unfreeze; the pause shifts the finish later by the pause length (existing behaviour, shown as "If resumed, ends at") | pause freezes the display only; **the finish stays the absolute wall-clock target** - on Resume the remaining time is target - now (it drops by the pause length, or goes into overrun if the target passed) |
 | Reset | back to `configDurationMs` (a live nudge is *not* kept) | back to time-to-target *now*; target and mode kept |
-| Nudge (running/paused) | adjusts this run only | adjusts this run only |
+| Nudge (running/paused) | adjusts this run only | adjusts this run only; the run's absolute finish moves by the same amount, so the nudge survives a pause/resume |
 | Nudge (stopped) | adjusts the configured Duration | becomes a fixed Duration of (time-to-target + nudge), so Start does not silently discard it |
 | Take / Prev / Next rundown item | item duration becomes the Duration; Duration mode; End-at target cleared (existing behaviour) | same |
 | Target already passed | rolls to tomorrow (existing behaviour) | |

@@ -11,12 +11,14 @@
 //   endAtTzOffsetMin the operator's Date#getTimezoneOffset() when the target was
 //                    set, so 'HH:MM' means the operator's wall clock even when
 //                    the server (e.g. Railway) runs in UTC
+//   runEndAtMs       epoch ms a running/paused End-at run must finish at (absolute
+//                    wall-clock target); null for Duration runs. Set at Start.
 //   durationMs       (pre-existing) length of the current/next run. While
 //                    stopped it always equals what Start would run: the
 //                    configured duration, or time-to-target for End at.
 //
 // Every function mutates the passed state and returns it. None of them touch
-// startTime/pauseTime/accumulatedPauseMs except start/reset, which own them.
+// startTime/pauseTime/accumulatedPauseMs except start/resume/reset, which own them.
 
 const HHMM = /^(\d{1,2}):(\d{2})$/;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -121,10 +123,27 @@ function startTimer(state, data, nowMs) {
     if (ms === null) state.timerMode = 'duration';
     else state.durationMs = ms;
   }
+  state.runEndAtMs = state.timerMode === 'endAt' ? nowMs + state.durationMs / (state.speed || 1) : null;
   state.mode = 'running';
   state.startTime = nowMs;
   state.pauseTime = null;
   state.accumulatedPauseMs = 0;
+  return state;
+}
+
+// Resume. Duration run: the pause shifts the finish later (accumulate the pause).
+// End-at run: the finish is an absolute wall-clock target, so pausing only freezes
+// the display; on resume the timer catches up to the target (elapsed jumps forward
+// by the pause length, or goes into overrun if the target passed meanwhile).
+function resumeTimer(state, nowMs) {
+  if (state.mode !== 'paused') return state;
+  if (Number.isFinite(state.runEndAtMs)) {
+    state.accumulatedPauseMs = state.runEndAtMs - state.startTime - state.durationMs / (state.speed || 1);
+  } else if (state.pauseTime) {
+    state.accumulatedPauseMs += nowMs - state.pauseTime;
+  }
+  state.pauseTime = null;
+  state.mode = 'running';
   return state;
 }
 
@@ -136,6 +155,7 @@ function resetTimer(state, nowMs) {
   state.startTime = null;
   state.pauseTime = null;
   state.accumulatedPauseMs = 0;
+  state.runEndAtMs = null;
   return syncStoppedDuration(state, nowMs);
 }
 
@@ -150,7 +170,11 @@ function nudge(state, deltaMs, nowMs) {
     syncStoppedDuration(state, nowMs);
     return setDuration(state, Math.max(0, state.durationMs + delta), nowMs);
   }
-  state.durationMs = Math.max(0, (state.durationMs || 0) + delta);
+  const before = state.durationMs || 0;
+  state.durationMs = Math.max(0, before + delta);
+  // An End-at run's absolute finish moves with the nudge (by what was actually
+  // applied), so the nudge survives pause/resume.
+  if (Number.isFinite(state.runEndAtMs)) state.runEndAtMs += (state.durationMs - before) / (state.speed || 1);
   return state;
 }
 
@@ -167,6 +191,7 @@ function loadRundownItem(state, index, autoStart, nowMs) {
   state.startTime = autoStart ? nowMs : null;
   state.pauseTime = null;
   state.accumulatedPauseMs = 0;
+  state.runEndAtMs = null;
   state.mode = autoStart ? 'running' : 'stopped';
   return state;
 }
@@ -179,6 +204,7 @@ module.exports = {
   setDuration,
   applyTimerConfig,
   startTimer,
+  resumeTimer,
   resetTimer,
   nudge,
   loadRundownItem,

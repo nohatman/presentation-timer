@@ -300,3 +300,31 @@ test('setRundown: a plain array behaves exactly as before; { items, resetIndex }
     assert.deepEqual(c.state.rundown.map((r) => r.name), ['Z']);
   } finally { c.socket.close(); }
 });
+
+test('End-at pause/resume over the wire: finish stays on the target (socket + REST); Duration keeps shift-on-pause', async () => {
+  const { room, c } = await newControl();
+  try {
+    const target = targetInMinutes(20);
+    await c.send('updateSettings', { endAtTarget: target, endAtTzOffsetMin: tz() });
+    let s = await c.send('startTimer', { timerMode: 'endAt', endAtTarget: target, endAtTzOffsetMin: tz() });
+    const finish0 = s.startTime + s.accumulatedPauseMs + s.durationMs;
+    assert.equal(s.runEndAtMs, finish0);
+    await c.send('pauseTimer');
+    await sleep(600);
+    s = await c.send('resumeTimer');
+    assert.equal(s.startTime + s.accumulatedPauseMs + s.durationMs, finish0, 'socket resume keeps the absolute finish');
+    let r = await rest(room, 'POST', 'pause');
+    await sleep(600);
+    r = await rest(room, 'POST', 'resume');
+    assert.equal(r.state.startTime + r.state.accumulatedPauseMs + r.state.durationMs, finish0, 'REST resume keeps the absolute finish');
+    // Duration run in the same room: pause shifts the finish
+    await c.send('resetTimer');
+    s = await c.send('updateSettings', { durationMs: 10 * MIN });
+    s = await c.send('startTimer', { timerMode: 'duration', durationMs: 10 * MIN });
+    assert.equal(s.runEndAtMs, null);
+    await c.send('pauseTimer');
+    await sleep(600);
+    s = await c.send('resumeTimer');
+    assert.ok(s.accumulatedPauseMs >= 500, 'Duration pause accumulated: ' + s.accumulatedPauseMs);
+  } finally { c.socket.close(); }
+});
