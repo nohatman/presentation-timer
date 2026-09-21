@@ -34,6 +34,12 @@ npm start
 - **Display Screen**: http://localhost:3000/display?room=yourroom
 - **Default Room**: http://localhost:3000/control (uses "default" room)
 
+## 🖥️ Local Show Server (Windows, show days)
+
+Double-click **`Foxy-Local-Show-Server.bat`** to start/stop/restart the server, open the Control and
+Display pages, see the LAN address for other devices, and get a warning if an old server process is
+still running older code than the files on disk. See [tools/local-server/README.md](tools/local-server/README.md).
+
 ## 🎪 Multi-Room Usage
 
 ### Creating and Using Rooms

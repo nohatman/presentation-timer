@@ -8,6 +8,8 @@ const auth = require('./auth');
 const { buildRoomLinks } = require('./urls');
 const bridgeStatus = require('./bridgeStatus');
 const timerModes = require('./timerModes');
+const crypto = require('crypto');
+const buildInfo = require('./buildInfo');
 
 const app = express();
 app.set('trust proxy', true); // needed behind Railway's proxy so req.protocol is https, not http
@@ -1402,6 +1404,61 @@ app.post('/api/rooms/:roomId/message', ...roomAuth, (req, res) => {
 });
 
 // Routes
+// ============================================
+// Health / build identity (used by the Local Show Server launcher and the control
+// page's stale-server warning). Unauthenticated and read-only: it reports which
+// build THIS process started with, and the fingerprint of the server-side files on
+// disk right now - if they differ, this process is running older code than the
+// files being served ("stale"). See buildInfo.js.
+// ============================================
+const STARTED_AT = Date.now();
+const STARTED_BUILD = buildInfo.getBuildInfo(__dirname);
+const LOCAL_MODE = process.env.FOXY_MODE === 'local'; // set only by the Local Show Server launcher
+let diskFingerprintCache = { at: 0, value: STARTED_BUILD.fingerprint };
+
+function currentDiskFingerprint() {
+  if (Date.now() - diskFingerprintCache.at > 2000) { // cheap, but no need to hash on every poll
+    diskFingerprintCache = { at: Date.now(), value: buildInfo.computeFingerprint(__dirname).fingerprint };
+  }
+  return diskFingerprintCache.value;
+}
+
+app.get('/api/health', (req, res) => {
+  const diskFingerprint = currentDiskFingerprint();
+  const addr = server.address();
+  res.set('Cache-Control', 'no-store');
+  res.json({
+    ok: true,
+    app: 'foxy-presentation-timer',
+    mode: LOCAL_MODE ? 'local' : 'hosted',
+    pid: process.pid,
+    port: addr && typeof addr === 'object' ? addr.port : null,
+    startedAt: new Date(STARTED_AT).toISOString(),
+    uptimeSec: Math.round((Date.now() - STARTED_AT) / 1000),
+    build: { commit: STARTED_BUILD.commit, dirty: STARTED_BUILD.dirty, fingerprint: STARTED_BUILD.fingerprint, label: STARTED_BUILD.label },
+    diskFingerprint,
+    stale: !buildInfo.fingerprintsMatch(STARTED_BUILD.fingerprint, diskFingerprint)
+  });
+});
+
+// Clean stop for the launcher: flush room state, then exit. Exists ONLY when the
+// launcher started this process (FOXY_MODE=local + a one-off FOXY_SHUTDOWN_TOKEN),
+// only answers from the same machine, and needs the token - so it is inert on a
+// hosted deployment and cannot be triggered from the LAN or by a stray request.
+if (LOCAL_MODE && process.env.FOXY_SHUTDOWN_TOKEN) {
+  const expected = Buffer.from(process.env.FOXY_SHUTDOWN_TOKEN);
+  app.post('/api/local/shutdown', (req, res) => {
+    const remote = req.socket.remoteAddress || '';
+    const isLoopback = remote === '127.0.0.1' || remote === '::1' || remote === '::ffff:127.0.0.1';
+    const given = Buffer.from(String(req.get('x-foxy-shutdown-token') || ''));
+    const tokenOk = given.length === expected.length && crypto.timingSafeEqual(given, expected);
+    if (!isLoopback || !tokenOk) return res.status(403).json({ ok: false, error: 'forbidden' });
+    res.json({ ok: true, pid: process.pid });
+    console.log('\n👋 Local shutdown requested by the launcher - saving state and exiting.');
+    setTimeout(() => { clearTimeout(saveTimeout); persistRooms(); process.exit(0); }, 150);
+  });
+}
+
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });

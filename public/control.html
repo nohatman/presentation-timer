@@ -440,6 +440,7 @@
             </div>
         </div>
 
+        <div id="serverBuildBanner" role="alert" hidden style="grid-column: 1 / -1; background: #b71c1c; color: #fff; padding: 12px 16px; border-radius: 8px; font-weight: 600; border: 2px solid #ff8a80;"></div>
         <div id="controlRejectedNotice" style="display: none; grid-column: 1 / -1; background: #b71c1c; color: #fff; padding: 10px 16px; border-radius: 8px; margin-bottom: 1rem; font-weight: 500;"></div>
 
         <!-- Custom Take Over confirmation modal - deliberately not window.confirm(),
@@ -504,6 +505,7 @@
         </div>
 
         <div class="status" id="status">Loading...</div>
+        <div id="serverBuildLabel" style="grid-column: 1 / -1; color: #666; font-size: 0.75rem;"></div>
 
         <!-- Programme / Rundown - Full Width -->
         <div class="section" style="grid-column:1/-1;">
@@ -891,9 +893,46 @@
             if (e.key === 'Enter') { e.preventDefault(); applyEndAtDraft(); }
             else if (e.key === 'Escape') { cancelEndAtDraft(); }
         });
+        // Stale-server / changed-build warning. /api/health reports the build this server
+        // process started with and whether the server-side files on disk have since
+        // changed ("stale": the process is running older code than it is serving pages
+        // for - commands may silently fail). Also warns if the server was restarted with
+        // a different build since this page loaded. Checked on load, on every reconnect,
+        // and every 30 s.
+        let serverFingerprintAtLoad = null;
+        async function checkServerBuild() {
+            const banner = document.getElementById('serverBuildBanner');
+            try {
+                const res = await fetch('/api/health', { cache: 'no-store' });
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                const h = await res.json();
+                const label = h.build && h.build.label ? h.build.label : 'unknown';
+                document.getElementById('serverBuildLabel').textContent = `Server build: ${label}` + (h.mode ? ` (${h.mode})` : '');
+                if (serverFingerprintAtLoad === null) serverFingerprintAtLoad = h.build.fingerprint;
+                if (h.stale) {
+                    banner.textContent = '⚠ STALE SERVER: the timer server is running OLDER CODE than the files on disk. Some controls may silently do nothing. Restart the Local Show Server (build ' + label + ').';
+                    banner.hidden = false;
+                } else if (serverFingerprintAtLoad !== h.build.fingerprint) {
+                    banner.textContent = '⚠ The server was restarted with a different build since this page loaded (' + label + '). Reload this page.';
+                    banner.hidden = false;
+                } else {
+                    banner.hidden = true;
+                }
+            } catch (e) {
+                // No /api/health at all: a server that predates it - exactly the case to flag.
+                if (e && String(e.message).startsWith('HTTP 404')) {
+                    banner.textContent = '⚠ STALE SERVER: this server does not report its build (it predates build reporting). Restart the Local Show Server.';
+                    banner.hidden = false;
+                }
+                // Network errors are the socket layer's business (it shows connection state).
+            }
+        }
+        setInterval(checkServerBuild, 30000);
+
         // Connect using the control token as the sole credential. Role is derived
         // server-side from which token matched - never trust a client-declared type.
         const socket = io({ auth: { token: controlToken } });
+        socket.on('connect', checkServerBuild);
 
         socket.on('authError', ({ message }) => {
             document.body.innerHTML = `<div style="padding:40px;text-align:center;font-family:sans-serif;color:#ccc;">
