@@ -108,5 +108,15 @@
     return { ok: true, items: (existing || []).concat(parsed.items), added: parsed.items.length, removed: 0, warnings: parsed.warnings };
   }
 
-  return { DEFAULT_MS, MAX_NAME, formatDuration, parseDuration, format, parse, planImport };
+  // Where "Add" should insert a new item: immediately after the currently
+  // active/selected rundown line (the same index the control page uses to
+  // highlight a row and to drive Take/Prev/Next), or at the end when nothing is
+  // active/selected - the previous, still-correct behaviour for that case.
+  // Any index that isn't currently a real row (none selected, stale, out of
+  // range) falls back to the end rather than guessing.
+  function insertionIndex(activeIndex, length) {
+    return Number.isInteger(activeIndex) && activeIndex >= 0 && activeIndex < length ? activeIndex + 1 : length;
+  }
+
+  return { DEFAULT_MS, MAX_NAME, formatDuration, parseDuration, format, parse, planImport, insertionIndex };
 }));

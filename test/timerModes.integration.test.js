@@ -504,3 +504,37 @@ function waitForState(c, predicate, ms = 3000) {
     c.socket.on('timerState', h);
   });
 }
+
+test('Add-in-middle (insertionIndex) persists correctly through setRundown, and existing reorder/remove still work afterward', async () => {
+  const { room, c } = await newControl();
+  try {
+    const RundownText = require('../public/rundownText');
+    const items = ['A', 'B', 'C', 'D', 'E'].map((name) => ({ name, durationMs: 5 * MIN }));
+    let s = await c.send('setRundown', items);
+    assert.deepEqual(s.rundown.map((r) => r.name), ['A', 'B', 'C', 'D', 'E']);
+
+    // Simulate the control page: "C" (index 2) is the active/selected line, Add is pressed.
+    const activeIndex = 2;
+    const insertAt = RundownText.insertionIndex(activeIndex, s.rundown.length);
+    assert.equal(insertAt, 3);
+    const withInsert = s.rundown.map((r) => ({ name: r.name, durationMs: r.durationMs }));
+    withInsert.splice(insertAt, 0, { name: '', durationMs: RundownText.DEFAULT_MS });
+    s = await c.send('setRundown', withInsert);
+    assert.deepEqual(s.rundown.map((r) => r.name), ['A', 'B', 'C', '', 'D', 'E'], 'new line landed immediately below the active one; later lines moved down');
+    assert.equal(s.rundown[3].durationMs, RundownText.DEFAULT_MS);
+
+    // Ordering persists - not just an echo of what we sent: read it back over a
+    // completely separate channel (REST, as Companion/dashboard would).
+    const read = (await rest(room, 'GET', 'state')).state;
+    assert.deepEqual(read.rundown.map((r) => r.name), ['A', 'B', 'C', '', 'D', 'E']);
+
+    // Existing reorder (drag-equivalent: resend the full array in a new order) still works.
+    const named = (n) => read.rundown.find((r) => r.name === n);
+    s = await c.send('setRundown', [named('D'), named('A'), named('C'), named(''), named('B'), named('E')]);
+    assert.deepEqual(s.rundown.map((r) => r.name), ['D', 'A', 'C', '', 'B', 'E']);
+
+    // Existing remove still works too.
+    s = await c.send('setRundown', s.rundown.filter((r) => r.name !== ''));
+    assert.deepEqual(s.rundown.map((r) => r.name), ['D', 'A', 'C', 'B', 'E']);
+  } finally { c.socket.close(); }
+});

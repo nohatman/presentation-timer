@@ -695,7 +695,7 @@
         let lastRundownHash = null;
         let dragRundownIndex = null;
         let rundownEditMode = false;
-        let focusNewRundownRow = false;
+        let focusRundownIndex = null; // set by addRundownItem: which row renderRundownList should focus/scroll to next
         let pointerFocusPending = false;
         let rundownBackup = null; // one-slot undo for Replace: { items }
 
@@ -1573,11 +1573,10 @@
                     <span style="width:52px;color:#90caf9;font-family:monospace;font-size:0.85rem;text-align:right;flex-shrink:0;">${msToLabel(item.durationMs)}</span>
                 </div>`;
             }).join('');
-            if (focusNewRundownRow) {
-                focusNewRundownRow = false;
-                const names = list.querySelectorAll('.rundown-name-input');
-                const last = names[names.length - 1];
-                if (last) { last.focus(); last.scrollIntoView({ block: 'nearest' }); }
+            if (focusRundownIndex !== null) {
+                const target = list.querySelectorAll('.rundown-name-input')[focusRundownIndex];
+                focusRundownIndex = null;
+                if (target) { target.focus(); target.scrollIntoView({ block: 'nearest' }); }
             }
         }
 
@@ -1690,8 +1689,12 @@
 
         function addRundownItem() {
             if (!rundownEditMode) toggleRundownEditMode();
-            rundownItems.push({ name: '', durationMs: 30 * 60 * 1000 });
-            focusNewRundownRow = true; // renderRundownList focuses + scrolls to the new row
+            // Insert immediately after the active/selected line (currentRundownIndex -
+            // the same index used for the row highlight and for Take/Prev/Next), or at
+            // the end when nothing is active/selected.
+            const insertAt = RundownText.insertionIndex(currentRundownIndex, rundownItems.length);
+            rundownItems.splice(insertAt, 0, { name: '', durationMs: 30 * 60 * 1000 });
+            focusRundownIndex = insertAt; // renderRundownList focuses + scrolls to the new row
             socket.emit('setRundown', rundownItems);
         }
 

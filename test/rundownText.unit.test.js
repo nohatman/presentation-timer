@@ -122,3 +122,47 @@ test('Append with a bad line is also refused as a whole (no half-appended paste)
   const plan = RT.planImport([item('One', 1)], 'Fine, 2:00\nBroken, ??', 'append');
   assert.equal(plan.ok, false);
 });
+
+// ---------------------------------------------------------------- Add insertion point
+test('insertionIndex: below the FIRST item', () => {
+  assert.equal(RT.insertionIndex(0, 5), 1);
+});
+
+test('insertionIndex: below a MIDDLE item', () => {
+  assert.equal(RT.insertionIndex(2, 5), 3);
+  assert.equal(RT.insertionIndex(1, 5), 2);
+});
+
+test('insertionIndex: below the LAST item (equivalent to append, reached via selection rather than fallback)', () => {
+  assert.equal(RT.insertionIndex(4, 5), 5);
+});
+
+test('insertionIndex: no active/selected item (-1) falls back to append at the end', () => {
+  assert.equal(RT.insertionIndex(-1, 5), 5);
+  assert.equal(RT.insertionIndex(-1, 0), 0);
+});
+
+test('insertionIndex: a stale/out-of-range/invalid active index also falls back to append, not a guess', () => {
+  for (const bad of [5, 6, 100, NaN, undefined, null, 1.5, '2']) {
+    assert.equal(RT.insertionIndex(bad, 5), 5, String(bad));
+  }
+});
+
+test('Add, simulated end to end: existing lines from the insertion point onward move down by one, everything else is untouched', () => {
+  const items = ['A', 'B', 'C', 'D', 'E'].map((n) => item(n, 1));
+  const insertAt = RT.insertionIndex(1, items.length); // "B" (index 1) is active -> new line becomes line 3
+  const next = items.slice();
+  next.splice(insertAt, 0, { name: '', durationMs: RT.DEFAULT_MS });
+  assert.deepEqual(next.map((i) => i.name), ['A', 'B', '', 'C', 'D', 'E']);
+  assert.equal(next[insertAt].name, '', 'the new blank line lands exactly below the active one');
+  assert.deepEqual(next.slice(0, insertAt), items.slice(0, insertAt), 'lines before the active one are untouched');
+  assert.deepEqual(next.slice(insertAt + 1).map((i) => i.name), items.slice(insertAt).map((i) => i.name), 'the active line onward shifted down by one, order preserved');
+});
+
+test('Add, simulated end to end: nothing active/selected still appends at the end (existing fallback)', () => {
+  const items = ['A', 'B', 'C'].map((n) => item(n, 1));
+  const insertAt = RT.insertionIndex(-1, items.length);
+  const next = items.slice();
+  next.splice(insertAt, 0, { name: '', durationMs: RT.DEFAULT_MS });
+  assert.deepEqual(next.map((i) => i.name), ['A', 'B', 'C', '']);
+});
