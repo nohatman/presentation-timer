@@ -319,11 +319,20 @@
         // below possibly shrinks it further for a given string. Re-applied (and
         // re-fitted) on every render, since the ideal size can change (operator
         // adjusts Display size) independently of the digits changing.
-        let baseTimerFontSize = 'min(34vmin, calc(100vh - 230px))';
+        // The height term uses dvh (real VISIBLE viewport), matching body/.container
+        // below - plain vh is the LARGE viewport (address bar hidden) and, outside
+        // fullscreen, overestimates how much vertical room actually exists, sizing
+        // the digits taller than what's visible and getting them hard-clipped by
+        // body's overflow:hidden (seen in landscape before entering fullscreen).
+        let baseTimerFontSize = 'min(34vmin, calc(100dvh - 230px))';
         let baseClockFontSize = '18vmin';
         // Cache of the last string measured per element, so the (layout-forcing)
-        // fit check only re-runs when the rendered text or the target size
-        // actually changed, not on every animation-frame tick.
+        // fit check only re-runs when something that could change the fit actually
+        // changed, not on every animation-frame tick. Includes viewport height, not
+        // just width: the address bar showing/hiding (e.g. leaving fullscreen)
+        // changes how much vertical room there is without necessarily changing the
+        // width, and a previously width-fitted (now-frozen px) font-size wouldn't
+        // otherwise notice that it needs to shrink further to stay clear of it.
         const lastFitted = { timer: null, clock: null };
 
         // Shrink outerEl's font-size (from `baseFontSize`) just enough that
@@ -334,8 +343,9 @@
         // Cheap no-op when nothing has changed since the last call.
         function fitToWidth(key, outerEl, innerEl, baseFontSize) {
             const text = innerEl.textContent;
-            if (lastFitted[key] && lastFitted[key].text === text && lastFitted[key].base === baseFontSize
-                && lastFitted[key].viewportW === window.innerWidth) {
+            const last = lastFitted[key];
+            if (last && last.text === text && last.base === baseFontSize
+                && last.viewportW === window.innerWidth && last.viewportH === window.innerHeight) {
                 return;
             }
             outerEl.style.fontSize = baseFontSize;
@@ -349,15 +359,23 @@
                 const fittedPx = Math.max(8, targetPx * (availWidth / naturalWidth) * 0.96);
                 outerEl.style.fontSize = `${fittedPx}px`;
             }
-            lastFitted[key] = { text, base: baseFontSize, viewportW: window.innerWidth };
+            lastFitted[key] = { text, base: baseFontSize, viewportW: window.innerWidth, viewportH: window.innerHeight };
         }
 
-        // A rotation/resize changes the available width - force every element to
-        // re-measure on the next render rather than keeping a stale fitted size.
+        // A rotation/resize changes the available width or height - force every
+        // element to re-measure on the next render rather than keeping a stale
+        // fitted size. visualViewport catches mobile address-bar show/hide, which
+        // doesn't always fire a plain window 'resize'.
         window.addEventListener('resize', () => {
             lastFitted.timer = null;
             lastFitted.clock = null;
         });
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', () => {
+                lastFitted.timer = null;
+                lastFitted.clock = null;
+            });
+        }
 
         socket.on('timerState', (state) => {
             // Compute server–client clock offset so elapsed time is accurate even
@@ -374,12 +392,13 @@
             // Apply display scale - timer only; speaker/up-next use CSS vmin sizes.
             // vmin (not vw) keeps the digits large on portrait phones too, since it
             // scales off whichever dimension is tighter rather than width alone.
-            // min() caps height so other elements aren't pushed off-screen at large
-            // scales. This is only the TARGET size - fitToWidth() (called from
+            // min() caps height (dvh, the real visible viewport - see baseTimerFontSize
+            // above) so other elements aren't pushed off-screen at large scales. This
+            // is only the TARGET size - fitToWidth() (called from
             // updateTimerDisplay/updateClockDisplay) shrinks it further if the
             // actual digits would be wider than the screen.
             const scale = state.displayScale || 1.0;
-            baseTimerFontSize = `min(${(scale * 34).toFixed(2)}vmin, calc(100vh - 230px))`;
+            baseTimerFontSize = `min(${(scale * 34).toFixed(2)}vmin, calc(100dvh - 230px))`;
             lastFitted.timer = null; // scale may have changed even if the digits didn't
 
             // Display appearance: background color (chromakey support) and
