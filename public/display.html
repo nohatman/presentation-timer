@@ -43,16 +43,37 @@
             /* vmin (not vw) so the clock scales off whichever dimension is
                tightest - on a portrait phone that's the width, but vmin still
                lets the digits grow with the extra vertical room, instead of
-               staying tiny and leaving big empty bands above/below. */
+               staying tiny and leaving big empty bands above/below.
+               This is a STARTING point only, not a guarantee: a 5-char
+               "MM:SS" (or wider, e.g. 3-digit minutes) can still be wider than
+               a narrow phone screen at this size. fitToWidth() (see script
+               below) measures the actual rendered text after every update,
+               against the real DOM (so it automatically accounts for
+               letter-spacing/font-weight/etc - no separate constant to keep
+               in sync), and shrinks the font-size further if it would
+               overflow - that's what actually prevents the clock from
+               running off the edge/forcing the page to be pinch-zoomed. */
             font-size: 34vmin;
             font-weight: bold;
             text-align: center;
             margin-bottom: 1.5rem;
-            transition: color 0.5s ease, text-shadow 0.3s ease, font-size 0.3s ease;
+            transition: color 0.5s ease, text-shadow 0.3s ease;
             text-shadow: 0 0 30px currentColor;
             font-variant-numeric: tabular-nums;
             letter-spacing: 0.05em;
             line-height: 0.9;
+            max-width: 100%;
+        }
+        #timerDisplay, #clockDisplay {
+            /* Never grow past the available width, however big font-size
+               computes to - the JS fit-to-width safeguard is the real
+               protection, this is just a hard backstop. */
+            display: block;
+            overflow: hidden;
+        }
+        #timerDisplayText, #clockDisplayText {
+            display: inline-block;
+            white-space: nowrap;
         }
         .clock-display {
             font-size: 18vmin;
@@ -60,6 +81,7 @@
             text-align: center;
             margin-bottom: 1rem;
             opacity: 0.8;
+            max-width: 100%;
         }
         .status {
             font-size: 5vmin;
@@ -242,8 +264,8 @@
         </div>
 
         <div id="speakerName" class="speaker-name" style="display:none;"></div>
-        <div id="timerDisplay" class="timer-display color-normal">00:00</div>
-        <div id="clockDisplay" class="clock-display" style="display: none;">00:00:00</div>
+        <div id="timerDisplay" class="timer-display color-normal"><span id="timerDisplayText">00:00</span></div>
+        <div id="clockDisplay" class="clock-display" style="display: none;"><span id="clockDisplayText">00:00:00</span></div>
         <div id="status" class="status">Ready</div>
         <div id="upNext" class="up-next" style="display:none;"></div>
 
@@ -292,6 +314,51 @@
         let currentMessageMode = 'none';
         let currentTickerSpeed = 1.0;
 
+        // Base (target) font-size for the timer/clock, as a CSS length - this is
+        // the "ideal" size from displayScale, before the fit-to-width safeguard
+        // below possibly shrinks it further for a given string. Re-applied (and
+        // re-fitted) on every render, since the ideal size can change (operator
+        // adjusts Display size) independently of the digits changing.
+        let baseTimerFontSize = 'min(34vmin, calc(100vh - 230px))';
+        let baseClockFontSize = '18vmin';
+        // Cache of the last string measured per element, so the (layout-forcing)
+        // fit check only re-runs when the rendered text or the target size
+        // actually changed, not on every animation-frame tick.
+        const lastFitted = { timer: null, clock: null };
+
+        // Shrink outerEl's font-size (from `baseFontSize`) just enough that
+        // innerEl's rendered text fits within the available width of `.container`
+        // - the real guarantee that the clock can never run off the edge of a
+        // narrow phone screen (a 3-digit-minute "196:44", or a big display-scale
+        // value, can otherwise be wider than the screen at the "ideal" size).
+        // Cheap no-op when nothing has changed since the last call.
+        function fitToWidth(key, outerEl, innerEl, baseFontSize) {
+            const text = innerEl.textContent;
+            if (lastFitted[key] && lastFitted[key].text === text && lastFitted[key].base === baseFontSize
+                && lastFitted[key].viewportW === window.innerWidth) {
+                return;
+            }
+            outerEl.style.fontSize = baseFontSize;
+            const container = document.querySelector('.container');
+            const cs = getComputedStyle(container);
+            const availWidth = container.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+            const naturalWidth = innerEl.getBoundingClientRect().width;
+            if (naturalWidth > availWidth && naturalWidth > 0 && availWidth > 0) {
+                const targetPx = parseFloat(getComputedStyle(outerEl).fontSize);
+                // 0.96 safety margin: measurement/rounding, not meant to be exact.
+                const fittedPx = Math.max(8, targetPx * (availWidth / naturalWidth) * 0.96);
+                outerEl.style.fontSize = `${fittedPx}px`;
+            }
+            lastFitted[key] = { text, base: baseFontSize, viewportW: window.innerWidth };
+        }
+
+        // A rotation/resize changes the available width - force every element to
+        // re-measure on the next render rather than keeping a stale fitted size.
+        window.addEventListener('resize', () => {
+            lastFitted.timer = null;
+            lastFitted.clock = null;
+        });
+
         socket.on('timerState', (state) => {
             // Compute server–client clock offset so elapsed time is accurate even
             // if this device's system clock differs from the server's clock.
@@ -307,10 +374,13 @@
             // Apply display scale - timer only; speaker/up-next use CSS vmin sizes.
             // vmin (not vw) keeps the digits large on portrait phones too, since it
             // scales off whichever dimension is tighter rather than width alone.
-            // min() caps height so other elements aren't pushed off-screen at large scales.
+            // min() caps height so other elements aren't pushed off-screen at large
+            // scales. This is only the TARGET size - fitToWidth() (called from
+            // updateTimerDisplay/updateClockDisplay) shrinks it further if the
+            // actual digits would be wider than the screen.
             const scale = state.displayScale || 1.0;
-            document.getElementById('timerDisplay').style.fontSize =
-                `min(${(scale * 34).toFixed(2)}vmin, calc(100vh - 230px))`;
+            baseTimerFontSize = `min(${(scale * 34).toFixed(2)}vmin, calc(100vh - 230px))`;
+            lastFitted.timer = null; // scale may have changed even if the digits didn't
 
             // Display appearance: background color (chromakey support) and
             // per-element visibility, set by the operator's Control page.
@@ -449,7 +519,8 @@
             const seconds = Math.abs(showSeconds % 60);
             const timeStr = `${sign}${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 
-            timerEl.textContent = timeStr;
+            document.getElementById('timerDisplayText').textContent = timeStr;
+            fitToWidth('timer', timerEl, document.getElementById('timerDisplayText'), baseTimerFontSize);
 
             // Handle blinking for finished state
             if (isFinished && !countUp) {
@@ -476,7 +547,8 @@
                 minute: '2-digit',
                 second: '2-digit'
             });
-            clockEl.textContent = timeStr;
+            document.getElementById('clockDisplayText').textContent = timeStr;
+            fitToWidth('clock', clockEl, document.getElementById('clockDisplayText'), baseClockFontSize);
         }
 
         // #rrggbb (or #rgb) -> "rgba(r, g, b, alpha)"; null if not a valid hex color.
