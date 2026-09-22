@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Foxy's Presentation Timer - Display</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <script src="/socket.io/socket.io.js"></script>
@@ -14,7 +14,15 @@
             background: #000;
             color: white;
             overflow: hidden;
+            /* 100vh is the LARGE viewport (address bar hidden) - while the bar is
+               showing, content sized to it extends past what's actually visible,
+               and with overflow:hidden that tail (e.g. "up next") just disappears
+               off the bottom. svh (small viewport, bar always assumed visible) is
+               the safe worst case; dvh tracks the real visible height and wins
+               where supported. Cascade so unsupported browsers keep the vh value. */
             height: 100vh;
+            height: 100svh;
+            height: 100dvh;
         }
         .container {
             display: flex;
@@ -22,10 +30,21 @@
             align-items: center;
             justify-content: center;
             height: 100vh;
+            height: 100svh;
+            height: 100dvh;
             padding: 2rem;
+            /* Reserve room below the centered stack for the bottom-right Room
+               badge (+ any home-indicator gesture bar) so a long "up next"
+               line can never sit under/behind it. */
+            padding-bottom: calc(2.75rem + env(safe-area-inset-bottom, 0px));
+            box-sizing: border-box;
         }
         .timer-display {
-            font-size: 18vw;
+            /* vmin (not vw) so the clock scales off whichever dimension is
+               tightest - on a portrait phone that's the width, but vmin still
+               lets the digits grow with the extra vertical room, instead of
+               staying tiny and leaving big empty bands above/below. */
+            font-size: 34vmin;
             font-weight: bold;
             text-align: center;
             margin-bottom: 1.5rem;
@@ -36,14 +55,14 @@
             line-height: 0.9;
         }
         .clock-display {
-            font-size: 10vw;
+            font-size: 18vmin;
             font-weight: normal;
             text-align: center;
             margin-bottom: 1rem;
             opacity: 0.8;
         }
         .status {
-            font-size: 3vw;
+            font-size: 5vmin;
             margin-bottom: 2rem;
             opacity: 0.8;
             font-weight: 500;
@@ -52,8 +71,8 @@
         }
         .controls {
             position: absolute;
-            top: 2rem;
-            left: 2rem;
+            top: max(2rem, env(safe-area-inset-top, 0px));
+            left: max(2rem, env(safe-area-inset-left, 0px));
             display: flex;
             gap: 1rem;
         }
@@ -91,8 +110,8 @@
         }
         .settings {
             position: absolute;
-            top: 2rem;
-            right: 2rem;
+            top: max(2rem, env(safe-area-inset-top, 0px));
+            right: max(2rem, env(safe-area-inset-right, 0px));
         }
         .fullscreen-button {
             padding: 0.5rem 1rem;
@@ -144,7 +163,7 @@
             51%, 100% { opacity: 0.3; }
         }
         .speaker-name {
-            font-size: 4vw;
+            font-size: 7vmin;
             font-weight: 500;
             text-align: center;
             opacity: 0.85;
@@ -152,7 +171,7 @@
             letter-spacing: 0.04em;
         }
         .up-next {
-            font-size: 1.8vw;
+            font-size: 3vmin;
             text-align: center;
             opacity: 0.45;
             margin-top: 0.5rem;
@@ -171,7 +190,7 @@
             padding: 4rem;
         }
         #messageOverlayText {
-            font-size: 9vw;
+            font-size: 16vmin;
             font-weight: bold;
             text-align: center;
             color: #fff;
@@ -193,7 +212,7 @@
         #messageTickerText {
             display: inline-block;
             white-space: nowrap;
-            font-size: 2.8vw;
+            font-size: 4.5vmin;
             font-weight: 500;
             color: #fff;
             letter-spacing: 0.04em;
@@ -203,29 +222,6 @@
         @keyframes tickerScroll {
             from { transform: translateX(0); }
             to   { transform: translateX(-100%); }
-        }
-        /* Responsive adjustments */
-        @media (max-width: 768px) {
-            .timer-display {
-                font-size: 20vw;
-            }
-            .clock-display {
-                font-size: 10vw;
-            }
-            .status {
-                font-size: 4vw;
-            }
-        }
-        @media (max-width: 480px) {
-            .timer-display {
-                font-size: 25vw;
-            }
-            .clock-display {
-                font-size: 12vw;
-            }
-            .status {
-                font-size: 5vw;
-            }
         }
     </style>
 </head>
@@ -257,7 +253,7 @@
             <button class="control-button" onclick="window.open('/', '_blank')">Home</button>
         </div>
         
-        <div class="room-badge" style="position: absolute; bottom: 1rem; right: 1.5rem; background: rgba(255,255,255,0.08); padding: 5px 12px; border-radius: 5px; font-size: 0.8rem; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.12); opacity: 0.6;">
+        <div class="room-badge" style="position: absolute; bottom: max(1rem, env(safe-area-inset-bottom, 0px)); right: max(1.5rem, env(safe-area-inset-right, 0px)); background: rgba(255,255,255,0.08); padding: 5px 12px; border-radius: 5px; font-size: 0.8rem; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.12); opacity: 0.6;">
             <span>Room:</span> <span style="font-family: monospace; color: #90caf9; font-weight: 600;" id="roomDisplay"></span>
         </div>
     </div>
@@ -308,11 +304,23 @@
             currentState = state;
             updateDisplay(true);
 
-            // Apply display scale - timer only; speaker/up-next use CSS vw sizes.
+            // Apply display scale - timer only; speaker/up-next use CSS vmin sizes.
+            // vmin (not vw) keeps the digits large on portrait phones too, since it
+            // scales off whichever dimension is tighter rather than width alone.
             // min() caps height so other elements aren't pushed off-screen at large scales.
             const scale = state.displayScale || 1.0;
             document.getElementById('timerDisplay').style.fontSize =
-                `min(${(scale * 18).toFixed(2)}vw, calc(100vh - 230px))`;
+                `min(${(scale * 34).toFixed(2)}vmin, calc(100vh - 230px))`;
+
+            // Display appearance: background color (chromakey support) and
+            // per-element visibility, set by the operator's Control page.
+            // showSpeakerName/showUpNext default true (undefined !== false)
+            // so older/legacy state without these fields behaves as before.
+            const bg = state.displayBgColor || '#000000';
+            document.body.style.background = bg;
+            document.getElementById('messageOverlay').style.background = bg;
+            const speakerAllowed = state.showSpeakerName !== false;
+            const upNextAllowed  = state.showUpNext !== false;
 
             // Show speaker name and "up next" when a rundown item is active
             const speakerEl = document.getElementById('speakerName');
@@ -321,9 +329,9 @@
             if (state.rundown && idx >= 0 && idx < state.rundown.length) {
                 const current = state.rundown[idx];
                 speakerEl.textContent = current.name || '';
-                speakerEl.style.display = current.name ? 'block' : 'none';
+                speakerEl.style.display = (current.name && speakerAllowed) ? 'block' : 'none';
                 const next = state.rundown[idx + 1];
-                if (next && next.name) {
+                if (next && next.name && upNextAllowed) {
                     upNextEl.textContent = `Up next: ${next.name}`;
                     upNextEl.style.display = 'block';
                 } else {
@@ -471,17 +479,47 @@
             clockEl.textContent = timeStr;
         }
 
+        // #rrggbb (or #rgb) -> "rgba(r, g, b, alpha)"; null if not a valid hex color.
+        function hexToRgba(hex, alpha) {
+            const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex || '');
+            if (!m) return null;
+            let h = m[1];
+            if (h.length === 3) h = h.split('').map((c) => c + c).join('');
+            const r = parseInt(h.slice(0, 2), 16);
+            const g = parseInt(h.slice(2, 4), 16);
+            const b = parseInt(h.slice(4, 6), 16);
+            return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+        }
+
         function updateTimerColor(element, remainingMs, totalMs, amberThresholdMs, redThresholdMs, isFinished) {
             element.className = 'timer-display';
 
+            let stateClass = 'color-normal';
             if (isFinished) {
-                element.classList.add('color-finished');
+                stateClass = 'color-finished';
             } else if (remainingMs <= redThresholdMs) {
-                element.classList.add('color-red');
+                stateClass = 'color-red';
             } else if (remainingMs <= amberThresholdMs) {
-                element.classList.add('color-amber');
+                stateClass = 'color-amber';
+            }
+            element.classList.add(stateClass);
+
+            // Operator-chosen colors (Control page "Display Appearance") override the
+            // CSS class's color/glow for normal/amber/red - "finished" (purple) always
+            // stays fixed since it isn't one of the three configurable states. Falling
+            // back to the CSS defaults if a field is missing keeps old/legacy state
+            // looking exactly as before.
+            const customHex = {
+                'color-normal': currentState.timerColorNormal || '#4caf50',
+                'color-amber': currentState.timerColorAmber || '#ffb300',
+                'color-red': currentState.timerColorRed || '#f44336'
+            }[stateClass];
+            if (customHex) {
+                element.style.color = customHex;
+                element.style.textShadow = `0 0 40px ${hexToRgba(customHex, 0.6) || customHex}`;
             } else {
-                element.classList.add('color-normal');
+                element.style.color = '';
+                element.style.textShadow = '';
             }
         }
 

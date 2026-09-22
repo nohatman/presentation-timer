@@ -626,6 +626,56 @@
             </div>
         </div>
 
+        <!-- Display Appearance - Full Width, collapsed by default. Lets a shared
+             display link be branded/chromakeyed without touching the main timer
+             controls above (colors + element visibility only - never layout). -->
+        <details class="section" id="appearanceSection" style="grid-column: 1 / -1;">
+            <summary style="cursor:pointer;font-size:1.1rem;color:#f5f5f5;font-weight:600;">Display Appearance</summary>
+            <div style="margin-top:12px;display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:16px;">
+                <div>
+                    <div style="font-size:0.8rem;color:#999;margin-bottom:8px;font-weight:500;text-transform:uppercase;letter-spacing:0.05em;">Timer text color</div>
+                    <div style="display:flex;flex-direction:column;gap:8px;">
+                        <label style="display:flex;align-items:center;gap:8px;font-weight:400;color:#cfcfcf;">
+                            <input type="color" id="timerColorNormal" value="#4caf50" style="width:36px;height:28px;padding:0;border:1px solid #333;border-radius:4px;background:#101010;cursor:pointer;">
+                            Normal
+                        </label>
+                        <label style="display:flex;align-items:center;gap:8px;font-weight:400;color:#cfcfcf;">
+                            <input type="color" id="timerColorAmber" value="#ffb300" style="width:36px;height:28px;padding:0;border:1px solid #333;border-radius:4px;background:#101010;cursor:pointer;">
+                            Amber
+                        </label>
+                        <label style="display:flex;align-items:center;gap:8px;font-weight:400;color:#cfcfcf;">
+                            <input type="color" id="timerColorRed" value="#f44336" style="width:36px;height:28px;padding:0;border:1px solid #333;border-radius:4px;background:#101010;cursor:pointer;">
+                            Red
+                        </label>
+                        <button type="button" class="button secondary" onclick="resetAppearanceColors()" style="padding:6px 10px;font-size:0.8rem;align-self:flex-start;">Reset colors to default</button>
+                    </div>
+                </div>
+                <div>
+                    <div style="font-size:0.8rem;color:#999;margin-bottom:8px;font-weight:500;text-transform:uppercase;letter-spacing:0.05em;">Display background</div>
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                        <input type="color" id="displayBgColor" value="#000000" style="width:36px;height:28px;padding:0;border:1px solid #333;border-radius:4px;background:#101010;cursor:pointer;">
+                        <span style="font-size:0.85rem;color:#cfcfcf;">Background color</span>
+                    </div>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                        <button type="button" class="button secondary" onclick="setDisplayBgColor('#000000')" style="padding:6px 10px;font-size:0.8rem;">Black</button>
+                        <button type="button" class="button secondary" onclick="setDisplayBgColor('#00ff00')" style="padding:6px 10px;font-size:0.8rem;" title="Chromakey green">Chromakey Green</button>
+                        <button type="button" class="button secondary" onclick="setDisplayBgColor('#0000ff')" style="padding:6px 10px;font-size:0.8rem;" title="Chromakey blue">Chromakey Blue</button>
+                    </div>
+                </div>
+                <div>
+                    <div style="font-size:0.8rem;color:#999;margin-bottom:8px;font-weight:500;text-transform:uppercase;letter-spacing:0.05em;">Elements shown on display</div>
+                    <label class="checkbox-label" style="margin-bottom:8px;">
+                        <input type="checkbox" id="showSpeakerName" checked>
+                        <span>Speaker / session name</span>
+                    </label>
+                    <label class="checkbox-label" style="margin-bottom:0;">
+                        <input type="checkbox" id="showUpNext" checked>
+                        <span>"Up next" line</span>
+                    </label>
+                </div>
+            </div>
+        </details>
+
         <!-- Message Display - Full Width -->
         <div class="section" style="grid-column: 1 / -1;">
             <h3>Message to Display Screen</h3>
@@ -1131,6 +1181,12 @@
                 if (state.countUp !== undefined) {
                     document.getElementById('countUp').checked = !!state.countUp;
                 }
+                if (state.timerColorNormal) document.getElementById('timerColorNormal').value = state.timerColorNormal;
+                if (state.timerColorAmber) document.getElementById('timerColorAmber').value = state.timerColorAmber;
+                if (state.timerColorRed) document.getElementById('timerColorRed').value = state.timerColorRed;
+                if (state.displayBgColor) document.getElementById('displayBgColor').value = state.displayBgColor;
+                document.getElementById('showSpeakerName').checked = state.showSpeakerName !== false;
+                document.getElementById('showUpNext').checked = state.showUpNext !== false;
                 slidersInitialised = true;
             }
 
@@ -1952,8 +2008,31 @@
                 speed: speedValue || 1.0,
                 amberThresholdMs: getAmberThresholdMs(),
                 redThresholdMs: getRedThresholdMs(),
-                countUp: document.getElementById('countUp').checked
+                countUp: document.getElementById('countUp').checked,
+                timerColorNormal: document.getElementById('timerColorNormal').value,
+                timerColorAmber: document.getElementById('timerColorAmber').value,
+                timerColorRed: document.getElementById('timerColorRed').value,
+                displayBgColor: document.getElementById('displayBgColor').value,
+                showSpeakerName: document.getElementById('showSpeakerName').checked,
+                showUpNext: document.getElementById('showUpNext').checked
             });
+        }
+
+        // Display Appearance section: reset the three timer-color pickers to the
+        // built-in defaults and push immediately (same as any other appearance change).
+        function resetAppearanceColors() {
+            document.getElementById('timerColorNormal').value = '#4caf50';
+            document.getElementById('timerColorAmber').value = '#ffb300';
+            document.getElementById('timerColorRed').value = '#f44336';
+            saveSettings();
+            emitSettings();
+        }
+
+        // Background color preset buttons (Black / Chromakey Green / Chromakey Blue).
+        function setDisplayBgColor(hex) {
+            document.getElementById('displayBgColor').value = hex;
+            saveSettings();
+            emitSettings();
         }
 
         // Duration field: typing/committing a value selects Duration mode - but, like
@@ -2011,6 +2090,12 @@
                     }
                     updateSpeedPreview();
                     document.getElementById('countUp').checked = settings.countUp || false;
+                    if (settings.timerColorNormal) document.getElementById('timerColorNormal').value = settings.timerColorNormal;
+                    if (settings.timerColorAmber) document.getElementById('timerColorAmber').value = settings.timerColorAmber;
+                    if (settings.timerColorRed) document.getElementById('timerColorRed').value = settings.timerColorRed;
+                    if (settings.displayBgColor) document.getElementById('displayBgColor').value = settings.displayBgColor;
+                    document.getElementById('showSpeakerName').checked = settings.showSpeakerName !== false;
+                    document.getElementById('showUpNext').checked = settings.showUpNext !== false;
                 } catch (e) { /* ignore corrupt localStorage */ }
             } else {
                 // Set sensible defaults on first load
@@ -2049,7 +2134,13 @@
                 amberThreshold: document.getElementById('amberThreshold').value,
                 redThreshold: document.getElementById('redThreshold').value,
                 speed: document.getElementById('speedSlider').value,
-                countUp: document.getElementById('countUp').checked
+                countUp: document.getElementById('countUp').checked,
+                timerColorNormal: document.getElementById('timerColorNormal').value,
+                timerColorAmber: document.getElementById('timerColorAmber').value,
+                timerColorRed: document.getElementById('timerColorRed').value,
+                displayBgColor: document.getElementById('displayBgColor').value,
+                showSpeakerName: document.getElementById('showSpeakerName').checked,
+                showUpNext: document.getElementById('showUpNext').checked
             };
             localStorage.setItem('timerSettings', JSON.stringify(settings));
         }

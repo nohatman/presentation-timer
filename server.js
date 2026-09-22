@@ -108,6 +108,13 @@ function loadRooms() {
 
 // ============================================
 
+// Loose guard for display-appearance color fields from updateSettings - rejects
+// anything that isn't a plain #rrggbb (or #rgb) string rather than trusting an
+// arbitrary client value straight into state that gets broadcast/persisted.
+function isHexColor(v) {
+  return typeof v === 'string' && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(v);
+}
+
 function createDefaultTimerState() {
   return {
     mode: 'stopped', // 'stopped', 'running', 'paused'
@@ -127,6 +134,15 @@ function createDefaultTimerState() {
     showClock: false,
     outputMode: 'timer', // 'timer' | 'clock'
     displayScale: 1.5, // Display size multiplier (0.5 - 2.0)
+    // Display appearance - lets an operator brand/chromakey a shared display
+    // link without touching the main timer controls. Hex colors; visibility
+    // toggles default true so existing rooms behave exactly as before.
+    timerColorNormal: '#4caf50',
+    timerColorAmber: '#ffb300',
+    timerColorRed: '#f44336',
+    displayBgColor: '#000000',
+    showSpeakerName: true,
+    showUpNext: true,
     rundown: [],       // [{name, durationMs}] programme list
     rundownIndex: -1,  // -1 = not in rundown mode
     message: '',
@@ -337,6 +353,12 @@ io.on('connection', (socket) => {
     if (data.countUp !== undefined) timerState.countUp = data.countUp;
     if (data.showClock !== undefined) timerState.showClock = data.showClock;
     if (data.displayScale !== undefined) timerState.displayScale = data.displayScale;
+    if (isHexColor(data.timerColorNormal)) timerState.timerColorNormal = data.timerColorNormal;
+    if (isHexColor(data.timerColorAmber)) timerState.timerColorAmber = data.timerColorAmber;
+    if (isHexColor(data.timerColorRed)) timerState.timerColorRed = data.timerColorRed;
+    if (isHexColor(data.displayBgColor)) timerState.displayBgColor = data.displayBgColor;
+    if (data.showSpeakerName !== undefined) timerState.showSpeakerName = !!data.showSpeakerName;
+    if (data.showUpNext !== undefined) timerState.showUpNext = !!data.showUpNext;
 
     emitState(roomId, timerState);
     scheduleSave();
