@@ -534,9 +534,17 @@
 
             const showSeconds = displaySeconds;
             const sign = (isFinished && countUp) ? '-' : '';
-            const minutes = Math.floor(showSeconds / 60);
-            const seconds = Math.abs(showSeconds % 60);
-            const timeStr = `${sign}${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            // Past an hour, "822:08" forces the viewer to do minutes-to-hours math
+            // at a glance - switch to H:MM:SS instead (same convention as video
+            // players: hours unpadded, minutes/seconds always 2 digits), same as
+            // this naturally reverting to MM:SS under an hour.
+            const totalSeconds = Math.abs(showSeconds);
+            const hours = Math.floor(totalSeconds / 3600);
+            const minutes = Math.floor((totalSeconds % 3600) / 60);
+            const seconds = totalSeconds % 60;
+            const timeStr = hours > 0
+                ? `${sign}${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+                : `${sign}${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 
             document.getElementById('timerDisplayText').textContent = timeStr;
             fitToWidth('timer', timerEl, document.getElementById('timerDisplayText'), baseTimerFontSize);
