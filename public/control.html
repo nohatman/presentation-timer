@@ -712,12 +712,15 @@
         function tzOffsetMin() { return new Date().getTimezoneOffset(); }
 
         function setTimerMode(mode) {
-            if (mode === 'endAt') {
-                // Only the COMMITTED target counts; a typed-but-unapplied draft never leaks in here.
-                if (!currentState.endAtTarget) {
-                    document.getElementById('endAtTime').focus();
-                    return;
-                }
+            if (mode === 'endAt' && !isValidEndAt(endAtEl.value)) {
+                // A committed target always leaves the field showing it, so this also
+                // covers "already applied earlier" - but a freshly typed, not-yet-Set
+                // target is now allowed too: commitStagedConfig() (Reset/Start) is what
+                // actually validates and uses it, never this tab click itself. An
+                // empty/incomplete field cannot become the active tab - nothing for
+                // Start/Reset to run toward.
+                document.getElementById('endAtTime').focus();
+                return;
             }
             currentTimerMode = mode;
             modeTouched = true; // self-clears in applyServerTimerMode once the server matches (e.g. after Set)
@@ -826,22 +829,29 @@
 
         // The Duration field is a draft too, for the same reason as End At: typing
         // (or clicking a preset) must not itself change what a connected Display/
-        // CDEther is showing. Only Set (or Enter) commits it. Unlike End At there is
-        // no live-retarget case to confirm - editing Duration is a no-op while
-        // running/paused (use the nudge buttons instead), so Set only ever acts
-        // while stopped, with no confirmation dialog needed.
+        // CDEther is showing while a preset/typed value is only being tried out.
+        // Unlike End At there is no live-retarget-with-confirmation for Duration:
+        // Set only ever pushes while stopped (no confirmation dialog needed, since
+        // nothing is running to disrupt). While running/paused the box is still a
+        // draft - Set is disabled, but the draft is NOT discarded either: Reset and
+        // Start both pick up whatever is currently in the box (see resetTimer,
+        // startTimer, commitStagedConfig below), so "stage a preset, then Reset (or
+        // Start)" is how a live timer picks up a new value - deliberately, in a
+        // separate step, never automatically from the preset click itself.
         let durationDirty = false;
         const durationEl = document.getElementById('duration');
 
         function refreshDurationDraftUI() {
             const committedMs = currentState.configDurationMs !== undefined ? currentState.configDurationMs : currentState.durationMs;
-            durationDirty = currentState.mode === 'stopped' && getDurationMs() !== committedMs;
+            durationDirty = getDurationMs() !== committedMs;
             durationEl.classList.toggle('draft', durationDirty);
             document.getElementById('durationCancelBtn').hidden = !durationDirty;
-            document.getElementById('durationApplyBtn').disabled = !durationDirty;
+            document.getElementById('durationApplyBtn').disabled = !durationDirty || currentState.mode !== 'stopped';
             const hint = document.getElementById('durationDraftHint');
             hint.hidden = !durationDirty;
-            hint.textContent = durationDirty ? 'Not applied yet - press Set (or Enter) to update the display now. Start uses this box regardless.' : '';
+            hint.textContent = !durationDirty ? '' : currentState.mode === 'stopped'
+                ? 'Not applied yet - press Set (or Enter) to update the display now. Start uses this box regardless.'
+                : 'Not applied to the live timer - Reset or Start will use this value.';
         }
 
         function cancelDurationDraft() {
@@ -854,6 +864,22 @@
         function applyDurationDraft() {
             if (currentState.mode !== 'stopped' || !durationDirty) return;
             socket.emit('updateSettings', { durationMs: getDurationMs() });
+        }
+
+        // Silently commits whatever is staged in the currently-ACTIVE tab (a switched
+        // mode, a typed Duration, or a valid End-At target) so Reset/Start act on what
+        // is actually showing, not a stale earlier commit. No confirmation dialog:
+        // Reset and Start are themselves the deliberate action (Reset always stops the
+        // run; Start only ever fires from stopped), so the "does this change the live
+        // remaining time?" question End-At's own Set asks does not apply here. An
+        // invalid/incomplete End-At draft is left alone - never silently guessed -
+        // Reset/Start then simply use whatever was last successfully applied.
+        function commitStagedConfig() {
+            if (currentTimerMode === 'endAt') {
+                if ((modeTouched || endAtDirty) && isValidEndAt(endAtEl.value)) sendEndAt(endAtEl.value);
+            } else if (modeTouched || durationDirty) {
+                socket.emit('updateSettings', { timerMode: 'duration', durationMs: getDurationMs() });
+            }
         }
 
         function fmtRemaining(ms) {
@@ -1389,11 +1415,15 @@
             if (currentTimerMode === 'duration') {
                 data.timerMode = 'duration';
                 data.durationMs = getDurationMs();
+                socket.emit('startTimer', data);
             } else {
-                data.timerMode = 'endAt'; // the last APPLIED target, never an unapplied draft
+                // Commit a pending valid End-At draft first (mirrors resetTimer) so
+                // Start uses whatever is actually showing, not a stale earlier commit.
+                // Left alone if invalid/empty - Start then uses the last applied target.
+                if ((modeTouched || endAtDirty) && isValidEndAt(endAtEl.value)) sendEndAt(endAtEl.value);
+                data.timerMode = 'endAt';
+                socket.emit('startTimer', data);
             }
-
-            socket.emit('startTimer', data);
         }
 
         function pauseTimer() {
@@ -1405,6 +1435,11 @@
         }
 
         function resetTimer() {
+            // Commit whatever's staged in the active tab first, so Reset - and the
+            // stopped preview it produces - reflects what's currently showing, not a
+            // stale earlier commit. A no-op when nothing is staged (the common case),
+            // exactly like Reset always worked.
+            commitStagedConfig();
             socket.emit('resetTimer');
         }
 
@@ -1483,16 +1518,12 @@
             const minutes = Math.floor(durationMs / (60 * 1000));
             const seconds = Math.floor((durationMs % (60 * 1000)) / 1000);
             document.getElementById('duration').value = formatTimeInput(minutes, seconds);
-            if (currentState.mode !== 'stopped') {
-                // Unchanged from before: a preset click on a live timer restarts it
-                // with the new value right away - there's no "stopped preview" to stage.
-                socket.emit('resetTimer');
-                socket.emit('updateSettings', { durationMs: durationMs });
-                return;
-            }
-            // Stopped: only stage it (the Duration field, the Duration tab) - same
-            // as typing a value by hand. Nothing reaches the server/Display/CDEther
-            // until Set (or Enter) is pressed.
+            // Always just stages it (the Duration field, the Duration tab) - same as
+            // typing a value by hand, whatever the timer's current state. Nothing
+            // reaches the server/Display/CDEther from the click itself: while stopped,
+            // Set (or Enter) applies it; while running/paused, Reset or Start does
+            // (see commitStagedConfig) - a preset click never disrupts a live countdown
+            // on its own.
             setTimerMode('duration');
             refreshDurationDraftUI();
         }

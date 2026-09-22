@@ -22,14 +22,14 @@ pre-existing fields and are unaffected.
 
 | Action | Duration mode | End at mode |
 | --- | --- | --- |
-| Edit Duration field / click a preset (stopped), then **Set** / Enter | commits, selects Duration (last edit wins) | same |
+| Edit Duration field / click a preset, then **Set** / Enter (stopped) | commits, selects Duration (last edit wins) | same |
+| Edit Duration field / click a preset (running/paused) | only stages - Set is disabled; Reset or Start commits it (see below) | same |
 | Set End-at time (**Set** / Enter, see below) | stopped: commits, switches to End at, re-derives time-to-target | same |
 | Set End-at time on a **running/paused** timer | re-targets the live run to the new absolute target after a confirmation (current remaining, proposed remaining, proposed end time) | same |
-| Mode button (stopped) | switches which tab is being edited, *locally only* - see below | |
-| Mode button / Duration edits (running or paused) | changes the *configuration only*; the live run is never touched. Applies at next Start/Reset. | |
-| Start | runs `configDurationMs` | runs time-to-target computed from the server clock at Start |
+| Mode button (any state) | switches which tab is being edited, *locally only* - see below | |
+| Start | runs the Duration box's current value directly | commits a pending valid draft first, then runs time-to-target from the server clock |
 | Pause / Resume | freeze / unfreeze; the pause shifts the finish later by the pause length (existing behaviour, shown as "If resumed, ends at") | pause freezes the display only; **the finish stays the absolute wall-clock target** - on Resume the remaining time is target - now (it drops by the pause length, or goes into overrun if the target passed) |
-| Reset | back to `configDurationMs` (a live nudge is *not* kept) | back to time-to-target *now*; target and mode kept |
+| Reset | commits any pending staged Duration/tab choice first, then resets to it (see below) | commits a pending valid End-at draft first, then resets to time-to-target *now* |
 | Nudge (running/paused) | adjusts this run only | adjusts this run only; the run's absolute finish moves by the same amount, so the nudge survives a pause/resume |
 | Nudge (stopped) | adjusts the configured Duration | becomes a fixed Duration of (time-to-target + nudge), so Start does not silently discard it |
 | Take / Prev / Next rundown item | item duration becomes the Duration; Duration mode; End-at target cleared (existing behaviour) | same |
@@ -37,24 +37,39 @@ pre-existing fields and are unaffected.
 
 ### Duration and mode-tab selection are staged too, not live-as-you-click
 
-Clicking a preset, typing a duration, or switching the Duration/End At tab, while **stopped**, used to
-push to the server (hence a connected Display/CDEther) immediately, on every click/keystroke. That
-flashed whatever the operator was trying out onto the live output before they'd decided. All three are
-now local-only until a deliberate commit:
+Clicking a preset, typing a duration, or switching the Duration/End At tab used to push to the server
+(hence a connected Display/CDEther) immediately, on every click/keystroke - **including while a timer was
+running**, where a preset click would silently stop and reconfigure it in one click. That flashed whatever
+the operator was trying out onto the live output before they'd decided anything. All three are now
+local-only until a deliberate commit, in every run state:
 
-* **Preset click / typing a duration (stopped):** only updates the Duration field on this control page and
-  marks it a draft (amber border, "Not applied yet" hint, **Set** enabled, **✕** discards it). Nothing
-  reaches the server until **Set** or **Enter**. A running/paused timer is unaffected by this change: a
-  preset click there still resets and applies immediately, exactly as before (Duration editing while live
-  isn't supported at all - use the nudge buttons).
-* **Mode tab click (Duration / End At):** purely local - it only decides which section **Set**/**Start**
-  will act on next. It no longer emits `updateSettings({timerMode})` by itself. The server's own committed
-  mode is still what a plain **Reset** returns to.
-* **Start** is unaffected: it reads whatever is currently in the Duration field (staged or not) or the
-  last *applied* End-at target, exactly as before - staging only concerns what reaches a connected
-  Display/CDEther *before* Start, not what Start itself does.
+* **Preset click / typing a duration:** only updates the Duration field on this control page and marks it
+  a draft (amber border, a hint explaining what will pick it up, **✕** discards it). Nothing reaches the
+  server on its own, ever - not even while running/paused (Duration editing was never a *live* thing to
+  begin with - the nudge buttons cover that; this box is purely "what Start/Reset use next").
+* **Mode tab click (Duration / End At):** purely local - it only decides which section **Set**/**Reset**/
+  **Start** act on next. It never emits `updateSettings({timerMode})` by itself. Switching to the End At tab
+  needs the field to hold a *valid* time first (committed earlier, or freshly typed) - an empty/incomplete
+  one refuses and focuses the field, so there is always something for Reset/Start to use once the tab *is*
+  selected.
+* **Stopped: Set (or Enter)** is the only thing that pushes a Duration edit to the server directly, exactly
+  as before. **Running/paused: Set is disabled** - there is no live "push this now" for Duration. Instead:
+  * **Reset** silently commits whatever is currently staged in the active tab (a switched tab, an edited
+    Duration, or a valid End-at draft) *before* it resets - so the stopped preview Reset produces reflects
+    what was actually showing, not a stale earlier commit. A plain Reset with nothing staged is unaffected -
+    no extra step, exactly as before.
+  * **Start** does the same for its own tab: Duration already sends the box's value directly (unchanged);
+    End At now also commits a pending *valid* draft first (an invalid/empty one is left alone - Start then
+    simply uses the last applied target, same as before).
+  * Neither shows a confirmation dialog for this - Reset and Start are themselves the deliberate action
+    (Reset always stops the run; Start only ever fires from a stopped timer), so End-at's own "does this
+    change the live remaining time?" question doesn't apply.
 * An unrelated broadcast (another controller's action, a rundown edit, a threshold change from the same
   tab) does not clobber an unapplied Duration draft or tab selection, the same guarantee End-at already had.
+
+The one asymmetry worth knowing: a *live* "keep running, just change the total" retarget for Duration (the
+way End-at can retarget a running timer) does not exist - to change a running Duration timer's value you go
+through Reset (stops it) then Start (begins fresh with the staged value), never a single "apply live" click.
 
 ### End-at is staged (draft), never live-as-you-type
 
@@ -114,7 +129,13 @@ one-slot "Undo last Replace" (this browser tab only).
    change. Set (or Enter) it - the Display updates then. ✕ discards it (Display still unchanged, field
    reverts). Click the Duration/End At tabs back and forth without pressing Set - the Display never
    changes. Start with a typed-but-un-Set duration still runs with that value.
-2c. Display page: Home/Fullscreen buttons are visible on load, fade out after a few seconds of no mouse/
+2c. Running: click a preset - the Display must NOT change and the timer keeps counting down (Set is
+   disabled). Press Reset - it stops and the Display now shows the staged preset value. Same for typing a
+   fresh End-at time while running and never pressing Set: Reset picks it up (End-at mode) instead.
+   Separately: type a fresh End-at time while stopped, switch to the End At tab (now allowed once the
+   field is valid, even with nothing committed yet) and press Start directly - it runs toward that typed
+   target.
+2d. Display page: Home/Fullscreen buttons are visible on load, fade out after a few seconds of no mouse/
    touch activity, and reappear immediately on any movement; both still work while visible.
 3. Rundown -> Edit: click a name, press Tab: only the `MM` of the time is selected; type `12` -> `12:xx`.
    Click into a time with the mouse: normal caret, nothing force-selected.

@@ -1,14 +1,19 @@
 'use strict';
 
 // Static guard for the staged Duration model (no browser infra in the repo, same
-// approach as endAtDraft.static.test.js): typing in the Duration field, or
-// clicking a preset, or clicking a mode tab, while STOPPED must never talk to the
-// server on their own - only Set (or Enter) does. This is what stops a value the
-// operator is still choosing from flashing onto a connected Display/CDEther before
-// they've decided. Editing while running/paused remains unsupported (unchanged -
-// use the nudge buttons), so Set is a no-op then, with no draft/confirmation
-// complexity needed for that case. Behaviour is also verified in a real browser -
-// see TIMER-MODES.md checklist.
+// approach as endAtDraft.static.test.js): typing in the Duration field, clicking a
+// preset, or clicking a mode tab must never talk to the server on their own -
+// ALWAYS, whatever the timer's current state (running/paused/stopped). This is
+// what stops a value the operator is still choosing from flashing onto a
+// connected Display/CDEther before they've decided.
+//
+// While stopped, Set (or Enter) applies a Duration draft directly. While running/
+// paused, Duration editing has no live-apply of its own (unlike End At) - instead
+// Reset and Start both silently commit whatever is currently staged (in whichever
+// tab is active) before they act, via commitStagedConfig - so "stage a preset,
+// then Reset (or Start)" is how a live timer picks up a new value, deliberately,
+// never automatically from the preset/typing itself. Behaviour is also verified
+// in a real browser - see TIMER-MODES.md checklist.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -29,20 +34,43 @@ function functionBody(name) {
   return html.slice(from, i + 1);
 }
 
-test('the only place that emits updateSettings({durationMs}) for a STOPPED timer is applyDurationDraft', () => {
-  assert.ok(functionBody('applyDurationDraft').includes("socket.emit('updateSettings', { durationMs: getDurationMs() })"));
-  // handleDurationInput (every keystroke) and the draft helpers must never emit
-  for (const fn of ['handleDurationInput', 'refreshDurationDraftUI', 'cancelDurationDraft']) {
+test('nothing bound to typing/clicking a preset/switching tabs ever emits - staging is unconditional, not just while stopped', () => {
+  for (const fn of ['handleDurationInput', 'refreshDurationDraftUI', 'cancelDurationDraft', 'applyPreset', 'setTimerMode']) {
     assert.ok(!/socket\.emit/.test(functionBody(fn)), `${fn} must not emit`);
   }
-  // applyPreset's STOPPED branch (after its early-return for the running case) must not emit
-  const presetBody = functionBody('applyPreset');
-  const stoppedBranch = presetBody.slice(presetBody.indexOf('return;') + 'return;'.length);
-  assert.ok(!/socket\.emit/.test(stoppedBranch), 'a preset click while stopped must only stage, never emit');
 });
 
-test('mode tab buttons (Duration/End At) are local-only and never emit to the server', () => {
-  assert.ok(!/socket\.emit/.test(functionBody('setTimerMode')), 'setTimerMode must not emit - switching tabs must not touch a connected Display/CDEther');
+test('applyPreset always stages (setTimerMode + refreshDurationDraftUI), unconditionally - no mode/state branch left over', () => {
+  const body = functionBody('applyPreset');
+  assert.match(body, /setTimerMode\('duration'\)/);
+  assert.match(body, /refreshDurationDraftUI\(\)/);
+  assert.ok(!/if\s*\(\s*currentState\.mode/.test(body), 'must not special-case running/paused any more');
+});
+
+test('the ONLY place that emits updateSettings({durationMs}) for a stopped timer directly is applyDurationDraft (Set)', () => {
+  assert.ok(functionBody('applyDurationDraft').includes("socket.emit('updateSettings', { durationMs: getDurationMs() })"));
+});
+
+test('commitStagedConfig is the single place Reset/Start pick up a pending draft, and it never shows a confirmation dialog', () => {
+  const body = functionBody('commitStagedConfig');
+  assert.match(body, /sendEndAt\(endAtEl\.value\)/, 'End At branch: commits via sendEndAt, not the confirming applyEndAtDraft');
+  assert.ok(!/applyEndAtDraft|confirm\(/.test(body), 'must not go through the live-retarget confirmation path');
+  assert.match(body, /modeTouched \|\| durationDirty/, 'Duration branch: fires on either a switched tab or an edited value');
+  assert.match(body, /timerMode: 'duration'/);
+});
+
+test('resetTimer commits the active draft first, then resets', () => {
+  const body = functionBody('resetTimer');
+  const commitAt = body.indexOf('commitStagedConfig()');
+  const resetAt = body.indexOf("socket.emit('resetTimer')");
+  assert.ok(commitAt !== -1 && resetAt !== -1 && commitAt < resetAt, 'commit must happen before the reset emit');
+});
+
+test('startTimer: Duration is self-contained (sends durationMs directly); End At commits a pending valid draft first, then starts', () => {
+  const body = functionBody('startTimer');
+  assert.match(body, /data\.durationMs = getDurationMs\(\)/, 'Duration already sends the box value directly - no separate commit needed');
+  assert.match(body, /isValidEndAt\(endAtEl\.value\)\) sendEndAt\(endAtEl\.value\)/, 'End At: commits a valid draft before starting');
+  assert.ok(!/applyEndAtDraft|confirm\(/.test(body), 'no confirmation dialog - Start only ever fires from a stopped timer');
 });
 
 test('typing/blur/focus on the Duration field never applies - only input(stage)/keydown(Enter=Set) are bound, and blur does not emit', () => {
@@ -55,20 +83,14 @@ test('typing/blur/focus on the Duration field never applies - only input(stage)/
   assert.ok(!/socket\.emit/.test(blurBlock.slice(0, blurBlock.indexOf('});'))), 'blur must not itself emit');
 });
 
-test('a state sync never overwrites an unapplied Duration draft', () => {
+test('a state sync never overwrites an unapplied Duration draft, in ANY run state (the dirty check no longer requires stopped)', () => {
   assert.match(html, /if \(!durationInputFocused && !durationDirty\)/);
+  assert.ok(!/durationDirty = currentState\.mode === 'stopped' &&/.test(html), 'dirty tracking must not be gated to stopped any more');
 });
 
-test('the Duration Set button starts disabled; the generic settings-input listener skips the Duration field', () => {
+test('the Duration Set button is disabled while dirty tracking is unconditional, but the button itself still only applies while stopped', () => {
   assert.match(html, /id="durationApplyBtn"[^>]*\bdisabled\b/);
+  assert.match(functionBody('refreshDurationDraftUI'), /durationApplyBtn'\)\.disabled = !durationDirty \|\| currentState\.mode !== 'stopped'/);
+  assert.match(functionBody('applyDurationDraft'), /if \(currentState\.mode !== 'stopped' \|\| !durationDirty\) return;/);
   assert.match(html, /input\.id === 'duration' \|\| input\.id === 'endAtTime'\) return/);
-});
-
-test('Start still reads the live Duration field directly (staging is about the DISPLAY, not about blocking Start)', () => {
-  assert.match(functionBody('startTimer'), /data\.durationMs = getDurationMs\(\)/);
-});
-
-test('a preset click on a RUNNING/PAUSED timer keeps its previous immediate behaviour (reset + apply) - unchanged, not staged', () => {
-  const presetBody = functionBody('applyPreset');
-  assert.match(presetBody, /if \(currentState\.mode !== 'stopped'\) \{[\s\S]*?resetTimer[\s\S]*?updateSettings[\s\S]*?return;/);
 });

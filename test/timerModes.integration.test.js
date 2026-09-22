@@ -538,3 +538,91 @@ test('Add-in-middle (insertionIndex) persists correctly through setRundown, and 
     assert.deepEqual(s.rundown.map((r) => r.name), ['D', 'A', 'C', 'B', 'E']);
   } finally { c.socket.close(); }
 });
+
+// -----------------------------------------------------------------------------
+// "Reset/Start commit whatever is staged first" - the control page fires the
+// commit (applyEndAt / updateSettings) and the follow-up command (resetTimer /
+// startTimer) back to back over ONE socket, without waiting for the commit's own
+// acknowledgement. These tests prove the server processes same-socket events in
+// the order they were sent (Socket.IO's own ordering guarantee), which is the
+// load-bearing assumption behind that client-side pattern - not just plausible,
+// verified against the real server.
+// -----------------------------------------------------------------------------
+
+// Two events fired back to back on the SAME socket, without waiting for the
+// first's ack, must be processed by the server IN ORDER - collects each of the
+// resulting broadcasts separately (the shared send() helper above only ever has
+// one waiter pending at a time in the rest of this file, so it isn't suited to
+// capturing two in flight at once).
+function nextStates(c, n) {
+  return new Promise((resolve) => {
+    const collected = [];
+    const handler = (s) => {
+      collected.push(s);
+      if (collected.length === n) { c.socket.off('timerState', handler); resolve(collected); }
+    };
+    c.socket.on('timerState', handler);
+  });
+}
+
+test('ordering: applyEndAt immediately followed by startTimer (no endAtTarget in the startTimer payload) uses the just-applied target', async () => {
+  const { c } = await newControl();
+  try {
+    const target = targetInMinutes(25);
+    const states = nextStates(c, 2);
+    c.socket.emit('applyEndAt', { endAtTarget: target, endAtTzOffsetMin: tz() });
+    c.socket.emit('startTimer', { timerMode: 'endAt' }); // exactly what startTimer() now sends - no endAtTarget
+    const [afterApply, afterStart] = await states;
+    assert.equal(afterApply.mode, 'stopped'); assert.equal(afterApply.endAtTarget, target);
+    assert.equal(afterStart.mode, 'running');
+    assert.equal(afterStart.endAtTarget, target, 'Start used the target committed a moment earlier, not a stale one');
+    assert.ok(Math.abs(afterStart.runEndAtMs - Date.now() - 25 * MIN) < 45000);
+  } finally { c.socket.close(); }
+});
+
+test('Reset commits a staged Duration change made while RUNNING, then resets to it (commitStagedConfig)', async () => {
+  const { c } = await newControl();
+  try {
+    await c.send('updateSettings', { durationMs: 10 * MIN });
+    await c.send('startTimer', { timerMode: 'duration', durationMs: 10 * MIN });
+    // Simulate: operator stages 20:00 in the box (never presses Set - Set is
+    // disabled while running), then presses Reset. resetTimer() now fires the
+    // commit and the reset back to back.
+    const states = nextStates(c, 2);
+    c.socket.emit('updateSettings', { timerMode: 'duration', durationMs: 20 * MIN });
+    c.socket.emit('resetTimer');
+    const [, afterReset] = await states;
+    assert.equal(afterReset.mode, 'stopped');
+    assert.equal(afterReset.timerMode, 'duration');
+    assert.equal(afterReset.durationMs, 20 * MIN, 'Reset used the staged value, not the original 10:00');
+  } finally { c.socket.close(); }
+});
+
+test('Reset commits a staged End-At target made while PAUSED, then resets into End-At mode', async () => {
+  const { c } = await newControl();
+  try {
+    await c.send('startTimer', { timerMode: 'duration', durationMs: 10 * MIN });
+    await c.send('pauseTimer');
+    const target = targetInMinutes(30);
+    const states = nextStates(c, 2);
+    c.socket.emit('applyEndAt', { endAtTarget: target, endAtTzOffsetMin: tz() });
+    c.socket.emit('resetTimer');
+    const [, afterReset] = await states;
+    assert.equal(afterReset.mode, 'stopped');
+    assert.equal(afterReset.timerMode, 'endAt');
+    assert.equal(afterReset.endAtTarget, target);
+    assert.ok(Math.abs(afterReset.durationMs - 30 * MIN) < 45000, 'stopped preview is time-to-target');
+  } finally { c.socket.close(); }
+});
+
+test('Reset with nothing staged is unaffected (the common case: no extra commit, behaves exactly as before)', async () => {
+  const { c } = await newControl();
+  try {
+    await c.send('updateSettings', { durationMs: 12 * MIN });
+    await c.send('startTimer', { timerMode: 'duration', durationMs: 12 * MIN });
+    await c.send('nudgeTimer', 3 * MIN); // live-only change, never "staged" client-side
+    const s = await c.send('resetTimer');
+    assert.equal(s.mode, 'stopped');
+    assert.equal(s.durationMs, 12 * MIN, 'reset to the configured duration, the nudge is not treated as a pending commit');
+  } finally { c.socket.close(); }
+});

@@ -25,12 +25,15 @@ function functionBody(name) {
   return html.slice(from, i + 1);
 }
 
-test('the only place that emits applyEndAt is applyEndAtDraft', () => {
+test('sendEndAt is the only place that emits applyEndAt, reached only from applyEndAtDraft (Set/Enter), commitStagedConfig (Reset) and startTimer (Start) - each with its own validity/dirty guard, never unconditionally', () => {
   const emits = html.match(/\.emit\('applyEndAt'/g) || [];
   assert.equal(emits.length, 1);
   assert.ok(functionBody('sendEndAt').includes(".emit('applyEndAt'"));
-  assert.ok(functionBody('applyEndAtDraft').includes('sendEndAt('), 'reached only via applyEndAtDraft');
-  assert.equal((html.match(/sendEndAt\(/g) || []).length, 2, 'defined once, called once (from applyEndAtDraft)');
+  for (const caller of ['applyEndAtDraft', 'commitStagedConfig', 'startTimer']) {
+    assert.ok(functionBody(caller).includes('sendEndAt('), `${caller} must reach sendEndAt`);
+  }
+  // defined once + exactly the three call sites above - no other path exists
+  assert.equal((html.match(/sendEndAt\(/g) || []).length, 4, 'defined once, called from exactly 3 places');
 });
 
 test('no End-at field listener (input/change/blur/focus/keydown other than Enter) or draft helper emits to the server', () => {
@@ -43,10 +46,15 @@ test('no End-at field listener (input/change/blur/focus/keydown other than Enter
   assert.ok(!/addEventListener\('(blur|focus|focusout|change)'/.test(html.slice(html.indexOf('let endAtDirty'), html.indexOf('// Connect using the control token'))), 'no blur/focus/change handler on the draft');
 });
 
-test('Start and mode buttons never read the draft field value', () => {
-  assert.ok(!/getElementById\('endAtTime'\)\.value/.test(functionBody('startTimer')));
-  assert.ok(!/getElementById\('endAtTime'\)\.value/.test(functionBody('setTimerMode')));
-  assert.ok(!/endAtTarget: document/.test(html), 'no payload built from the field');
+test('Start never sends an endAtTarget of its own - only the server\'s last applied/committed one, or a draft explicitly validated and committed first', () => {
+  assert.ok(!/endAtTarget:\s*(document|endAtEl)/.test(functionBody('startTimer')), 'no endAtTarget built directly into the startTimer payload');
+  assert.ok(!/endAtTarget: document/.test(html), 'no payload anywhere built from a raw field read');
+});
+
+test('setTimerMode(\'endAt\') requires the field to hold a VALID time (committed or freshly typed) before switching tabs - never an empty/incomplete one', () => {
+  const body = functionBody('setTimerMode');
+  assert.match(body, /!isValidEndAt\(endAtEl\.value\)/, 'gated on validity, not literally reading .value to configure anything');
+  assert.match(body, /endAtTime'\)\.focus\(\)/, 'refuses (focuses the field) rather than silently switching to nothing');
 });
 
 test('a state sync never overwrites an unapplied draft', () => {
