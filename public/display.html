@@ -57,6 +57,18 @@
             display: flex;
             gap: 1rem;
         }
+        /* Home + Fullscreen auto-hide: these are operator/setup controls, not part of
+           the show for the audience. They stay visible while the mouse/touch is
+           active, and fade out after a few seconds of no activity (see the
+           auto-hide-idle script below); any movement brings them straight back. */
+        .controls, .settings {
+            transition: opacity 0.4s ease;
+        }
+        body.controls-idle .controls,
+        body.controls-idle .settings {
+            opacity: 0;
+            pointer-events: none;
+        }
         .control-button {
             padding: 0.5rem 1rem;
             background: rgba(255,255,255,0.15);
@@ -527,6 +539,22 @@
 
         // Initial display update
         updateDisplay();
+
+        // Auto-hide the Home/Fullscreen buttons after a few seconds of no pointer
+        // activity - they're setup controls, not something the audience needs to
+        // see throughout the show. Any mouse move, touch or click brings them back
+        // immediately and restarts the idle countdown (see the CSS above).
+        (function () {
+            const IDLE_MS = 4000;
+            let hideTimer = null;
+            function showControls() {
+                document.body.classList.remove('controls-idle');
+                clearTimeout(hideTimer);
+                hideTimer = setTimeout(() => document.body.classList.add('controls-idle'), IDLE_MS);
+            }
+            ['pointermove', 'pointerdown', 'touchstart'].forEach((evt) => document.addEventListener(evt, showControls, { passive: true }));
+            showControls(); // visible on load; idle countdown starts immediately
+        })();
     </script>
 </body>
 </html>

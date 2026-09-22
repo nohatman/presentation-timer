@@ -337,7 +337,7 @@
             grid-template-columns: 1fr 1fr;
             gap: 16px;
         }
-        #endAtTime.draft { border-color: #ff9800; box-shadow: 0 0 0 1px #ff9800; }
+        #endAtTime.draft, #duration.draft { border-color: #ff9800; box-shadow: 0 0 0 1px #ff9800; }
         .end-time-display {
             font-size: 0.9rem;
             color: #90caf9;
@@ -485,9 +485,12 @@
                     <div style="font-size:0.8rem;color:#999;margin-bottom:6px;font-weight:500;text-transform:uppercase;letter-spacing:0.05em;">Timer Mode</div>
                     <div class="mode-row">
                         <button class="mode-button active" id="modeDurationBtn" onclick="setTimerMode('duration')">Duration</button>
-                        <input type="text" id="duration" class="time-text" placeholder="0:00" pattern="\d{1,3}:\d{2}" title="Format: MM:SS" maxlength="6" inputmode="numeric">
+                        <input type="text" id="duration" class="time-text" placeholder="0:00" pattern="\d{1,3}:\d{2}" title="Format: MM:SS" maxlength="6" inputmode="numeric" aria-describedby="durationDraftHint">
+                        <button id="durationApplyBtn" class="button primary" onclick="applyDurationDraft()" disabled style="padding:6px 12px;">Set</button>
+                        <button id="durationCancelBtn" class="button secondary" onclick="cancelDurationDraft()" hidden title="Discard the unapplied duration" style="padding:6px 10px;">✕</button>
                         <span class="end-time-display" id="endTimeCalc"></span>
                     </div>
+                    <div id="durationDraftHint" role="status" hidden style="font-size:0.75rem;color:#ff9800;margin-top:-2px;margin-bottom:6px;"></div>
                     <div class="mode-row" style="margin-top:6px;">
                         <button class="mode-button" id="modeEndAtBtn" onclick="setTimerMode('endAt')" title="Select an end time first">End At</button>
                         <input type="time" id="endAtTime" aria-describedby="endAtDraftHint">
@@ -687,6 +690,7 @@
         // Global state
         let currentState = { mode: 'stopped', durationMs: 0, speed: 1.0, displayScale: 1.0 };
         let currentTimerMode = 'duration'; // 'duration' or 'endAt'
+        let modeTouched = false; // operator picked a tab locally that hasn't (yet) matched the server - see applyServerTimerMode
         let durationInputFocused = false;
 
         // Rundown state
@@ -699,11 +703,12 @@
         let pointerFocusPending = false;
         let rundownBackup = null; // one-slot undo for Replace: { items }
 
-        // Timer mode selection. The mode lives on the server (timerState.timerMode)
-        // so it survives refresh/restart and is shared by every controller; this
-        // only asks for a change - the buttons follow the server's echo (see
-        // applyServerTimerMode). While running/paused the change applies to the
-        // configuration only (next Start/Reset), never the live run.
+        // Timer mode selection. Choosing a tab is LOCAL/UI ONLY - it decides which
+        // section's Set (or Start) acts on, and does not touch the server or any
+        // connected display by itself (that used to push immediately, which is
+        // exactly what flashed a new number on the live output before the operator
+        // had finished deciding). The tab still follows the server's own committed
+        // mode whenever nothing is being locally overridden - see applyServerTimerMode.
         function tzOffsetMin() { return new Date().getTimezoneOffset(); }
 
         function setTimerMode(mode) {
@@ -713,21 +718,25 @@
                     document.getElementById('endAtTime').focus();
                     return;
                 }
-                socket.emit('updateSettings', { timerMode: 'endAt' });
-            } else {
-                socket.emit('updateSettings', { timerMode: 'duration' });
             }
+            currentTimerMode = mode;
+            modeTouched = true; // self-clears in applyServerTimerMode once the server matches (e.g. after Set)
+            document.getElementById('modeDurationBtn').classList.toggle('active', mode === 'duration');
+            document.getElementById('modeEndAtBtn').classList.toggle('active', mode === 'endAt');
+            updateEndTimeCalc();
         }
 
         function applyServerTimerMode(state) {
-            currentTimerMode = state.timerMode === 'endAt' ? 'endAt' : 'duration';
+            const serverMode = state.timerMode === 'endAt' ? 'endAt' : 'duration';
+            if (!modeTouched) currentTimerMode = serverMode;
+            else if (currentTimerMode === serverMode) modeTouched = false; // converged (Set went through) - safe to follow the server again
             document.getElementById('modeDurationBtn').classList.toggle('active', currentTimerMode === 'duration');
             document.getElementById('modeEndAtBtn').classList.toggle('active', currentTimerMode === 'endAt');
             const endAtEl = document.getElementById('endAtTime');
             if (!endAtDirty) endAtEl.value = state.endAtTarget || ''; // never clobber an unapplied draft
             refreshEndAtDraftUI();
             const durEl = document.getElementById('duration');
-            if (!durationInputFocused) {
+            if (!durationInputFocused && !durationDirty) {
                 // While a Duration-mode run is live the field shows the live length
                 // (so nudges are visible). Otherwise it shows the configured Duration
                 // - never an End-at-derived value, so switching modes cannot leave a
@@ -738,6 +747,7 @@
                     durEl.value = formatTimeInput(Math.floor(ms / 60000), Math.floor((ms % 60000) / 1000));
                 }
             }
+            refreshDurationDraftUI();
             document.getElementById('modeApplyHint').hidden = state.mode === 'stopped';
             updateEndTimeCalc();
         }
@@ -777,10 +787,6 @@
             }
         }
 
-        // Update end time calc when duration changes
-        document.getElementById('duration').addEventListener('input', updateEndTimeCalc);
-        // Typing a duration selects Duration mode (server-side, see emitDurationEdit).
-        //
         // The End-at field is a DRAFT: typing/blur/focus changes never leave this page.
         // Only Set (button or Enter) sends 'applyEndAt'. A live timer needs an explicit
         // confirmation showing the current and proposed remaining time.
@@ -816,6 +822,38 @@
             endAtError = '';
             endAtEl.value = currentState.endAtTarget || '';
             refreshEndAtDraftUI();
+        }
+
+        // The Duration field is a draft too, for the same reason as End At: typing
+        // (or clicking a preset) must not itself change what a connected Display/
+        // CDEther is showing. Only Set (or Enter) commits it. Unlike End At there is
+        // no live-retarget case to confirm - editing Duration is a no-op while
+        // running/paused (use the nudge buttons instead), so Set only ever acts
+        // while stopped, with no confirmation dialog needed.
+        let durationDirty = false;
+        const durationEl = document.getElementById('duration');
+
+        function refreshDurationDraftUI() {
+            const committedMs = currentState.configDurationMs !== undefined ? currentState.configDurationMs : currentState.durationMs;
+            durationDirty = currentState.mode === 'stopped' && getDurationMs() !== committedMs;
+            durationEl.classList.toggle('draft', durationDirty);
+            document.getElementById('durationCancelBtn').hidden = !durationDirty;
+            document.getElementById('durationApplyBtn').disabled = !durationDirty;
+            const hint = document.getElementById('durationDraftHint');
+            hint.hidden = !durationDirty;
+            hint.textContent = durationDirty ? 'Not applied yet - press Set (or Enter) to update the display now. Start uses this box regardless.' : '';
+        }
+
+        function cancelDurationDraft() {
+            const committedMs = currentState.configDurationMs !== undefined ? currentState.configDurationMs : currentState.durationMs;
+            durationEl.value = formatTimeInput(Math.floor(committedMs / 60000), Math.floor((committedMs % 60000) / 1000));
+            refreshDurationDraftUI();
+            updateEndTimeCalc();
+        }
+
+        function applyDurationDraft() {
+            if (currentState.mode !== 'stopped' || !durationDirty) return;
+            socket.emit('updateSettings', { durationMs: getDurationMs() });
         }
 
         function fmtRemaining(ms) {
@@ -1446,10 +1484,17 @@
             const seconds = Math.floor((durationMs % (60 * 1000)) / 1000);
             document.getElementById('duration').value = formatTimeInput(minutes, seconds);
             if (currentState.mode !== 'stopped') {
+                // Unchanged from before: a preset click on a live timer restarts it
+                // with the new value right away - there's no "stopped preview" to stage.
                 socket.emit('resetTimer');
+                socket.emit('updateSettings', { durationMs: durationMs });
+                return;
             }
-            // Explicit duration => Duration mode (server-side); sent after the reset above.
-            socket.emit('updateSettings', { durationMs: durationMs });
+            // Stopped: only stage it (the Duration field, the Duration tab) - same
+            // as typing a value by hand. Nothing reaches the server/Display/CDEther
+            // until Set (or Enter) is pressed.
+            setTimerMode('duration');
+            refreshDurationDraftUI();
         }
 
         // Nudge helpers
@@ -1880,15 +1925,18 @@
             });
         }
 
-        // Duration field: typing/committing a value selects Duration mode. Only sent
-        // while stopped - to change a live timer use the nudge buttons (a second
-        // device with a stale field must never overwrite a live countdown).
-        function emitDurationEdit() {
+        // Duration field: typing/committing a value selects Duration mode - but, like
+        // End At, is a DRAFT (see refreshDurationDraftUI above). Typing/blur/focus
+        // changes never leave this page; only Set (or Enter) does. Editing while
+        // running/paused remains unsupported (use the nudge buttons) - applyDurationDraft
+        // itself is a no-op then, matching the previous behaviour for that case.
+        function handleDurationInput() {
             saveSettings();
-            if (currentState.mode !== 'stopped') return;
-            socket.emit('updateSettings', { durationMs: getDurationMs() });
+            updateEndTimeCalc();
+            refreshDurationDraftUI();
         }
-        ['input', 'change'].forEach(evt => document.getElementById('duration').addEventListener(evt, emitDurationEdit));
+        durationEl.addEventListener('input', handleDurationInput);
+        durationEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); applyDurationDraft(); } });
 
         // Load saved settings from localStorage (for initial display only —
         // server state is authoritative and will overwrite on first timerState).
@@ -1997,13 +2045,15 @@
         document.getElementById('speedSlider').addEventListener('input', updateSpeedPreview);
 
         // Track when user is actively editing the duration field so server syncs don't overwrite it
-        const durationInput = document.getElementById('duration');
-        durationInput.addEventListener('focus', () => durationInputFocused = true);
-        durationInput.addEventListener('blur',  () => {
+        durationEl.addEventListener('focus', () => durationInputFocused = true);
+        durationEl.addEventListener('blur',  () => {
             durationInputFocused = false;
             // While running/paused the field is not editable state (use the nudge
             // buttons): drop the rejected edit and show the server's value again.
             if (currentState.mode !== 'stopped') applyServerTimerMode(currentState);
+            // Blur never applies a draft (same rule as End At) - just refresh the Set
+            // button/hint against the final (post-formatting) value.
+            refreshDurationDraftUI();
         });
 
         // ============================================================
