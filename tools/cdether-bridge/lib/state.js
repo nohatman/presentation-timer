@@ -40,13 +40,27 @@ function computeRemaining(s, nowCorrectedMs) {
   return { remainingMs, finished };
 }
 
-/** ms -> {minutes, seconds}, floored like display.html, clamped to 99:59. */
+/**
+ * ms -> {minutes, seconds, hoursMode}, floored like display.html.
+ *
+ * Past 99:59 (4 BCD digits can't represent more), switch to sending H:MM
+ * through the same two fields instead of clamping/holding at 99:59 - the
+ * hardware has no unit semantics of its own for these two bytes; this is the
+ * exact same trick Time of Day / clock mode already uses and has physically
+ * verified (deriveFrame below sends {minutes: getHours(), seconds:
+ * getMinutes()} for the clock - see RIG-REGRESSION.md), just fed the
+ * countdown's hours/minutes instead of the wall clock's. No seconds are shown
+ * once in hours mode. `hoursMode` lets callers (deriveFrame, bridge.js's
+ * console log) tell the two apart for logging/labelling - the raw bytes on
+ * the wire are identical either way.
+ */
 function clampToDisplay(ms) {
-  let totalSec = Math.floor(Math.max(0, ms) / 1000);
-  let minutes = Math.floor(totalSec / 60);
-  let seconds = totalSec % 60;
-  if (minutes > MAX_MINUTES) { minutes = 99; seconds = 59; }
-  return { minutes, seconds };
+  const totalSec = Math.floor(Math.max(0, ms) / 1000);
+  const totalMinutes = Math.floor(totalSec / 60);
+  if (totalMinutes > MAX_MINUTES) {
+    return { minutes: Math.floor(totalMinutes / 60), seconds: totalMinutes % 60, hoursMode: true };
+  }
+  return { minutes: totalMinutes, seconds: totalSec % 60, hoursMode: false };
 }
 
 /**
@@ -55,7 +69,7 @@ function clampToDisplay(ms) {
  * @param {number} clockOffsetMs  serverNow - Date.now(), captured when the state arrived
  * @param {{idleBehaviour?: 'duration'|'off'}} opts
  * @returns {{minutes:number, seconds:number, colour:'green'|'red'|'amber'|'off',
- *            finished?:boolean, remainingMs?:number, reason:string}}
+ *            finished?:boolean, remainingMs?:number, hoursMode?:boolean, reason:string}}
  */
 function deriveFrame(s, nowMs, clockOffsetMs = 0, opts = {}) {
   const idleBehaviour = opts.idleBehaviour || 'duration';
@@ -101,13 +115,14 @@ function deriveFrame(s, nowMs, clockOffsetMs = 0, opts = {}) {
     colour = 'green';
   }
 
-  const { minutes, seconds } = clampToDisplay(finished ? 0 : remainingMs);
+  const { minutes, seconds, hoursMode } = clampToDisplay(finished ? 0 : remainingMs);
   return {
     minutes,
     seconds,
     colour,
     finished,
     remainingMs,
+    hoursMode,
     reason: idle ? 'idle-duration' : s.mode,
   };
 }

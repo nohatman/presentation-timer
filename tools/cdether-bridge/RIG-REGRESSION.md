@@ -50,6 +50,8 @@ display.
 | 19 | Run bridge with a deliberately wrong `DISPLAY_TOKEN` | best-effort OFF (display blanks), clear error printed, process exits with code 2 |
 | 20 | Multi-homed check: with Wi-Fi (internet) + Ethernet (CDEther) both up, run normally | frames reach the display — confirms the socket bound to the right NIC |
 | 21 | Soak: leave a countdown + idle room running ~30–60 min | steady 1 Hz, no drift vs the room's own display screen, no crash |
+| 22 | Start a duration > 99:59 (e.g. 150:00) from control | display shows **H:MM** (e.g. `2:30`), not held at `99:59` - builds on the same field-reuse trick clock mode already proved (row 9), but this specific "count down by the minute in hours mode" behaviour hasn't itself been on the rig yet |
+| 23 | Let it count down through the 99:59 boundary | display switches from `H:MM` back to normal `MM:SS` the instant it drops under 100 minutes, no glitch/flicker at the transition |
 
 ## Report back
 
@@ -61,10 +63,13 @@ CDEther commit for your review.
 
 This checklist covers only the **shipped** P1 behaviour. Time-of-day / clock
 mode has since been implemented and physically proven end-to-end (P1.1,
-2026-09-11) — it is no longer one of the unsupported functions. Negative /
-overtime and `>99:59` remain unresolved and unsupported (bridge stays
-conservative: `00:00` red / clamps to `99:59`) — see
-`P1.1-PROTOCOL-INVESTIGATION.md`.
+2026-09-11) — it is no longer one of the unsupported functions. `>99:59` now
+switches to H:MM (same field-reuse trick as clock mode, see rows 22/23 above)
+rather than clamping/holding at `99:59` — deliberately a plain static swap,
+no blink/distinguishing cue (the hardware has no way to blink just the
+colon/one field; a whole-display pulse was considered and deferred). Not yet
+rig-verified itself. Negative/overtime remains unresolved and unsupported
+(bridge stays conservative: `00:00` red) — see `P1.1-PROTOCOL-INVESTIGATION.md`.
 
 **Post-P1 rig incident (P1.1 raw-byte probing, since resolved):** during
 Priority-1 raw `byte3` probing, sending an undocumented value left the Hive

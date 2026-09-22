@@ -121,7 +121,10 @@ async function main() {
   engine.on('frame', ({ decoded, frame, ok }) => {
     const key = decoded + ok;
     if (key !== lastFrameKey || unchanged >= 30) {
-      line('info', `TX ${decoded}${ok ? '' : ' (SEND FAILED)'} <- ${frame.reason || frame.colour}`);
+      // hoursMode: the two BCD fields hold H:MM (past 99:59), not MM:SS - flag
+      // it here so this log line isn't itself ambiguous (see lib/state.js).
+      const hoursNote = frame.hoursMode ? ' [H:MM]' : '';
+      line('info', `TX ${decoded}${ok ? '' : ' (SEND FAILED)'} <- ${frame.reason || frame.colour}${hoursNote}`);
       unchanged = 0;
     } else {
       unchanged++;

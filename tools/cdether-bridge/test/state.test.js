@@ -136,9 +136,23 @@ test('server clock offset is applied to remaining time', () => {
   assert.deepEqual(mss(f), [9, 0, 'green']);
 });
 
-test('remaining above 99:59 clamps to 99:59', () => {
+test('remaining at exactly 99:59 stays plain MM:SS, not hours mode', () => {
+  const s = state({ mode: 'running', durationMs: 99 * 60 * 1000 + 59000, startTime: NOW });
+  const f = deriveFrame(s, NOW, 0, {});
+  assert.deepEqual([f.minutes, f.seconds, f.hoursMode], [99, 59, false]);
+});
+
+test('remaining above 99:59 switches to H:MM instead of clamping/holding at 99:59', () => {
+  // 149:59 remaining (~1s already elapsed of a 150-minute duration) -> 2h29m.
   const s = state({ mode: 'running', durationMs: 150 * 60 * 1000, startTime: NOW - 1000 });
-  assert.deepEqual([deriveFrame(s, NOW, 0, {}).minutes, deriveFrame(s, NOW, 0, {}).seconds], [99, 59]);
+  const f = deriveFrame(s, NOW, 0, {});
+  assert.deepEqual([f.minutes, f.seconds, f.hoursMode], [2, 29, true]);
+});
+
+test('hours mode reverts to plain MM:SS once remaining drops back under 100 minutes', () => {
+  const s = state({ mode: 'running', durationMs: 100 * 60 * 1000, startTime: NOW - 60 * 1000 });
+  const f = deriveFrame(s, NOW, 0, {}); // 99:00 remaining
+  assert.deepEqual([f.minutes, f.seconds, f.hoursMode], [99, 0, false]);
 });
 
 test('speed multiplier is honoured', () => {
