@@ -1068,6 +1068,20 @@
             return `${minutes}:${seconds.toString().padStart(2, '0')}`;
         }
 
+        // Read-only countdown DISPLAY (the live preview, not the duration input
+        // field above) - switches to H:MM:SS past an hour, same convention as
+        // display.html's output screen, so the preview matches what the audience
+        // actually sees instead of showing e.g. "822:08".
+        function formatCountdownDisplay(totalSeconds, sign = '') {
+            const s = Math.max(0, Math.floor(totalSeconds));
+            const hours = Math.floor(s / 3600);
+            const minutes = Math.floor((s % 3600) / 60);
+            const seconds = s % 60;
+            return hours > 0
+                ? `${sign}${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+                : `${sign}${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        }
+
         function validateAndFormatTimeInput(input) {
             let value = input.value.replace(/[^0-9:]/g, '');
             const parts = value.split(':');
@@ -1366,9 +1380,8 @@
 
             // Overrun display
             if (overrunMs > 0) {
-                const overSec = Math.floor(overrunMs / 1000);
                 el.style.color = '#9c27b0';
-                el.textContent = `Overrunning ${Math.floor(overSec/60)}:${String(overSec%60).padStart(2,'0')}`;
+                el.textContent = `Overrunning ${formatCountdownDisplay(overrunMs / 1000)}`;
                 return;
             }
 
@@ -1418,12 +1431,10 @@
             }
 
             if (currentState.countUp && overMs > 0) {
-                const s = Math.floor(overMs / 1000);
-                previewEl.textContent = `-${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
+                previewEl.textContent = formatCountdownDisplay(overMs / 1000, '-');
                 previewEl.className = 'timer-preview red';
             } else {
-                const s = Math.floor(remainingMs / 1000);
-                previewEl.textContent = `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
+                previewEl.textContent = formatCountdownDisplay(remainingMs / 1000);
                 previewEl.className = 'timer-preview';
                 if (remainingMs <= currentState.redThresholdMs) {
                     previewEl.classList.add('red');

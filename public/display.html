@@ -520,16 +520,21 @@
             // Format time
             const targetSeconds = Math.floor(remainingMs / 1000);
 
-            // Initialize or update smoothed displaySeconds
-            if (displaySeconds === null || forceImmediate) {
+            // Initialize or update smoothed displaySeconds. The +/-1-per-call step
+            // below only exists to stop the *last* second-tick before a change
+            // looking jumpy (e.g. a dropped animation frame skipping straight from
+            // :05 to :03) - at 60fps that's over in a frame or two either way.
+            // A gap bigger than that means this tab was backgrounded/suspended
+            // for a while (mobile browsers throttle/pause rAF off-screen) and is
+            // only now catching up - stepping through minutes of real gap 1s per
+            // frame turned into a multi-second "rapid scrolling" spectacle on
+            // revisit, which reads as a bug, not a smooth transition. Snap instead.
+            if (displaySeconds === null || forceImmediate || Math.abs(targetSeconds - displaySeconds) > 2) {
                 displaySeconds = targetSeconds;
-            } else {
-                // Smoothly approach target, avoid skipping more than 1 per frame
-                if (displaySeconds > targetSeconds) {
-                    displaySeconds = Math.max(targetSeconds, displaySeconds - 1);
-                } else if (displaySeconds < targetSeconds) {
-                    displaySeconds = Math.min(targetSeconds, displaySeconds + 1);
-                }
+            } else if (displaySeconds > targetSeconds) {
+                displaySeconds = Math.max(targetSeconds, displaySeconds - 1);
+            } else if (displaySeconds < targetSeconds) {
+                displaySeconds = Math.min(targetSeconds, displaySeconds + 1);
             }
 
             const showSeconds = displaySeconds;
