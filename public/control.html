@@ -2468,9 +2468,23 @@
         // TEMPORARY diagnostic overlay for the mobile-overflow-on-rundown-expand
         // report - inert unless ?debug=1 is in the URL, so it changes nothing
         // for normal use. Remove once that's resolved. Shows live viewport/zoom
-        // numbers plus, if the page is actually overflowing right now, the
-        // narrowest (most specific) offending elements - read straight off the
-        // screen, no devtools needed.
+        // numbers plus the narrowest (most specific) elements whose own laid-out
+        // position extends past the viewport - read straight off the screen, no
+        // devtools needed.
+        //
+        // v2: no longer gated on document.documentElement.scrollWidth >
+        // clientWidth. html,body { overflow-x: hidden } (added as a backstop a
+        // couple of pushes ago) makes the root's scrollWidth collapse to equal
+        // clientWidth regardless of whether a descendant is still laid out too
+        // wide - that property clips/hides overflow, it doesn't shrink the
+        // underlying layout, so scrollWidth is no longer a reliable signal here.
+        // getBoundingClientRect() on individual elements is unaffected by an
+        // ancestor's overflow clipping (clipping changes what's painted/
+        // scrollable, not descendants' computed layout position), so it still
+        // finds a genuinely-too-wide element even while overflow-x:hidden is
+        // hiding it from view/scroll - which is also *why* this now reads as
+        // "everything is too big and I can't scroll to it" instead of the
+        // original auto-pan/zoom: the overflow is real, just clipped away now.
         if (new URLSearchParams(location.search).get('debug') === '1') {
             const overlay = document.createElement('div');
             overlay.id = 'debugOverlay';
@@ -2479,21 +2493,21 @@
             function updateDebugOverlay() {
                 const de = document.documentElement;
                 const vv = window.visualViewport;
+                const vw = window.innerWidth;
                 const lines = [
-                    `innerWidth=${window.innerWidth} scrollWidth=${de.scrollWidth} clientWidth=${de.clientWidth}`,
+                    `innerWidth=${vw} scrollWidth=${de.scrollWidth} clientWidth=${de.clientWidth} (scrollWidth is unreliable - see below instead)`,
                     `devicePixelRatio=${window.devicePixelRatio} vv.width=${vv ? vv.width.toFixed(1) : 'n/a'} vv.scale=${vv ? vv.scale.toFixed(2) : 'n/a'} vv.offsetLeft=${vv ? vv.offsetLeft.toFixed(1) : 'n/a'}`,
                 ];
-                if (de.scrollWidth > de.clientWidth + 1) {
-                    const vw = window.innerWidth;
-                    const offenders = Array.from(document.querySelectorAll('body *'))
-                        .map(el => ({ el, r: el.getBoundingClientRect() }))
-                        .filter(o => o.r.right > vw + 1 && o.r.width > 0)
-                        .sort((a, b) => a.r.width - b.r.width)
-                        .slice(0, 4)
-                        .map(o => `  ${o.el.tagName}#${o.el.id || '-'}.${(o.el.className || '').toString().slice(0, 30)} w=${Math.round(o.r.width)} right=${Math.round(o.r.right)}`);
-                    lines.push('*** OVERFLOWING right now - narrowest offenders: ***', ...offenders);
+                const offenders = Array.from(document.querySelectorAll('body *'))
+                    .map(el => ({ el, r: el.getBoundingClientRect() }))
+                    .filter(o => o.r.right > vw + 1 && o.r.width > 0 && o.el.id !== 'debugOverlay')
+                    .sort((a, b) => a.r.width - b.r.width)
+                    .slice(0, 6)
+                    .map(o => `  ${o.el.tagName}#${o.el.id || '-'}.${(o.el.className || '').toString().slice(0, 30)} w=${Math.round(o.r.width)} right=${Math.round(o.r.right)} (${Math.round(o.r.right - vw)}px past edge)`);
+                if (offenders.length) {
+                    lines.push(`*** ${offenders.length} element(s) laid out past the edge - narrowest first: ***`, ...offenders);
                 } else {
-                    lines.push('no overflow right now');
+                    lines.push('no element is laid out past the edge right now');
                 }
                 overlay.textContent = lines.join('\n');
             }
