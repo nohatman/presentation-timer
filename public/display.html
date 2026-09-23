@@ -391,10 +391,28 @@
             // not a per-frame layout read (only when text/size/viewport actually
             // changed) - cheap and, on a real display that already comfortably
             // fits, a no-op.
-            if (container.scrollHeight > container.clientHeight + 1) {
-                const heightRatio = container.clientHeight / container.scrollHeight;
-                const currentPx = parseFloat(getComputedStyle(outerEl).fontSize);
-                outerEl.style.fontSize = `${Math.max(8, currentPx * heightRatio * 0.96)}px`;
+            //
+            // Measured via each child's own getBoundingClientRect() (top of the
+            // highest, bottom of the lowest), not container.scrollHeight:
+            // .container is `justify-content: center`, and a centered flex
+            // container's scrollHeight is known to under-report overflow that
+            // spills past the *leading* edge (nothing pushes the scroll origin
+            // up to accommodate it) - confirmed in testing to still leave a
+            // clipped bottom edge on a real device despite scrollHeight
+            // reporting no overflow at all. Bounding rects aren't subject to
+            // that; they're each element's actual rendered position.
+            const visibleKids = Array.from(container.children).filter((el) => {
+                const kcs = getComputedStyle(el);
+                return kcs.display !== 'none' && kcs.position !== 'absolute';
+            });
+            if (visibleKids.length) {
+                const rects = visibleKids.map((el) => el.getBoundingClientRect());
+                const naturalHeight = Math.max(...rects.map((r) => r.bottom)) - Math.min(...rects.map((r) => r.top));
+                const availHeight = container.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+                if (naturalHeight > availHeight && naturalHeight > 0 && availHeight > 0) {
+                    const currentPx = parseFloat(getComputedStyle(outerEl).fontSize);
+                    outerEl.style.fontSize = `${Math.max(8, currentPx * (availHeight / naturalHeight) * 0.96)}px`;
+                }
             }
             lastFitted[key] = { text, base: baseFontSize, viewportW: window.innerWidth, viewportH: window.innerHeight };
         }

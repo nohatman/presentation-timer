@@ -236,9 +236,20 @@
                to match Timer Mode) stretched height the way a plain
                flex-basis did before; flex:0 0 auto below stops it growing
                past its own square size. Smaller and square, rather than
-               tall-and-full-height, was the explicit ask. */
+               tall-and-full-height, was the explicit ask.
+               max-width + align-self:center are load-bearing on mobile: col 2
+               is a fixed 190px on desktop, but below the 700px breakpoint
+               .timer-control-row is single-column block stacking (see that
+               media query), so col 2 becomes the FULL PAGE WIDTH there -
+               without a cap, .main-buttons' default align-items:stretch
+               would make each button stretch to that full width, and
+               aspect-ratio:1 would then make them ~380px squares. Capping
+               the width and centering instead of stretching keeps them the
+               same reasonable size on both. */
             aspect-ratio: 1;
             flex: 0 0 auto;
+            max-width: 190px;
+            align-self: center;
         }
         .main-action-button .icon-svg {
             width: 45%;
@@ -340,21 +351,37 @@
            it's never a second, hand-maintained rendering of the countdown that
            can drift from what colors/appearance/messages are actually showing -
            it just IS the display, scaled down. pointer-events:none since this is
-           a preview, not a second remote for the display's own Fullscreen button. */
-        .display-preview-frame {
+           a preview, not a second remote for the display's own Fullscreen button.
+           Went through several rounds trying to make display.html's own
+           responsive sizing (built and tested for a real full screen/tab) cope
+           with an arbitrary short/wide embedded box - width fit, then a height
+           fit too, still ended up with the tops of the digits hard-clipped on
+           a real device. Different approach: render the iframe at a normal,
+           comfortably-tested native size (1280x720, the same shape display.html
+           is actually built for) and scale the whole rendered result down with
+           a CSS transform (see the JS that sets displayPreviewFrame's
+           transform) instead of asking it to re-lay-out at a tiny size at all.
+           A transform is a pure post-layout visual operation - it cannot clip
+           anything display.html itself would render correctly at 1280x720. The
+           wrapper is a fixed 16:9 (that native shape) instead of growing to
+           fill the column's height, which is what was producing those unusual
+           short/wide shapes in the first place. */
+        .display-preview-wrap {
             width: 100%;
-            flex: 1 1 340px; /* grow to fill the column's leftover height (see
-                                 the Col 1 comment below) instead of leaving it
-                                 as dead space under "Ends at". display.html's
-                                 own responsive sizing (built for a real full
-                                 screen/tab, tall-narrow or wide-normal) wasn't
-                                 tuned for a short, wide box - a 260px floor
-                                 was tight enough to clip the bottom line in
-                                 some states; 340px gives it more headroom. */
-            min-height: 340px;
-            border: 0;
+            aspect-ratio: 16 / 9;
+            overflow: hidden;
+            position: relative;
             border-radius: 8px;
             background: #0a0a0a;
+        }
+        .display-preview-frame {
+            width: 1280px;
+            height: 720px;
+            border: 0;
+            position: absolute;
+            top: 0;
+            left: 0;
+            transform-origin: top left;
             pointer-events: none;
         }
         .timer-control-row {
@@ -578,24 +605,18 @@
 
         <div class="timer-control-row">
             <!-- Col 1: Timer preview + ends-at info. justify-content:center was
-                 harmless at the old, roughly-square 185px column width, but
-                 once this column started stretching to match Timer Mode's
-                 (often much taller) content, its own fixed-size content
-                 (iframe + a couple of text lines) didn't grow to fill that
-                 height the way col 2's buttons do via flex-grow - centering
-                 left a gap above "Preview" and below "Ends at"; flex-start
-                 alone just moved that same gap entirely below "Ends at"
-                 instead. The iframe itself is flex:1 now (see
-                 .display-preview-frame) so it actually grows to fill that
-                 leftover space - a bigger, more prominent preview instead of
-                 dead space either way - while the label/text rows below stay
-                 their natural size (no flex-grow) rather than also stretching. -->
+                 harmless at the old, roughly-square 185px column width; now
+                 flex-start, so content (the fixed 16:9 preview box below +
+                 text) sits flush at the top like the other two columns,
+                 rather than centering with a gap above "Preview". -->
             <div class="section" style="display:flex;flex-direction:column;align-items:center;justify-content:flex-start;">
                 <div style="align-self:flex-start;width:100%;display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
                     <span style="font-size:0.85rem;color:#999;font-weight:500;">Preview</span>
                     <span class="status-badge" id="statusBadge">Stopped</span>
                 </div>
-                <iframe class="display-preview-frame" id="displayPreviewFrame" title="Live display preview" loading="lazy"></iframe>
+                <div class="display-preview-wrap" id="displayPreviewWrap">
+                    <iframe class="display-preview-frame" id="displayPreviewFrame" title="Live display preview" loading="lazy"></iframe>
+                </div>
                 <div id="previewNowTime" style="margin-top:8px;font-size:0.78rem;color:#999;font-family:monospace;text-align:center;width:100%;"></div>
                 <div id="endsAtDisplay" style="font-size:0.78rem;color:#90caf9;text-align:center;min-height:2.5em;line-height:1.5;width:100%;"></div>
             </div>
@@ -1313,6 +1334,26 @@
                 alert('Failed to copy: ' + err);
             });
         }
+
+        // The Preview iframe renders at a fixed native 1280x720 (see the
+        // .display-preview-frame comment) and gets scaled down to fit
+        // whatever width the wrapper actually has via CSS transform - a pure
+        // post-render visual scale, so nothing display.html itself draws at
+        // that native size can ever be clipped by it. ResizeObserver (not
+        // just a one-off on load) since the wrapper's width can change
+        // independently of any timer state - window resize, the Rundown/
+        // Appearance panels expanding and reflowing the grid, etc.
+        (function () {
+            const wrap = document.getElementById('displayPreviewWrap');
+            const frame = document.getElementById('displayPreviewFrame');
+            if (!wrap || !frame) return;
+            function applyPreviewScale() {
+                const scale = wrap.clientWidth / 1280;
+                frame.style.transform = `scale(${scale})`;
+            }
+            applyPreviewScale();
+            new ResizeObserver(applyPreviewScale).observe(wrap);
+        })();
 
         // Sliders are local UI until Apply is clicked — only sync from server on first load
         let slidersInitialised = false;
