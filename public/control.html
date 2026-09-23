@@ -325,7 +325,11 @@
            a preview, not a second remote for the display's own Fullscreen button. */
         .display-preview-frame {
             width: 100%;
-            height: 260px;
+            flex: 1 1 260px; /* grow to fill the column's leftover height (see
+                                 the Col 1 comment below) instead of leaving it
+                                 as dead space under "Ends at"; 260px floor for
+                                 rows where this column isn't the tallest one. */
+            min-height: 260px;
             border: 0;
             border-radius: 8px;
             background: #0a0a0a;
@@ -345,26 +349,28 @@
             gap: 16px;
             align-items: stretch;
             /* .timer-control-row is itself a grid ITEM of .container (spanning
-               its single mobile column via grid-column:1/-1), and a grid item's
-               default min-width is "auto" - the same "don't shrink below your
-               own content's min-content size" rule flex items have, which the
-               very first fix in this file (the Prev/Take/Next row) already ran
-               into one level down. Traced via the debug overlay: on a real
-               device this row's own min-content came out to ~806px (something
-               nested several levels down - likely font/emoji metrics differing
-               from this dev environment's rendering - refuses to shrink), while
-               its own track in .container was only ~371px on an 411px phone.
-               Nothing clips that overflow horizontally except the html/body
-               overflow-x:hidden backstop, which hides it from view instead of
-               fixing it - hence "everything too big, can't scroll to it".
-               min-width:0 lets Grid actually shrink this item to fit its track,
-               same fix, same reason, one level higher up the tree. */
+               its single mobile column via grid-column:1/-1). min-width:0 alone
+               (the standard fix for a grid/flex item's default content-based
+               minimum size) was verified deployed on the reporter's real device
+               via the debug overlay and did NOT stop this row's own width from
+               resolving to ~806px against a ~371px track - a genuine, confirmed
+               mismatch between theory and that device's actual behavior that
+               couldn't be reproduced locally (tried matching viewport, device
+               pixel ratio, and the Pixel 7 device profile incl. its real Android
+               user agent). width:100% forces a DEFINITE width instead of
+               relying on shrink-to-fit-track sizing at all, and overflow:hidden
+               clips this one element specifically as a hard backstop, on top of
+               (not instead of) the html/body one - belt and suspenders, since
+               min-width:0 alone measurably wasn't enough here. */
             min-width: 0;
+            width: 100%;
+            overflow: hidden;
         }
         .timer-control-row .section {
             margin: 0;
-            min-width: 0; /* same reasoning, one level down: each of the three
-                              columns is itself a grid item of this row. */
+            min-width: 0;
+            width: 100%;
+            box-sizing: border-box; /* so 100% + this class's own padding doesn't itself overflow the row */
         }
         .main-buttons {
             display: flex;
@@ -525,15 +531,19 @@
         </div>
 
         <div class="timer-control-row">
-            <!-- Col 1: Timer preview + ends-at info. justify-content was
-                 "center": harmless at the old, roughly-square 185px column
-                 width, but now that this column stretches to match Timer
-                 Mode's (often much taller) content, its own fixed-size
-                 content (iframe + a couple of text lines) doesn't grow to
-                 fill that height the way col 2's buttons do via flex-grow -
-                 centering it just adds a visible gap above the "Preview"
-                 label and below "Ends at", while the other two columns'
-                 content starts flush at the top. flex-start matches that. -->
+            <!-- Col 1: Timer preview + ends-at info. justify-content:center was
+                 harmless at the old, roughly-square 185px column width, but
+                 once this column started stretching to match Timer Mode's
+                 (often much taller) content, its own fixed-size content
+                 (iframe + a couple of text lines) didn't grow to fill that
+                 height the way col 2's buttons do via flex-grow - centering
+                 left a gap above "Preview" and below "Ends at"; flex-start
+                 alone just moved that same gap entirely below "Ends at"
+                 instead. The iframe itself is flex:1 now (see
+                 .display-preview-frame) so it actually grows to fill that
+                 leftover space - a bigger, more prominent preview instead of
+                 dead space either way - while the label/text rows below stay
+                 their natural size (no flex-grow) rather than also stretching. -->
             <div class="section" style="display:flex;flex-direction:column;align-items:center;justify-content:flex-start;">
                 <div style="align-self:flex-start;width:100%;display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
                     <span style="font-size:0.85rem;color:#999;font-weight:500;">Preview</span>
