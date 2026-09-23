@@ -377,6 +377,25 @@
                 const fittedPx = Math.max(8, targetPx * (availWidth / naturalWidth) * 0.96);
                 outerEl.style.fontSize = `${fittedPx}px`;
             }
+            // baseTimerFontSize's calc(100dvh - 230px) is a starting estimate for
+            // vertical room, not a guarantee - it's just one constant, and the
+            // actual stack (speaker name + digits + "up next", which can wrap to
+            // 2 lines) can still end up taller than what's really available,
+            // hard-clipped by body's overflow:hidden with no warning (reported as
+            // the bottom of the digits getting cut off in Control's Preview
+            // iframe - a much shorter, wider box than this constant was tuned
+            // against). There was never a vertical equivalent of the width check
+            // above, only this horizontal one - add it: if the whole stack is
+            // taller than the container, shrink this element's font-size by the
+            // same ratio fitToWidth uses. Same cache-gate as above, so this is
+            // not a per-frame layout read (only when text/size/viewport actually
+            // changed) - cheap and, on a real display that already comfortably
+            // fits, a no-op.
+            if (container.scrollHeight > container.clientHeight + 1) {
+                const heightRatio = container.clientHeight / container.scrollHeight;
+                const currentPx = parseFloat(getComputedStyle(outerEl).fontSize);
+                outerEl.style.fontSize = `${Math.max(8, currentPx * heightRatio * 0.96)}px`;
+            }
             lastFitted[key] = { text, base: baseFontSize, viewportW: window.innerWidth, viewportH: window.innerHeight };
         }
 

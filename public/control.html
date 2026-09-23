@@ -229,15 +229,24 @@
             justify-content: center;
             gap: 6px;
             line-height: 1;
-            border-radius: 20px;
+            border-radius: 24px;
+            /* Square, at the width col 2 gives it (see .timer-control-row) -
+               aspect-ratio derives height from that width, so it no longer
+               needs flex-grow to fill the column's full (often much taller,
+               to match Timer Mode) stretched height the way a plain
+               flex-basis did before; flex:0 0 auto below stops it growing
+               past its own square size. Smaller and square, rather than
+               tall-and-full-height, was the explicit ask. */
+            aspect-ratio: 1;
+            flex: 0 0 auto;
         }
         .main-action-button .icon-svg {
-            width: 2.75rem;
-            height: 2.75rem;
+            width: 45%;
+            height: 45%;
             flex-shrink: 0;
         }
         .main-action-button .label {
-            font-size: 0.8rem;
+            font-size: 0.85rem;
             font-weight: 700;
             letter-spacing: 0.04em;
             text-transform: uppercase;
@@ -357,8 +366,11 @@
                Timer Mode/Quick Presets (col 3) used to be a bare 1fr, so on a
                wide desktop monitor it soaked up all the leftover width and the
                Timer/Clock buttons stretched out absurdly wide; it's now capped
-               at 380px, a sane width for its actual content. */
-            grid-template-columns: minmax(240px, 1.3fr) 155px minmax(260px, 380px);
+               at 380px, a sane width for its actual content. Col 2 widened
+               155px -> 190px, taking it from Preview on purpose, so
+               Start/Pause/Reset have room to be genuinely square (see
+               .main-action-button) rather than tall rectangles. */
+            grid-template-columns: minmax(240px, 1.2fr) 190px minmax(260px, 380px);
             gap: 16px;
             align-items: stretch;
             /* .timer-control-row is itself a grid ITEM of .container (spanning
@@ -589,15 +601,15 @@
             </div>
             <!-- Col 2: Compact controls -->
             <div class="section main-buttons">
-                <button class="button primary main-action-button" id="playPauseBtn" onclick="togglePlayPause()" style="padding:14px 8px;flex:1.4;">
+                <button class="button primary main-action-button" id="playPauseBtn" onclick="togglePlayPause()" style="padding:10px;">
                     <svg class="icon-svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path id="playPauseIconPath" d="M8 5v14l11-7z"></path></svg>
                     <span class="label" id="playPauseLabel">Start</span>
                 </button>
-                <button class="button danger main-action-button" onclick="resetTimer()" style="padding:10px 8px;flex:1;">
+                <button class="button danger main-action-button" onclick="resetTimer()" style="padding:10px;">
                     <svg class="icon-svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg>
                     <span class="label">Reset</span>
                 </button>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;flex:1;">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
                     <button class="button secondary" onclick="nudge(-5*60*1000)" style="font-size:0.8rem;padding:8px;">−5 min</button>
                     <button class="button secondary" onclick="nudge(60*1000)" style="font-size:0.8rem;padding:8px;">+1 min</button>
                     <button class="button secondary" onclick="nudge(-60*1000)" style="font-size:0.8rem;padding:8px;">−1 min</button>
