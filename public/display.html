@@ -110,6 +110,13 @@
             opacity: 0;
             pointer-events: none;
         }
+        /* Embedded in Control's non-interactive Preview iframe (?preview=1) -
+           these are setup controls a viewer there could never actually click
+           (the iframe is pointer-events:none), so just don't show them. */
+        html.preview-embed .controls,
+        html.preview-embed .settings {
+            display: none;
+        }
         .control-button {
             padding: 0.5rem 1rem;
             background: rgba(255,255,255,0.15);
@@ -284,6 +291,17 @@
         // Access is entirely token-based - the token in the URL IS the credential.
         const urlParams = new URLSearchParams(window.location.search);
         const displayToken = urlParams.get('token');
+
+        // Control's embedded Preview loads this same page in a small,
+        // non-interactive (pointer-events:none) iframe. Reported there:
+        // Fullscreen/Home stopped auto-hiding after their normal few seconds.
+        // Clicking either would do nothing anyway in a pointer-events:none
+        // iframe, so rather than chase exactly why their idle timer isn't
+        // settling in that context, simplest correct fix is to not render
+        // operator/setup controls that don't apply there in the first place.
+        if (urlParams.get('preview') === '1') {
+            document.documentElement.classList.add('preview-embed');
+        }
 
         if (!displayToken) {
             const hadOldLink = urlParams.has('room');

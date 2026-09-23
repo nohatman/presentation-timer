@@ -212,26 +212,35 @@
             background: #ffa726;
             box-shadow: 0 4px 8px rgba(255, 143, 0, 0.4);
         }
-        /* Start/Pause/Resume/Reset: icon big and on its own line, small state
-           label underneath - "super clear" glanceable buttons for the controls
-           reached for constantly during a live show. The label is kept (not
-           icon-only) because Start and Resume share the same ▶ icon; only the
-           color (green vs amber vs green) and word tell them apart at a glance
-           otherwise. */
+        /* Start/Pause/Resume/Reset: a big, bold, app-icon-style button - the
+           glyph fills most of it, state label in bold small-caps underneath -
+           for the controls reached for constantly during a live show. The
+           label is kept (not icon-only) because Start and Resume share the
+           same triangle; only color and word tell them apart otherwise.
+           Rounded corners (20px, well past the base .button's 4px) and SVG
+           glyphs instead of emoji: emoji render inconsistently in size/shape
+           across platforms/fonts (this whole app's mobile-overflow saga was a
+           reminder of how differently the "same" CSS can render device to
+           device), where a plain vector shape looks identical everywhere. */
         .main-action-button {
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            gap: 4px;
+            gap: 6px;
             line-height: 1;
+            border-radius: 20px;
         }
-        .main-action-button .icon {
-            font-size: 1.9rem;
+        .main-action-button .icon-svg {
+            width: 2.75rem;
+            height: 2.75rem;
+            flex-shrink: 0;
         }
         .main-action-button .label {
-            font-size: 0.85rem;
-            font-weight: 600;
+            font-size: 0.8rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
         }
         .presets {
             display: grid;
@@ -325,11 +334,15 @@
            a preview, not a second remote for the display's own Fullscreen button. */
         .display-preview-frame {
             width: 100%;
-            flex: 1 1 260px; /* grow to fill the column's leftover height (see
+            flex: 1 1 340px; /* grow to fill the column's leftover height (see
                                  the Col 1 comment below) instead of leaving it
-                                 as dead space under "Ends at"; 260px floor for
-                                 rows where this column isn't the tallest one. */
-            min-height: 260px;
+                                 as dead space under "Ends at". display.html's
+                                 own responsive sizing (built for a real full
+                                 screen/tab, tall-narrow or wide-normal) wasn't
+                                 tuned for a short, wide box - a 260px floor
+                                 was tight enough to clip the bottom line in
+                                 some states; 340px gives it more headroom. */
+            min-height: 340px;
             border: 0;
             border-radius: 8px;
             background: #0a0a0a;
@@ -464,11 +477,32 @@
            column instead. Desktop layout (grid-template-columns above) is
            untouched - this only applies under the breakpoint. */
         @media (max-width: 700px) {
+            /* Single column at this width is just vertical stacking - CSS
+               Grid isn't actually needed for that, and getComputedStyle,
+               checked directly on a real device via the debug overlay, showed
+               .timer-control-row (a grid ITEM of .container, itself a grid
+               CONTAINER) resolving to ~806px width against a ~371px track
+               even with min-width:0, width:100% and overflow:hidden all set -
+               a genuine disagreement between that browser's percentage-width
+               resolution for this nested-grid-item shape and what the spec
+               says should happen, that couldn't be reproduced locally to
+               debug further. Switching both to plain block flow below this
+               breakpoint sidesteps grid-item sizing entirely rather than
+               continuing to fight it - a block child's width:auto has no
+               such ambiguity, full stop. Margins replace `gap` (which this
+               breakpoint no longer has, without display:grid) between what
+               were columns/grid items. */
             .container {
-                grid-template-columns: 1fr;
+                display: block;
+            }
+            .container > * {
+                margin-bottom: 16px;
             }
             .timer-control-row {
-                grid-template-columns: 1fr;
+                display: block;
+            }
+            .timer-control-row > .section {
+                margin-bottom: 16px;
             }
         }
     </style>
@@ -556,11 +590,11 @@
             <!-- Col 2: Compact controls -->
             <div class="section main-buttons">
                 <button class="button primary main-action-button" id="playPauseBtn" onclick="togglePlayPause()" style="padding:14px 8px;flex:1.4;">
-                    <span class="icon" id="playPauseIcon">▶️</span>
+                    <svg class="icon-svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path id="playPauseIconPath" d="M8 5v14l11-7z"></path></svg>
                     <span class="label" id="playPauseLabel">Start</span>
                 </button>
                 <button class="button danger main-action-button" onclick="resetTimer()" style="padding:10px 8px;flex:1;">
-                    <span class="icon">⏹️</span>
+                    <svg class="icon-svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg>
                     <span class="label">Reset</span>
                 </button>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;flex:1;">
@@ -1283,7 +1317,9 @@
                 // Point the Preview at the real display page - it connects with its
                 // own socket using this same link, so it's the actual display,
                 // just scaled down, not a second implementation of it in here.
-                document.getElementById('displayPreviewFrame').src = roomInfo.displayUrl;
+                // preview=1 tells it to skip rendering Fullscreen/Home - dead
+                // controls in a pointer-events:none iframe (see display.html).
+                document.getElementById('displayPreviewFrame').src = roomInfo.displayUrl + '&preview=1';
             }
 
             if (typeof state.serverNow === 'number') serverClockOffsetMs = state.serverNow - Date.now();
@@ -1651,24 +1687,27 @@
         }
 
         // Update play/pause button based on state
+        const PLAY_ICON_PATH = 'M8 5v14l11-7z';
+        const PAUSE_ICON_PATH = 'M6 5h4v14H6zM14 5h4v14h-4z';
+
         function updatePlayPauseButton() {
             const btn = document.getElementById('playPauseBtn');
-            const icon = document.getElementById('playPauseIcon');
+            const iconPath = document.getElementById('playPauseIconPath');
             const label = document.getElementById('playPauseLabel');
             const mode = currentState.mode;
 
             // Color follows the timer's status, same convention as the status
             // badge (running=green, paused=amber, stopped=neutral/green-to-go).
             if (mode === 'running') {
-                icon.textContent = '⏸️';
+                iconPath.setAttribute('d', PAUSE_ICON_PATH);
                 label.textContent = 'Pause';
                 btn.className = 'button warn main-action-button';
             } else if (mode === 'paused') {
-                icon.textContent = '▶️';
+                iconPath.setAttribute('d', PLAY_ICON_PATH);
                 label.textContent = 'Resume';
                 btn.className = 'button primary main-action-button';
             } else {
-                icon.textContent = '▶️';
+                iconPath.setAttribute('d', PLAY_ICON_PATH);
                 label.textContent = 'Start';
                 btn.className = 'button primary main-action-button';
             }
