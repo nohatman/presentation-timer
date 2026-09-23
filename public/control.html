@@ -222,6 +222,11 @@
            across platforms/fonts (this whole app's mobile-overflow saga was a
            reminder of how differently the "same" CSS can render device to
            device), where a plain vector shape looks identical everywhere. */
+        .main-action-row {
+            display: flex;
+            flex-direction: column; /* stacked on desktop - mobile override below puts them side by side */
+            gap: 10px;
+        }
         .main-action-button {
             display: flex;
             flex-direction: column;
@@ -229,31 +234,21 @@
             justify-content: center;
             gap: 6px;
             line-height: 1;
-            border-radius: 24px;
-            /* Square, at the width col 2 gives it (see .timer-control-row) -
-               aspect-ratio derives height from that width, so it no longer
-               needs flex-grow to fill the column's full (often much taller,
-               to match Timer Mode) stretched height the way a plain
-               flex-basis did before; flex:0 0 auto below stops it growing
-               past its own square size. Smaller and square, rather than
-               tall-and-full-height, was the explicit ask.
-               max-width + align-self:center are load-bearing on mobile: col 2
-               is a fixed 190px on desktop, but below the 700px breakpoint
-               .timer-control-row is single-column block stacking (see that
-               media query), so col 2 becomes the FULL PAGE WIDTH there -
-               without a cap, .main-buttons' default align-items:stretch
-               would make each button stretch to that full width, and
-               aspect-ratio:1 would then make them ~380px squares. Capping
-               the width and centering instead of stretching keeps them the
-               same reasonable size on both. */
-            aspect-ratio: 1;
+            border-radius: 20px;
+            /* Explicit width+height, not aspect-ratio: aspect-ratio combined
+               with max-width in a flex item was verified (via a direct fetch
+               of the deployed CSS, and confirmed correct in local testing) to
+               still render inconsistently on a real device - a known class of
+               cross-browser interaction, not a mistake to keep arguing with.
+               Fixed pixels can't be interpreted differently. 150px (down from
+               190) since 190 read as too big even stacked on desktop. */
+            width: 150px;
+            height: 150px;
             flex: 0 0 auto;
-            max-width: 190px;
-            align-self: center;
         }
         .main-action-button .icon-svg {
-            width: 45%;
-            height: 45%;
+            width: 42%;
+            height: 42%;
             flex-shrink: 0;
         }
         .main-action-button .label {
@@ -261,6 +256,10 @@
             font-weight: 700;
             letter-spacing: 0.04em;
             text-transform: uppercase;
+        }
+        .nudge-button {
+            font-size: 0.9rem;
+            padding: 12px 8px;
         }
         .presets {
             display: grid;
@@ -543,19 +542,18 @@
             .timer-control-row > .section {
                 margin-bottom: 16px;
             }
-            /* aspect-ratio:1 + max-width:190px (see .main-action-button) was
-               verified deployed and correct via direct fetch of the live
-               file, yet a real device still rendered these as ~380px squares
-               - aspect-ratio's interaction with max-width in a flex item is a
-               known class of cross-browser inconsistency, not a mistake worth
-               continuing to argue with. Explicit, fixed pixel width AND
-               height, no aspect-ratio, no flex-basis ambiguity: nothing left
-               to interpret differently. */
+            /* Stacked (one above the other) made sense on desktop's narrow
+               190px column, but on mobile col 2 is the full page width (see
+               .timer-control-row above) - stacked there meant two full-width
+               130px-tall buttons, a lot of scrolling for not much reason.
+               Side by side instead, and smaller - "too big to be functional"
+               was the actual complaint, not just the shape. */
+            .main-action-row {
+                flex-direction: row;
+            }
             .main-action-button {
-                width: 130px;
-                height: 130px;
-                aspect-ratio: auto;
-                max-width: none;
+                width: 120px;
+                height: 120px;
             }
         }
     </style>
@@ -631,24 +629,31 @@
                 <div class="display-preview-wrap" id="displayPreviewWrap">
                     <iframe class="display-preview-frame" id="displayPreviewFrame" title="Live display preview" loading="lazy"></iframe>
                 </div>
-                <div id="previewNowTime" style="margin-top:8px;font-size:0.78rem;color:#999;font-family:monospace;text-align:center;width:100%;"></div>
-                <div id="endsAtDisplay" style="font-size:0.78rem;color:#90caf9;text-align:center;min-height:2.5em;line-height:1.5;width:100%;"></div>
+                <div id="previewNowTime" style="margin-top:8px;font-size:0.95rem;color:#999;font-family:monospace;text-align:center;width:100%;"></div>
+                <div id="endsAtDisplay" style="font-size:0.95rem;color:#90caf9;text-align:center;min-height:2.5em;line-height:1.5;width:100%;"></div>
             </div>
             <!-- Col 2: Compact controls -->
             <div class="section main-buttons">
-                <button class="button primary main-action-button" id="playPauseBtn" onclick="togglePlayPause()" style="padding:10px;">
-                    <svg class="icon-svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path id="playPauseIconPath" d="M8 5v14l11-7z"></path></svg>
-                    <span class="label" id="playPauseLabel">Start</span>
-                </button>
-                <button class="button danger main-action-button" onclick="resetTimer()" style="padding:10px;">
-                    <svg class="icon-svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg>
-                    <span class="label">Reset</span>
-                </button>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
-                    <button class="button secondary" onclick="nudge(-5*60*1000)" style="font-size:0.8rem;padding:8px;">−5 min</button>
-                    <button class="button secondary" onclick="nudge(60*1000)" style="font-size:0.8rem;padding:8px;">+1 min</button>
-                    <button class="button secondary" onclick="nudge(-60*1000)" style="font-size:0.8rem;padding:8px;">−1 min</button>
-                    <button class="button secondary" onclick="nudge(5*60*1000)" style="font-size:0.8rem;padding:8px;">+5 min</button>
+                <div class="main-action-row">
+                    <button class="button primary main-action-button" id="playPauseBtn" onclick="togglePlayPause()" style="padding:8px;">
+                        <svg class="icon-svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path id="playPauseIconPath" d="M8 5v14l11-7z"></path></svg>
+                        <span class="label" id="playPauseLabel">Start</span>
+                    </button>
+                    <button class="button danger main-action-button" onclick="resetTimer()" style="padding:8px;">
+                        <svg class="icon-svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg>
+                        <span class="label">Reset</span>
+                    </button>
+                </div>
+                <!-- Consistent ordering: minus always left, plus always right, both
+                     columns ascending top-to-bottom (1 min, then 5 min) - the old
+                     layout had the minus column descending (-5, -1) while the plus
+                     column ascended (+1, +5), which read as arbitrary. Fine
+                     adjustment on top since it's the one reached for more often. -->
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                    <button class="button secondary nudge-button" onclick="nudge(-60*1000)">−1 min</button>
+                    <button class="button secondary nudge-button" onclick="nudge(60*1000)">+1 min</button>
+                    <button class="button secondary nudge-button" onclick="nudge(-5*60*1000)">−5 min</button>
+                    <button class="button secondary nudge-button" onclick="nudge(5*60*1000)">+5 min</button>
                 </div>
             </div>
             <!-- Col 3: Timer mode + quick presets -->
