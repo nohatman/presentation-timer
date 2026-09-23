@@ -2532,6 +2532,21 @@
                     `.timer-control-row grid-template-columns = ${row ? getComputedStyle(row).gridTemplateColumns : 'n/a'}`,
                     `viewport meta content = ${document.querySelector('meta[name="viewport"]')?.content || 'MISSING'}`,
                 ];
+                // width:100%/overflow:hidden should be unambiguous, so if the
+                // row is still 806px despite them, the question becomes: does
+                // this browser's OWN computed style even reflect the CSS rule
+                // (parse/apply problem), or does computed style say the right
+                // thing while the actual painted box disagrees (would point to
+                // a genuine rendering bug rather than a CSS logic problem)?
+                if (row) {
+                    const rs = getComputedStyle(row);
+                    lines.push(`.timer-control-row COMPUTED: display=${rs.display} width=${rs.width} minWidth=${rs.minWidth} overflow=${rs.overflow} boxSizing=${rs.boxSizing}`);
+                }
+                if (cont) {
+                    const cs = getComputedStyle(cont);
+                    lines.push(`.container COMPUTED: display=${cs.display} width=${cs.width}`);
+                }
+                lines.push(`element counts: .timer-control-row x${document.querySelectorAll('.timer-control-row').length}, .container x${document.querySelectorAll('.container').length}`);
                 // Trace width down the ancestor chain from <html> to .container -
                 // whichever one first jumps from ~vw to ~806 is where it starts.
                 // getBoundingClientRect() is used throughout (not clientWidth),
