@@ -1694,9 +1694,19 @@
             return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         }
 
+        // Only a live text edit (name/duration field) has state worth protecting
+        // from a rebuild - a focused row or button doesn't. This used to check
+        // "is focus anywhere inside #rundownList", which also matched the Remove/
+        // Edit/Add buttons themselves (they're inside the list). Since clicking
+        // any of those moves focus onto the button, that made the guard block the
+        // server round-trip's re-render for as long as focus stayed anywhere in
+        // the list - in practice, the whole time you were actively editing - so
+        // Remove clicks kept landing on rows using stale, already-shifted indices
+        // baked into the old, un-refreshed DOM. That's the "delete unpredictable"
+        // bug.
         function rundownHasFocus() {
-            const list = document.getElementById('rundownList');
-            return !!(list && list.contains(document.activeElement) && document.activeElement !== document.body);
+            const el = document.activeElement;
+            return !!(el && el.classList && (el.classList.contains('rundown-name-input') || el.classList.contains('rundown-time-input')));
         }
 
         function isRundownDragging() {
@@ -1879,19 +1889,34 @@
             renderRundownList();
         }
 
+        // Add and Remove re-render the row list immediately (optimistic - don't
+        // wait for the server round-trip). Every row's index is baked straight
+        // into its buttons' onclick handlers (e.g. removeRundownItem(3)), and
+        // splicing rundownItems shifts every later row's true index - so the DOM
+        // must be rebuilt right away or those baked-in indices point at the wrong
+        // item. Previously this only happened once the server echoed 'setRundown'
+        // back, which could take a network round-trip; a second click (e.g.
+        // Remove on another row right after the first) in that window acted on a
+        // now-stale index and hit the wrong row. That's the "delete unpredictable"
+        // bug. toggleRundownEditMode() also renders, so the explicit call in
+        // addRundownItem below only matters when a row is added while already in
+        // edit mode (the common repeat-Add case). updateRundownItem deliberately
+        // does NOT do this - see its own comment.
         function addRundownItem() {
-            if (!rundownEditMode) toggleRundownEditMode();
+            if (!rundownEditMode) toggleRundownEditMode(); // also renders once, in edit mode
             // Insert immediately after the active/selected line (currentRundownIndex -
             // the same index used for the row highlight and for Take/Prev/Next), or at
             // the end when nothing is active/selected.
             const insertAt = RundownText.insertionIndex(currentRundownIndex, rundownItems.length);
             rundownItems.splice(insertAt, 0, { name: '', durationMs: 30 * 60 * 1000 });
             focusRundownIndex = insertAt; // renderRundownList focuses + scrolls to the new row
+            renderRundownList();
             socket.emit('setRundown', rundownItems);
         }
 
         function removeRundownItem(idx) {
             rundownItems.splice(idx, 1);
+            renderRundownList();
             socket.emit('setRundown', rundownItems);
         }
 
@@ -1902,6 +1927,15 @@
                 const { min, sec } = parseTimeInput(value);
                 rundownItems[idx].durationMs = (min * 60 + sec) * 1000;
             }
+            // Deliberately not re-rendering here: this fires on blur/change, which
+            // for Tab or the Up/Down row-jump in handleRundownKeydown() below is
+            // itself part of moving focus to another field. Rebuilding the list's
+            // innerHTML mid-transition would detach the node the browser is about
+            // to focus, silently dropping focus instead of landing on the next
+            // row. Nothing here shifts array order/length, so the (still-valid)
+            // indices baked into the current DOM don't need an immediate refresh -
+            // the next incoming server state naturally reconciles it once nothing
+            // in the list has focus. See rundownHasFocus() and add/removeRundownItem.
             socket.emit('setRundown', rundownItems);
         }
 
