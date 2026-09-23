@@ -2502,7 +2502,16 @@
                     `mobile media query matches (<=700px)? ${window.matchMedia('(max-width: 700px)').matches}`,
                     `.container grid-template-columns = ${cont ? getComputedStyle(cont).gridTemplateColumns : 'n/a'}`,
                     `.timer-control-row grid-template-columns = ${row ? getComputedStyle(row).gridTemplateColumns : 'n/a'}`,
+                    `viewport meta content = ${document.querySelector('meta[name="viewport"]')?.content || 'MISSING'}`,
                 ];
+                // Trace width down the ancestor chain from <html> to .container -
+                // whichever one first jumps from ~vw to ~806 is where it starts.
+                // getBoundingClientRect() is used throughout (not clientWidth),
+                // since it reflects true layout size even under overflow:hidden
+                // clipping - same reasoning as the offender scan below.
+                const chain = [document.documentElement, document.body, document.querySelector('.wrapper'), cont, row].filter(Boolean);
+                lines.push('ancestor width chain (html -> body -> .wrapper -> .container -> .timer-control-row):');
+                lines.push('  ' + chain.map(el => `${el.tagName.toLowerCase()}${el.className ? '.' + el.className.split(' ')[0] : ''}=${Math.round(el.getBoundingClientRect().width)}`).join(' -> '));
                 const offenders = Array.from(document.querySelectorAll('body *'))
                     .map(el => ({ el, r: el.getBoundingClientRect() }))
                     .filter(o => o.r.right > vw + 1 && o.r.width > 0 && o.el.id !== 'debugOverlay')
