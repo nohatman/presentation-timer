@@ -344,9 +344,27 @@
             grid-template-columns: minmax(240px, 1.3fr) 155px minmax(260px, 380px);
             gap: 16px;
             align-items: stretch;
+            /* .timer-control-row is itself a grid ITEM of .container (spanning
+               its single mobile column via grid-column:1/-1), and a grid item's
+               default min-width is "auto" - the same "don't shrink below your
+               own content's min-content size" rule flex items have, which the
+               very first fix in this file (the Prev/Take/Next row) already ran
+               into one level down. Traced via the debug overlay: on a real
+               device this row's own min-content came out to ~806px (something
+               nested several levels down - likely font/emoji metrics differing
+               from this dev environment's rendering - refuses to shrink), while
+               its own track in .container was only ~371px on an 411px phone.
+               Nothing clips that overflow horizontally except the html/body
+               overflow-x:hidden backstop, which hides it from view instead of
+               fixing it - hence "everything too big, can't scroll to it".
+               min-width:0 lets Grid actually shrink this item to fit its track,
+               same fix, same reason, one level higher up the tree. */
+            min-width: 0;
         }
         .timer-control-row .section {
             margin: 0;
+            min-width: 0; /* same reasoning, one level down: each of the three
+                              columns is itself a grid item of this row. */
         }
         .main-buttons {
             display: flex;
@@ -2512,6 +2530,10 @@
                 const chain = [document.documentElement, document.body, document.querySelector('.wrapper'), cont, row].filter(Boolean);
                 lines.push('ancestor width chain (html -> body -> .wrapper -> .container -> .timer-control-row):');
                 lines.push('  ' + chain.map(el => `${el.tagName.toLowerCase()}${el.className ? '.' + el.className.split(' ')[0] : ''}=${Math.round(el.getBoundingClientRect().width)}`).join(' -> '));
+                if (row) {
+                    lines.push('  timer-control-row\'s 3 columns (Preview / buttons / Timer Mode):');
+                    lines.push('  ' + Array.from(row.children).map(el => `${Math.round(el.getBoundingClientRect().width)}`).join(' | '));
+                }
                 const offenders = Array.from(document.querySelectorAll('body *'))
                     .map(el => ({ el, r: el.getBoundingClientRect() }))
                     .filter(o => o.r.right > vw + 1 && o.r.width > 0 && o.el.id !== 'debugOverlay')
