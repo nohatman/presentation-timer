@@ -543,6 +543,20 @@
             .timer-control-row > .section {
                 margin-bottom: 16px;
             }
+            /* aspect-ratio:1 + max-width:190px (see .main-action-button) was
+               verified deployed and correct via direct fetch of the live
+               file, yet a real device still rendered these as ~380px squares
+               - aspect-ratio's interaction with max-width in a flex item is a
+               known class of cross-browser inconsistency, not a mistake worth
+               continuing to argue with. Explicit, fixed pixel width AND
+               height, no aspect-ratio, no flex-basis ambiguity: nothing left
+               to interpret differently. */
+            .main-action-button {
+                width: 130px;
+                height: 130px;
+                aspect-ratio: auto;
+                max-width: none;
+            }
         }
     </style>
 </head>
