@@ -2494,9 +2494,14 @@
                 const de = document.documentElement;
                 const vv = window.visualViewport;
                 const vw = window.innerWidth;
+                const row = document.querySelector('.timer-control-row');
+                const cont = document.querySelector('.container');
                 const lines = [
                     `innerWidth=${vw} scrollWidth=${de.scrollWidth} clientWidth=${de.clientWidth} (scrollWidth is unreliable - see below instead)`,
                     `devicePixelRatio=${window.devicePixelRatio} vv.width=${vv ? vv.width.toFixed(1) : 'n/a'} vv.scale=${vv ? vv.scale.toFixed(2) : 'n/a'} vv.offsetLeft=${vv ? vv.offsetLeft.toFixed(1) : 'n/a'}`,
+                    `mobile media query matches (<=700px)? ${window.matchMedia('(max-width: 700px)').matches}`,
+                    `.container grid-template-columns = ${cont ? getComputedStyle(cont).gridTemplateColumns : 'n/a'}`,
+                    `.timer-control-row grid-template-columns = ${row ? getComputedStyle(row).gridTemplateColumns : 'n/a'}`,
                 ];
                 const offenders = Array.from(document.querySelectorAll('body *'))
                     .map(el => ({ el, r: el.getBoundingClientRect() }))
