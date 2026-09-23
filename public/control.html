@@ -7,6 +7,17 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <script src="/socket.io/socket.io.js"></script>
     <style>
+        /* Nothing on this page is meant to scroll sideways. Without this, a
+           single element overflowing its box anywhere (nothing here clips
+           horizontally) widens the whole page past the viewport - which is
+           what let the Rundown nav row's overflow (see the comment above it)
+           cascade all the way up to a page-wide mobile zoom/scroll glitch.
+           This is a backstop against the *next* such element, not a fix for
+           any specific one - the underlying overflow should still be found
+           and fixed like that one was, since this only hides the symptom. */
+        html, body {
+            overflow-x: hidden;
+        }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             margin: 0;
@@ -189,6 +200,39 @@
             background: #941616;
             box-shadow: 0 4px 8px rgba(183, 28, 28, 0.4);
         }
+        /* Pause: amber, matching the amber already used for "paused" everywhere
+           else (status-badge.paused, warning thresholds) - a running timer is
+           green like status-badge.running, Reset is red like status-badge.stopped. */
+        .button.warn {
+            background: #ff8f00;
+            color: #1a1a1a;
+            box-shadow: 0 2px 4px rgba(255, 143, 0, 0.3);
+        }
+        .button.warn:hover {
+            background: #ffa726;
+            box-shadow: 0 4px 8px rgba(255, 143, 0, 0.4);
+        }
+        /* Start/Pause/Resume/Reset: icon big and on its own line, small state
+           label underneath - "super clear" glanceable buttons for the controls
+           reached for constantly during a live show. The label is kept (not
+           icon-only) because Start and Resume share the same ▶ icon; only the
+           color (green vs amber vs green) and word tell them apart at a glance
+           otherwise. */
+        .main-action-button {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            line-height: 1;
+        }
+        .main-action-button .icon {
+            font-size: 1.9rem;
+        }
+        .main-action-button .label {
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
         .presets {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
@@ -274,27 +318,30 @@
             0%, 100% { opacity: 1; }
             50% { opacity: 0.5; }
         }
-        .timer-preview {
-            font-size: 2.5rem;
-            font-weight: bold;
-            text-align: center;
-            padding: 20px;
+        /* The Preview embeds the real Display page (see displayPreviewFrame) so
+           it's never a second, hand-maintained rendering of the countdown that
+           can drift from what colors/appearance/messages are actually showing -
+           it just IS the display, scaled down. pointer-events:none since this is
+           a preview, not a second remote for the display's own Fullscreen button. */
+        .display-preview-frame {
+            width: 100%;
+            height: 260px;
+            border: 0;
             border-radius: 8px;
             background: #0a0a0a;
-            color: #4caf50;
-            font-variant-numeric: tabular-nums;
-            transition: color 0.3s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            pointer-events: none;
         }
-        .timer-preview.amber { color: #ffb300; }
-        .timer-preview.red { color: #f44336; }
-        .timer-preview.white { color: #e5e5e5; }
         .timer-control-row {
             grid-column: 1 / -1;
             display: grid;
-            grid-template-columns: 185px 155px 1fr;
+            /* Preview (col 1) is the thing worth glancing at most, so it's the
+               one column that grows with extra width - previously fixed at
+               185px, the narrowest of the three regardless of screen size.
+               Timer Mode/Quick Presets (col 3) used to be a bare 1fr, so on a
+               wide desktop monitor it soaked up all the leftover width and the
+               Timer/Clock buttons stretched out absurdly wide; it's now capped
+               at 380px, a sane width for its actual content. */
+            grid-template-columns: minmax(240px, 1.3fr) 155px minmax(260px, 380px);
             gap: 16px;
             align-items: stretch;
         }
@@ -327,6 +374,7 @@
         }
         .mode-row {
             display: flex;
+            flex-wrap: wrap;
             gap: 8px;
             align-items: center;
             margin-bottom: 8px;
@@ -338,10 +386,11 @@
         }
         #endAtTime.draft, #duration.draft { border-color: #ff9800; box-shadow: 0 0 0 1px #ff9800; }
         .end-time-display {
-            font-size: 0.9rem;
+            font-size: 0.85rem;
             color: #90caf9;
             font-family: monospace;
-            margin-left: 8px;
+            min-height: 1.2em; /* reserve the line so rows above don't shift as it appears/clears */
+            margin: 2px 0 8px 0;
         }
         .room-header {
             grid-column: 1 / -1;
@@ -464,13 +513,20 @@
                     <span style="font-size:0.85rem;color:#999;font-weight:500;">Preview</span>
                     <span class="status-badge" id="statusBadge">Stopped</span>
                 </div>
-                <div class="timer-preview" id="timerPreview">00:00</div>
-                <div id="endsAtDisplay" style="margin-top:8px;font-size:0.78rem;color:#90caf9;text-align:center;min-height:2.5em;line-height:1.5;width:100%;"></div>
+                <iframe class="display-preview-frame" id="displayPreviewFrame" title="Live display preview" loading="lazy"></iframe>
+                <div id="previewNowTime" style="margin-top:8px;font-size:0.78rem;color:#999;font-family:monospace;text-align:center;width:100%;"></div>
+                <div id="endsAtDisplay" style="font-size:0.78rem;color:#90caf9;text-align:center;min-height:2.5em;line-height:1.5;width:100%;"></div>
             </div>
             <!-- Col 2: Compact controls -->
             <div class="section main-buttons">
-                <button class="button primary" id="playPauseBtn" onclick="togglePlayPause()" style="font-size:1rem;padding:12px;flex:1;">▶️ Start</button>
-                <button class="button danger" onclick="resetTimer()" style="flex:1;padding:10px;">⏹️ Reset</button>
+                <button class="button primary main-action-button" id="playPauseBtn" onclick="togglePlayPause()" style="padding:14px 8px;flex:1.4;">
+                    <span class="icon" id="playPauseIcon">▶️</span>
+                    <span class="label" id="playPauseLabel">Start</span>
+                </button>
+                <button class="button danger main-action-button" onclick="resetTimer()" style="padding:10px 8px;flex:1;">
+                    <span class="icon">⏹️</span>
+                    <span class="label">Reset</span>
+                </button>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;flex:1;">
                     <button class="button secondary" onclick="nudge(-5*60*1000)" style="font-size:0.8rem;padding:8px;">−5 min</button>
                     <button class="button secondary" onclick="nudge(60*1000)" style="font-size:0.8rem;padding:8px;">+1 min</button>
@@ -487,8 +543,8 @@
                         <input type="text" id="duration" class="time-text" placeholder="0:00" pattern="\d{1,3}:\d{2}" title="Format: MM:SS" maxlength="6" inputmode="numeric" aria-describedby="durationDraftHint">
                         <button id="durationApplyBtn" class="button primary" onclick="applyDurationDraft()" disabled style="padding:6px 12px;">Set</button>
                         <button id="durationCancelBtn" class="button secondary" onclick="cancelDurationDraft()" hidden title="Discard the unapplied duration" style="padding:6px 10px;">✕</button>
-                        <span class="end-time-display" id="endTimeCalc"></span>
                     </div>
+                    <div class="end-time-display" id="durationEndTimeCalc"></div>
                     <div id="durationDraftHint" role="status" hidden style="font-size:0.75rem;color:#ff9800;margin-top:-2px;margin-bottom:6px;"></div>
                     <div class="mode-row" style="margin-top:6px;">
                         <button class="mode-button" id="modeEndAtBtn" onclick="setTimerMode('endAt')" title="Select an end time first">End At</button>
@@ -496,15 +552,20 @@
                         <button id="endAtApplyBtn" class="button primary" onclick="applyEndAtDraft()" disabled style="padding:6px 12px;">Set</button>
                         <button id="endAtCancelBtn" class="button secondary" onclick="cancelEndAtDraft()" hidden title="Discard the unapplied time" style="padding:6px 10px;">✕</button>
                     </div>
+                    <div class="end-time-display" id="endAtEndTimeCalc"></div>
                     <div id="endAtDraftHint" role="status" hidden style="font-size:0.75rem;color:#ff9800;margin-top:-2px;margin-bottom:6px;"></div>
                     <div id="modeApplyHint" hidden style="font-size:0.75rem;color:#888;margin-top:6px;">Timer is running - mode/value changes apply at next Start or Reset.</div>
                 </div>
                 <div>
                     <div style="font-size:0.8rem;color:#999;margin-bottom:6px;font-weight:500;text-transform:uppercase;letter-spacing:0.05em;">Display Shows</div>
-                    <div style="display:flex;gap:8px;">
+                    <div style="display:flex;gap:8px;margin-bottom:10px;">
                         <button class="button" id="modeTimerBtn" onclick="setOutputMode('timer')" style="flex:1;">⏱️ Timer</button>
                         <button class="button" id="modeClockBtn" onclick="setOutputMode('clock')" style="flex:1;">🕐 Clock</button>
                     </div>
+                    <label class="checkbox-label" style="margin-bottom:0;padding:8px 12px;">
+                        <input type="checkbox" id="countUp">
+                        <span style="font-size:0.9rem;">Count up after zero</span>
+                    </label>
                 </div>
                 <div>
                     <div style="font-size:0.8rem;color:#999;margin-bottom:6px;font-weight:500;text-transform:uppercase;letter-spacing:0.05em;">Quick Presets <span style="color:#444;font-size:0.75rem;text-transform:none;letter-spacing:0;">· Ctrl+Click to save</span></div>
@@ -525,13 +586,22 @@
                 <span id="rundownItemCount" style="font-size:0.8rem;color:#999;font-weight:normal;"></span>
             </h3>
             <div id="rundownPanel" style="display:none;margin-top:16px;">
-                <!-- Navigation controls -->
+                <!-- Navigation controls. min-width:0 + flex-wrap:wrap are load-bearing
+                     on narrow phones: the .button class's default 16px horizontal
+                     padding, times 3 buttons with no min-width override, could add up
+                     to more than a min-content sum this row's share of the width could
+                     fit - flex items don't shrink below their own min-content by
+                     default, so the row (and everything after it, unclipped, all the
+                     way up to <body>) was overflowing the viewport width whenever the
+                     Rundown panel was open. That's what was forcing the whole page to
+                     zoom/scroll oddly on mobile - this row was the widest thing on the
+                     page, but only once uncollapsed. -->
                 <div style="background:#1a1a1a;border:1px solid #333;border-radius:8px;padding:12px;margin-bottom:10px;">
-                    <div style="display:flex;gap:8px;margin-bottom:10px;">
-                        <button onclick="rundownPrev()" class="button secondary" style="flex:1;">◀ Prev</button>
+                    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+                        <button onclick="rundownPrev()" class="button secondary" style="flex:1;min-width:0;padding:12px 6px;">◀ Prev</button>
                         <button onclick="takeCurrentRundownItem()" class="button primary"
-                                style="flex:2;background:#2e7d32;border-color:#2e7d32;">▶ Take</button>
-                        <button onclick="rundownNext()" class="button secondary" style="flex:1;">Next ▶</button>
+                                style="flex:2;min-width:0;padding:12px 6px;background:#2e7d32;border-color:#2e7d32;">▶ Take</button>
+                        <button onclick="rundownNext()" class="button secondary" style="flex:1;min-width:0;padding:12px 6px;">Next ▶</button>
                     </div>
                     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.9rem;color:#ccc;">
                         <input type="checkbox" id="rundownAutoStart" style="width:16px;height:16px;">
@@ -611,35 +681,26 @@
             </div>
         </div>
 
-        <div class="section">
-            <h3>Display &amp; Speed</h3>
-            <label class="checkbox-label" style="margin-bottom:8px;">
-                <input type="checkbox" id="countUp">
-                <span>Count up after zero</span>
-            </label>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <!-- Display Appearance - Full Width, collapsed by default. Colors,
+             chromakey, element visibility, and (moved in here to keep the main
+             timer controls above focused on what's used live) size/speed - none
+             of these are look-once-per-show settings, not something reached for
+             repeatedly while running a room. -->
+        <details class="section" id="appearanceSection" style="grid-column: 1 / -1;">
+            <summary style="cursor:pointer;font-size:1.1rem;color:#f5f5f5;font-weight:600;">Display Appearance</summary>
+            <div style="margin-top:12px;display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:16px;">
                 <div>
+                    <div style="font-size:0.8rem;color:#999;margin-bottom:8px;font-weight:500;text-transform:uppercase;letter-spacing:0.05em;">Display size &amp; speed</div>
                     <div style="font-size:0.8rem;color:#999;margin-bottom:4px;">Display size: <span id="displayScaleValue" style="color:#90caf9;font-weight:bold;">1.5×</span></div>
                     <input type="range" id="displayScaleSlider" min="0.5" max="2.0" step="0.1" value="1.5"
                            style="width:100%;height:5px;accent-color:#90caf9;margin-bottom:6px;"
                            oninput="updateDisplayScalePreview()">
-                    <button onclick="applyDisplayScale()" class="button" style="width:100%;background:#2196f3;color:white;padding:8px;font-size:0.85rem;">Apply Size</button>
-                </div>
-                <div>
+                    <button onclick="applyDisplayScale()" class="button" style="width:100%;background:#2196f3;color:white;padding:8px;font-size:0.85rem;margin-bottom:12px;">Apply Size</button>
                     <div style="font-size:0.8rem;color:#999;margin-bottom:4px;">Speed: <span id="speedValue" style="color:#4caf50;font-weight:bold;">1.0×</span></div>
                     <input type="range" id="speedSlider" min="0.5" max="1.5" step="0.05" value="1.0"
                            style="width:100%;height:5px;accent-color:#4caf50;margin-bottom:6px;">
                     <button onclick="applySpeed()" class="button" style="width:100%;background:#4caf50;color:white;padding:8px;font-size:0.85rem;font-weight:bold;">Apply Speed</button>
                 </div>
-            </div>
-        </div>
-
-        <!-- Display Appearance - Full Width, collapsed by default. Lets a shared
-             display link be branded/chromakeyed without touching the main timer
-             controls above (colors + element visibility only - never layout). -->
-        <details class="section" id="appearanceSection" style="grid-column: 1 / -1;">
-            <summary style="cursor:pointer;font-size:1.1rem;color:#f5f5f5;font-weight:600;">Display Appearance</summary>
-            <div style="margin-top:12px;display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:16px;">
                 <div>
                     <div style="font-size:0.8rem;color:#999;margin-bottom:8px;font-weight:500;text-transform:uppercase;letter-spacing:0.05em;">Timer text color</div>
                     <div style="display:flex;flex-direction:column;gap:8px;">
@@ -813,38 +874,53 @@
             updateEndTimeCalc();
         }
 
-        // Update calculated end time display
+        // Each mode gets its own end-time preview, on its own line under that
+        // mode's row (previously a single shared span sat inline in the Duration
+        // row, so it also showed End At's preview text there whenever End At was
+        // the active mode - and being squeezed for room against the Set button
+        // is what made that row wrap messily). Both are computed independently
+        // of which mode is currently active, so each row always explains itself.
         function updateEndTimeCalc() {
-            const display = document.getElementById('endTimeCalc');
-            if (currentTimerMode === 'duration') {
+            const durationDisplay = document.getElementById('durationEndTimeCalc');
+            // Set is disabled for Duration whenever the timer isn't stopped (see
+            // refreshDurationDraftUI), so while running/paused there is nothing
+            // this preview could actually apply to - a "→ ends at" that keeps
+            // ticking forward with the clock while nothing else is happening
+            // just reads as a mystery. modeApplyHint already covers that case.
+            if (currentState.mode === 'stopped') {
                 const durationMs = getDurationMs();
                 if (durationMs > 0) {
                     const endTime = new Date(Date.now() + durationMs);
                     const hours = endTime.getHours().toString().padStart(2, '0');
                     const minutes = endTime.getMinutes().toString().padStart(2, '0');
                     const seconds = endTime.getSeconds().toString().padStart(2, '0');
-                    display.textContent = `→ ends at ${hours}:${minutes}:${seconds}`;
+                    durationDisplay.textContent = `→ ends at ${hours}:${minutes}:${seconds}`;
                 } else {
-                    display.textContent = '';
+                    durationDisplay.textContent = '';
                 }
             } else {
-                // endAt mode - show the target end time with seconds
-                const endAtTime = currentState.endAtTarget || '';
-                if (endAtTime) {
-                    const [h, m] = endAtTime.split(':');
-                    const now = new Date();
-                    const target = new Date(now);
-                    target.setHours(parseInt(h || '0'), parseInt(m || '0'), 0, 0);
-                    if (target <= now) {
-                        target.setDate(target.getDate() + 1);
-                    }
-                    const hours = target.getHours().toString().padStart(2, '0');
-                    const minutes = target.getMinutes().toString().padStart(2, '0');
-                    const seconds = target.getSeconds().toString().padStart(2, '0');
-                    display.textContent = `→ ends at ${hours}:${minutes}:${seconds}`;
-                } else {
-                    display.textContent = '';
+                durationDisplay.textContent = '';
+            }
+
+            // End At's Set stays live (it can retarget a running timer with
+            // confirmation - see the comment above endAtDirty below), so its
+            // preview is always shown.
+            const endAtDisplay = document.getElementById('endAtEndTimeCalc');
+            const endAtTime = currentState.endAtTarget || '';
+            if (endAtTime) {
+                const [h, m] = endAtTime.split(':');
+                const now = new Date();
+                const target = new Date(now);
+                target.setHours(parseInt(h || '0'), parseInt(m || '0'), 0, 0);
+                if (target <= now) {
+                    target.setDate(target.getDate() + 1);
                 }
+                const hours = target.getHours().toString().padStart(2, '0');
+                const minutes = target.getMinutes().toString().padStart(2, '0');
+                const seconds = target.getSeconds().toString().padStart(2, '0');
+                endAtDisplay.textContent = `→ ends at ${hours}:${minutes}:${seconds}`;
+            } else {
+                endAtDisplay.textContent = '';
             }
         }
 
@@ -1168,12 +1244,16 @@
                 roomInfo = state.roomInfo;
                 roomNameEl.textContent = roomInfo.slug;
                 displayLink.href = roomInfo.displayUrl;
+                // Point the Preview at the real display page - it connects with its
+                // own socket using this same link, so it's the actual display,
+                // just scaled down, not a second implementation of it in here.
+                document.getElementById('displayPreviewFrame').src = roomInfo.displayUrl;
             }
 
             if (typeof state.serverNow === 'number') serverClockOffsetMs = state.serverNow - Date.now();
             currentState = state;
             updateStatus();
-            updateTimerPreview();
+            updateEndsAt();
             updatePlayPauseButton();
 
             if (!slidersInitialised) {
@@ -1443,47 +1523,25 @@
             el.innerHTML = html;
         }
 
-        function updateTimerPreview() {
-            const previewEl = document.getElementById('timerPreview');
-
-            if (currentState.showClock) {
-                previewEl.textContent = new Date().toLocaleTimeString('en-GB');
-                previewEl.className = 'timer-preview white';
-                return;
-            }
-
-            let remainingMs = 0;
-            let overMs = 0;
-            if (currentState.mode === 'running' || currentState.mode === 'paused') {
-                const elapsed = currentState.mode === 'running'
-                    ? (Date.now() - currentState.startTime - currentState.accumulatedPauseMs) * currentState.speed
-                    : (currentState.pauseTime - currentState.startTime - currentState.accumulatedPauseMs) * currentState.speed;
-                remainingMs = Math.max(0, currentState.durationMs - elapsed);
-                if (currentState.countUp) overMs = Math.max(0, elapsed - currentState.durationMs);
-            } else {
-                remainingMs = currentState.durationMs || 0;
-            }
-
-            if (currentState.countUp && overMs > 0) {
-                previewEl.textContent = formatCountdownDisplay(overMs / 1000, '-');
-                previewEl.className = 'timer-preview red';
-            } else {
-                previewEl.textContent = formatCountdownDisplay(remainingMs / 1000);
-                previewEl.className = 'timer-preview';
-                if (remainingMs <= currentState.redThresholdMs) {
-                    previewEl.classList.add('red');
-                } else if (remainingMs <= currentState.amberThresholdMs) {
-                    previewEl.classList.add('amber');
-                }
-            }
-            updateEndsAt();
+        // "Now" alongside "Ends at" turns the Preview card into a self-contained
+        // status overview (what's showing, what time it is, when it'll finish) -
+        // ticks unconditionally, every second, regardless of timer mode.
+        function updatePreviewNowTime() {
+            const el = document.getElementById('previewNowTime');
+            if (!el) return;
+            el.textContent = `Now: ${new Date(serverNowMs()).toLocaleTimeString('en-GB')}`;
         }
+        updatePreviewNowTime(); // seed immediately - don't wait a full second for first paint
 
-        // Update preview every second (always, including for clock mode)
+        // The countdown digits themselves come from the embedded Display iframe
+        // now (see displayPreviewFrame) - it ticks itself. All that's left to
+        // tick here each second is "Now" (always) and the "Ends at HH:MM:SS"
+        // wall-clock line below it (only while running/paused: stopped and
+        // clock-mode don't change on their own between state pushes - see
+        // updateEndsAt's early return).
         setInterval(() => {
-            if (currentState.mode === 'running' || currentState.showClock) {
-                updateTimerPreview();
-            } else if (currentState.mode === 'paused') {
+            updatePreviewNowTime();
+            if (currentState.mode === 'running' || currentState.mode === 'paused') {
                 updateEndsAt();
             }
         }, 1000);
@@ -1559,17 +1617,24 @@
         // Update play/pause button based on state
         function updatePlayPauseButton() {
             const btn = document.getElementById('playPauseBtn');
+            const icon = document.getElementById('playPauseIcon');
+            const label = document.getElementById('playPauseLabel');
             const mode = currentState.mode;
-            
+
+            // Color follows the timer's status, same convention as the status
+            // badge (running=green, paused=amber, stopped=neutral/green-to-go).
             if (mode === 'running') {
-                btn.textContent = '⏸️ Pause';
-                btn.className = 'button secondary';
+                icon.textContent = '⏸️';
+                label.textContent = 'Pause';
+                btn.className = 'button warn main-action-button';
             } else if (mode === 'paused') {
-                btn.textContent = '▶️ Resume';
-                btn.className = 'button primary';
+                icon.textContent = '▶️';
+                label.textContent = 'Resume';
+                btn.className = 'button primary main-action-button';
             } else {
-                btn.textContent = '▶️ Start';
-                btn.className = 'button primary';
+                icon.textContent = '▶️';
+                label.textContent = 'Start';
+                btn.className = 'button primary main-action-button';
             }
         }
 
