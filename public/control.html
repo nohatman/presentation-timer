@@ -666,6 +666,37 @@
             text-decoration: underline;
         }
 
+        /* Current / new remaining / new end rows in the End-at confirmation. */
+        .confirm-rows {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 6px 16px;
+            margin: 0 0 16px 0;
+            padding: 12px 14px;
+            background: #121212;
+            border: 1px solid #2a2a2a;
+            border-radius: 8px;
+        }
+        .confirm-rows dt {
+            color: #999;
+            font-size: 0.85rem;
+            align-self: center;
+        }
+        .confirm-rows dd {
+            margin: 0;
+            color: #fafafa;
+            font-family: monospace;
+            font-size: 1.05rem;
+            text-align: right;
+        }
+        .confirm-rows dd.over {
+            color: #ce93d8; /* overrun purple, as on the display */
+        }
+        .confirm-rows dd.new {
+            color: #90caf9;
+            font-weight: 700;
+        }
+
         /* View-only (observer) state - see setViewOnly. Unmistakable at a
            glance: an orange frame round the whole viewport, a colder page cast,
            every control greyed out, and the pinned strip with Take over. The
@@ -1050,6 +1081,25 @@
                 <div style="display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap;">
                     <button onclick="closeTakeOverModal()" style="padding: 10px 18px; border-radius: 8px; border: 1px solid #444; background: transparent; color: #ccc; cursor: pointer; font-size: 0.9rem;">Cancel</button>
                     <button id="takeOverConfirmBtn" onclick="confirmTakeOver()" style="padding: 10px 18px; border-radius: 8px; border: none; background: #1976d2; color: #fff; cursor: pointer; font-weight: 600; font-size: 0.9rem;">Take Control</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- End-at change confirmation for a running/paused timer - same look and
+             behaviour as the Take Over modal above (not window.confirm): Escape /
+             click-outside / Cancel all send nothing. See openEndAtConfirm. -->
+        <div id="endAtConfirmOverlay" data-view-ok style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 1000; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box;" onclick="if (event.target === this) closeEndAtConfirm();">
+            <div id="endAtConfirmModal" role="dialog" aria-modal="true" aria-labelledby="endAtConfirmTitle" aria-describedby="endAtConfirmNote" tabindex="-1" style="background: #1a1a1a; border: 1px solid #333; border-radius: 12px; padding: 24px; max-width: 400px; width: 100%; box-sizing: border-box; box-shadow: 0 8px 32px rgba(0,0,0,0.5); outline: none;">
+                <h2 id="endAtConfirmTitle" style="margin: 0 0 14px 0; font-size: 1.2rem; color: #fafafa;">Change the end time?</h2>
+                <dl class="confirm-rows">
+                    <dt>Remaining now</dt><dd id="endAtConfirmCurrent"></dd>
+                    <dt>New remaining</dt><dd id="endAtConfirmProposed"></dd>
+                    <dt>New end time</dt><dd id="endAtConfirmEnd"></dd>
+                </dl>
+                <p id="endAtConfirmNote" style="margin: 0 0 20px 0; color: #ccc; font-size: 0.9rem; line-height: 1.5;"></p>
+                <div style="display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap;">
+                    <button onclick="closeEndAtConfirm()" style="padding: 10px 18px; border-radius: 8px; border: 1px solid #444; background: transparent; color: #ccc; cursor: pointer; font-size: 0.9rem;">Cancel</button>
+                    <button id="endAtConfirmBtn" onclick="confirmEndAtChange()" style="padding: 10px 18px; border-radius: 8px; border: none; background: #1976d2; color: #fff; cursor: pointer; font-weight: 600; font-size: 0.9rem;">Change end time</button>
                 </div>
             </div>
         </div>
@@ -1649,21 +1699,76 @@
         function applyEndAtDraft() {
             const v = endAtEl.value;
             if (endAtApplying || !isValidEndAt(v) || v === (currentState.endAtTarget || '')) return;
+            const send = () => sendEndAt(v); // the one and only send path from Apply
             if (currentState.mode !== 'stopped') {
                 const cur = liveRemainingMs(currentState);
                 const p = proposeEndAt(v);
                 if (Math.abs(p.remainingMs - cur) >= 1000) {
-                    const endTxt = new Date(p.endMs).toLocaleTimeString('en-GB') + (p.tomorrow ? ' (tomorrow)' : '');
-                    const ok = confirm(`Change the End-at time of the ${currentState.mode.toUpperCase()} timer?\n\n` +
-                        `Current remaining:  ${fmtRemaining(cur)}\n` +
-                        `Proposed remaining: ${fmtRemaining(p.remainingMs)}\n` +
-                        `Proposed end time:  ${endTxt}\n\n` +
-                        (currentState.mode === 'paused' ? 'The timer is paused; remaining is shown as of now. ' : '') +
-                        'This changes the live timer and every display immediately.');
-                    if (!ok) return; // Cancel: nothing was sent, nothing changed
+                    openEndAtConfirm(v, send); // Cancel / Escape / click-outside: nothing is sent
+                    return;
                 }
             }
-            sendEndAt(v);
+            send();
+        }
+
+        // In-page confirmation for retargeting a live timer (replaces the old
+        // blocking window.confirm, same content). Unlike confirm() the page keeps
+        // running while it's open, so: the figures tick live (they'd otherwise go
+        // stale), Confirm re-checks the draft is still what was confirmed, and the
+        // dialog closes itself if this panel loses control meanwhile (setViewOnly).
+        let endAtConfirmPending = null; // { v, send }
+        let endAtConfirmTimer = null;
+
+        function renderEndAtConfirm() {
+            if (!endAtConfirmPending) return;
+            const s = currentState;
+            const cur = liveRemainingMs(s);
+            const p = proposeEndAt(endAtConfirmPending.v);
+            const curEl = document.getElementById('endAtConfirmCurrent');
+            curEl.textContent = fmtRemaining(cur);
+            curEl.classList.toggle('over', cur < 0);
+            const newEl = document.getElementById('endAtConfirmProposed');
+            newEl.textContent = fmtRemaining(p.remainingMs);
+            newEl.classList.add('new');
+            const endEl = document.getElementById('endAtConfirmEnd');
+            endEl.textContent = new Date(p.endMs).toLocaleTimeString('en-GB') + (p.tomorrow ? ' (tomorrow)' : '');
+            endEl.classList.add('new');
+            document.getElementById('endAtConfirmTitle').textContent = `Change the end time of the ${s.mode === 'paused' ? 'paused' : 'running'} timer?`;
+            document.getElementById('endAtConfirmNote').textContent =
+                (s.mode === 'paused' ? 'The timer is paused; remaining is shown as of now. ' : '') +
+                'This changes the live timer and every display immediately.';
+        }
+
+        function handleEndAtConfirmKeydown(e) {
+            if (e.key === 'Escape') closeEndAtConfirm();
+        }
+
+        function openEndAtConfirm(v, send) {
+            endAtConfirmPending = { v, send };
+            renderEndAtConfirm();
+            clearInterval(endAtConfirmTimer);
+            endAtConfirmTimer = setInterval(renderEndAtConfirm, 1000);
+            document.getElementById('endAtConfirmOverlay').style.display = 'flex';
+            document.getElementById('endAtConfirmModal').focus();
+            document.addEventListener('keydown', handleEndAtConfirmKeydown);
+        }
+
+        function closeEndAtConfirm() {
+            const wasOpen = !!endAtConfirmPending;
+            endAtConfirmPending = null;
+            clearInterval(endAtConfirmTimer);
+            document.getElementById('endAtConfirmOverlay').style.display = 'none';
+            document.removeEventListener('keydown', handleEndAtConfirmKeydown);
+            if (wasOpen && !viewOnly) endAtEl.focus(); // back to the draft, still unapplied
+        }
+
+        function confirmEndAtChange() {
+            const pending = endAtConfirmPending;
+            closeEndAtConfirm();
+            // Only send what was actually confirmed: if the draft or the committed
+            // target moved on while the dialog was open, do nothing.
+            if (!pending || endAtApplying || endAtEl.value !== pending.v || pending.v === (currentState.endAtTarget || '')) return;
+            pending.send();
         }
 
         // One request, one acknowledgement. A failure (server too old to know the event,
@@ -1984,8 +2089,10 @@
             document.body.classList.toggle('view-only', on);
             document.getElementById('viewOnlyBar').hidden = !on;
             if (reason) document.getElementById('viewOnlyReason').textContent = reason;
-            // Drop focus from any control being edited at the moment control was lost.
+            // Drop focus from any control being edited at the moment control was lost,
+            // and abandon an open End-at confirmation - it could no longer apply.
             if (on && isViewOnlyBlocked(document.activeElement)) document.activeElement.blur();
+            if (on) closeEndAtConfirm();
         }
 
         function blockInViewOnly(e) {

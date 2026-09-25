@@ -80,3 +80,15 @@ test('opening End at with no valid time only shows its editor - it never arms En
   // arming happens only once the field holds a valid time, and goes back through setTimerMode's own validity gate
   assert.match(functionBody('armEndAtIfPending'), /endAtViewPending && isValidEndAt\(endAtEl\.value\)\) setTimerMode\('endAt'\)/);
 });
+
+test('live End-at retarget asks via the in-page modal (not window.confirm), and Confirm only sends what was confirmed', () => {
+  const apply = functionBody('applyEndAtDraft');
+  assert.ok(!/\bconfirm\(/.test(apply), 'no blocking window.confirm');
+  assert.match(apply, /openEndAtConfirm\(v, send\);[^\n]*\n\s*return;/, 'a live change opens the modal and returns without sending');
+  for (const fn of ['openEndAtConfirm', 'closeEndAtConfirm', 'renderEndAtConfirm']) {
+    assert.ok(!/socket\.emit|sendEndAt\(/.test(functionBody(fn)), `${fn} must not send`);
+  }
+  const confirmBody = functionBody('confirmEndAtChange');
+  assert.match(confirmBody, /endAtEl\.value !== pending\.v/, 're-checks the draft is unchanged before sending');
+  assert.match(functionBody('setViewOnly'), /closeEndAtConfirm\(\)/, 'losing control abandons an open confirmation');
+});
