@@ -33,4 +33,13 @@ function sanitizeDeviceName(value) {
   return Array.from(cleaned).slice(0, MAX_DEVICE_NAME_LENGTH).join('').trim();
 }
 
-module.exports = { sanitizeDeviceName, MAX_DEVICE_NAME_LENGTH };
+// Panel id: a random per-browser-tab id the Control page keeps in sessionStorage
+// (so it survives a refresh of that tab, but a second tab is a separate panel).
+// Lets the server recognise the controller coming back after its connection
+// dropped and give it its seat back. Like the name it's self-declared, so it
+// grants nothing a control-token holder couldn't already do with Take Over.
+function sanitizePanelId(value) {
+  return typeof value === 'string' && /^[A-Za-z0-9_-]{8,64}$/.test(value) ? value : null;
+}
+
+module.exports = { sanitizeDeviceName, sanitizePanelId, MAX_DEVICE_NAME_LENGTH };

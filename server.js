@@ -8,7 +8,7 @@ const auth = require('./auth');
 const { buildRoomLinks } = require('./urls');
 const bridgeStatus = require('./bridgeStatus');
 const timerModes = require('./timerModes');
-const { sanitizeDeviceName } = require('./deviceNames');
+const { sanitizeDeviceName, sanitizePanelId } = require('./deviceNames');
 const crypto = require('crypto');
 const buildInfo = require('./buildInfo');
 
@@ -52,6 +52,63 @@ const timerRooms = new Map();
 // higher trust tier, and are deliberately exempt from this entirely.
 const roomControllers = new Map();
 
+// Control belongs to a PANEL (a Control page tab, identified by the panelId it
+// keeps in sessionStorage), not to one socket connection. A controller's
+// connection routinely drops and comes back - a page refresh, a phone locking
+// or backgrounding the tab, a Wi-Fi/4G hand-over - and each of those used to
+// hand control straight to another connected panel, so the operator who had
+// just taken control found themselves an observer again. Now:
+//  * roomControllerPanels remembers which panel holds the seat (and its name);
+//  * when the controlling socket disconnects, the seat is RESERVED for that
+//    panel for CONTROLLER_GRACE_MS - if it reconnects (same panelId) it simply
+//    gets it back; other panels see "<name> is disconnected" meanwhile;
+//  * only if it doesn't return in time does the previous behaviour happen
+//    (promote another connected control panel, else leave the seat empty).
+// "Same panel" = same tab (panelId), or - once that tab is gone - the same
+// browser/device (deviceId, localStorage), so closing the tab and opening the
+// link again still gets the seat back; a second tab open ALONGSIDE the first
+// doesn't take it.
+// Take Over stays available to every panel throughout - nobody is ever locked
+// out waiting for a reservation to expire. A page that sends no panelId can't
+// be recognised on return, so it keeps the old immediate hand-over.
+// 30 min, not seconds: a phone that's locked or pocketed through a whole talk
+// should still wake up as the controller. Holding the seat that long costs
+// nothing, since every other panel can Take Over with one tap at any moment.
+const CONTROLLER_GRACE_MS = Number(process.env.CONTROLLER_GRACE_MS) || 30 * 60 * 1000;
+const roomControllerPanels = new Map(); // roomId -> { panelId, deviceId, name }
+const controllerGraceTimers = new Map(); // roomId -> timeout, only while a reservation is pending
+
+function clearControllerGrace(roomId) {
+  const t = controllerGraceTimers.get(roomId);
+  if (t) clearTimeout(t);
+  controllerGraceTimers.delete(roomId);
+}
+
+function setRoomController(roomId, socket) {
+  clearControllerGrace(roomId);
+  roomControllers.set(roomId, socket.id);
+  roomControllerPanels.set(roomId, { panelId: socket.panelId, deviceId: socket.deviceId, name: socket.deviceName });
+}
+
+// Room deleted/cleaned up: drop everything, including a pending reservation.
+function forgetRoomController(roomId) {
+  clearControllerGrace(roomId);
+  roomControllers.delete(roomId);
+  roomControllerPanels.delete(roomId);
+}
+
+// Previous behaviour: first other connected control panel in the room, if any.
+function promoteAnotherController(roomId, excludeSocketId) {
+  const socketsInRoom = io.sockets.adapter.rooms.get(roomId);
+  for (const socketId of socketsInRoom || []) {
+    if (socketId === excludeSocketId) continue;
+    const other = io.sockets.sockets.get(socketId);
+    if (other && other.clientType === 'control') { setRoomController(roomId, other); return; }
+  }
+  roomControllers.delete(roomId);
+  roomControllerPanels.delete(roomId);
+}
+
 // Physical Display Output (CDEther) compact status — P2.1. In-memory only,
 // fed by a narrowly-scoped `bridgeStatus` event from display-role sockets
 // riding their existing read-only connection (see the handler inside
@@ -67,11 +124,19 @@ bridgeStatusRegistry.startSweep((roomId, status) => {
 
 // activeControllerName: the controller panel's self-chosen device name (see
 // deviceNames.js - a label, not identity), or null if it never sent one.
-// Additive field: a listener that only reads activeControllerSocketId is unaffected.
+// reconnecting: the seat is reserved for a controller whose connection just
+// dropped (activeControllerSocketId is null meanwhile). Both are additive
+// fields: a listener that only reads activeControllerSocketId is unaffected.
 function controllerStatusPayload(roomId) {
   const activeId = roomControllers.get(roomId) || null;
   const active = activeId && io.sockets.sockets.get(activeId);
-  return { activeControllerSocketId: activeId, activeControllerName: (active && active.deviceName) || null };
+  const reconnecting = !activeId && controllerGraceTimers.has(roomId);
+  const reserved = roomControllerPanels.get(roomId);
+  return {
+    activeControllerSocketId: activeId,
+    activeControllerName: (active && active.deviceName) || (reconnecting && reserved && reserved.name) || null,
+    reconnecting,
+  };
 }
 
 function broadcastControllerStatus(roomId) {
@@ -206,6 +271,8 @@ io.on('connection', (socket) => {
   // Control panels introduce themselves with a device name (display sockets
   // have no use for one). Sanitised; null if missing/blank.
   socket.deviceName = role === 'control' ? sanitizeDeviceName(socket.handshake.auth && socket.handshake.auth.deviceName) : null;
+  socket.panelId = role === 'control' ? sanitizePanelId(socket.handshake.auth && socket.handshake.auth.panelId) : null;
+  socket.deviceId = role === 'control' ? sanitizePanelId(socket.handshake.auth && socket.handshake.auth.deviceId) : null;
 
   console.log(`👤 Client ${socket.id} joined room: ${roomId} as ${role}`);
 
@@ -241,15 +308,21 @@ io.on('connection', (socket) => {
   // Broadcast controller count to all clients in room
   broadcastControllerCount(roomId);
 
-  // Phase 4: claim active-controller status if the slot is empty or its previous
-  // holder is no longer connected; otherwise this socket is an observer - it gets
-  // told the current status directly rather than triggering a room-wide broadcast,
-  // since nothing changed for the sockets already connected.
+  // Phase 4: claim active-controller status if this is the controlling panel
+  // coming back (same panelId - its seat is kept for it, see CONTROLLER_GRACE_MS),
+  // or if the seat is free: no connected holder and no reservation pending.
+  // Otherwise this socket is an observer - it gets told the current status
+  // directly rather than triggering a room-wide broadcast, since nothing changed
+  // for the sockets already connected.
   if (role === 'control') {
     const currentHolder = roomControllers.get(roomId);
     const holderStillConnected = currentHolder && io.sockets.sockets.get(currentHolder);
-    if (!holderStillConnected) {
-      roomControllers.set(roomId, socket.id);
+    const reserved = roomControllerPanels.get(roomId);
+    const isReturningController = !!reserved && (
+      (!!socket.panelId && reserved.panelId === socket.panelId) ||
+      (!holderStillConnected && !!socket.deviceId && reserved.deviceId === socket.deviceId));
+    if (isReturningController || (!holderStillConnected && !controllerGraceTimers.has(roomId))) {
+      setRoomController(roomId, socket);
       broadcastControllerStatus(roomId);
     } else {
       socket.emit('controllerStatus', controllerStatusPayload(roomId));
@@ -274,7 +347,7 @@ io.on('connection', (socket) => {
   // block a legitimate operator during a live event.
   socket.on('requestControl', () => {
     if (socket.clientType !== 'control') return;
-    roomControllers.set(roomId, socket.id);
+    setRoomController(roomId, socket); // also cancels any reservation for a reconnecting controller
     broadcastControllerStatus(roomId);
   });
 
@@ -285,7 +358,10 @@ io.on('connection', (socket) => {
     const name = sanitizeDeviceName(value);
     if (!name || name === socket.deviceName) return;
     socket.deviceName = name;
-    if (roomControllers.get(roomId) === socket.id) broadcastControllerStatus(roomId);
+    if (roomControllers.get(roomId) === socket.id) {
+      roomControllerPanels.set(roomId, { panelId: socket.panelId, deviceId: socket.deviceId, name });
+      broadcastControllerStatus(roomId);
+    }
     broadcastControllerCount(roomId);
   });
 
@@ -478,26 +554,26 @@ io.on('connection', (socket) => {
       }
     }
 
-    // If the departing socket was the active controller, promote another
-    // connected control-role socket in this room if one exists, else clear the
-    // slot so the next control connection claims it fresh.
+    // If the departing socket was the active controller: keep its seat reserved
+    // for CONTROLLER_GRACE_MS so the same panel reconnecting (refresh, phone
+    // wake, network blip) gets it straight back. Only if it doesn't return does
+    // the previous behaviour apply - promote another connected control panel,
+    // else leave the seat empty for the next connection. A panel that sent no
+    // panelId can't be recognised on return, so it's handed over immediately.
     if (socket.clientType === 'control' && roomControllers.get(roomId) === socket.id) {
-      let promoted = null;
-      const socketsInRoom = io.sockets.adapter.rooms.get(roomId);
-      if (socketsInRoom) {
-        for (const socketId of socketsInRoom) {
-          if (socketId === socket.id) continue;
-          const other = io.sockets.sockets.get(socketId);
-          if (other && other.clientType === 'control') {
-            promoted = socketId;
-            break;
-          }
-        }
-      }
-      if (promoted) {
-        roomControllers.set(roomId, promoted);
+      roomControllers.delete(roomId);
+      clearControllerGrace(roomId);
+      if (socket.panelId || socket.deviceId) {
+        const timer = setTimeout(() => {
+          controllerGraceTimers.delete(roomId);
+          if (roomControllers.get(roomId)) return; // reclaimed / taken over meanwhile
+          promoteAnotherController(roomId, socket.id);
+          broadcastControllerStatus(roomId);
+        }, CONTROLLER_GRACE_MS);
+        if (typeof timer.unref === 'function') timer.unref();
+        controllerGraceTimers.set(roomId, timer);
       } else {
-        roomControllers.delete(roomId);
+        promoteAnotherController(roomId, socket.id);
       }
       broadcastControllerStatus(roomId);
     }
@@ -559,7 +635,7 @@ function checkAndCleanupRoom(roomId) {
       const currentState = timerRooms.get(roomId);
       if (stillEmpty && currentState && currentState.mode === 'stopped') {
         timerRooms.delete(roomId);
-        roomControllers.delete(roomId);
+        forgetRoomController(roomId);
         db.deleteRoom(Number(roomId));
         roomCleanupTimers.delete(roomId);
         console.log(`🗑️  Cleaned up empty room: ${roomId}`);
@@ -789,7 +865,7 @@ app.delete('/api/rooms/:roomId', auth.requireDashboardAuth, auth.resolveOwnedRoo
   const { roomId, room } = req;
 
   timerRooms.delete(roomId);
-  roomControllers.delete(roomId);
+  forgetRoomController(roomId);
   db.deleteRoom(room.id);
 
   if (roomCleanupTimers.has(roomId)) {
@@ -888,7 +964,7 @@ app.delete('/api/admin/rooms/:id', auth.requireDashboardAuth, auth.requirePlatfo
   const { roomId, room } = req;
 
   timerRooms.delete(roomId);
-  roomControllers.delete(roomId);
+  forgetRoomController(roomId);
   db.deleteRoom(room.id);
 
   if (roomCleanupTimers.has(roomId)) {

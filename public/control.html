@@ -1975,11 +1975,37 @@
         }
 
         let myDeviceName = loadDeviceName();
+
+        // Two random ids the server uses to give control back to this panel when
+        // its connection drops and returns (refresh, phone waking up, network
+        // blip) instead of handing it to another panel - see server.js:
+        //  * panel id - per browser TAB (sessionStorage: survives a refresh of
+        //    this tab; a second tab gets its own);
+        //  * device id - per browser (localStorage, like the name): if this panel
+        //    was the controller and its tab was closed, opening the link again on
+        //    the same device gets the seat back too.
+        // crypto.randomUUID only exists on https/localhost; a LAN show server over
+        // plain http falls back to getRandomValues.
+        function loadRandomId(storage, key) {
+            try {
+                const saved = storage.getItem(key);
+                if (saved && /^[A-Za-z0-9_-]{8,64}$/.test(saved)) return saved;
+            } catch {}
+            const fresh = crypto.randomUUID ? crypto.randomUUID()
+                : Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
+            try { storage.setItem(key, fresh); } catch {}
+            return fresh;
+        }
+        const safeStorage = (name) => { try { return window[name]; } catch { return null; } };
+        const myPanelId = loadRandomId(safeStorage('sessionStorage') || { getItem() {}, setItem() {} }, 'foxyPanelId');
+        const myDeviceId = loadRandomId(safeStorage('localStorage') || { getItem() {}, setItem() {} }, 'foxyDeviceId');
+
         let activeControllerId = null;
+        let controllerReconnecting = false; // the controller's connection dropped; its seat is being kept for it
         let activeControllerName = null; // null = unknown (panel never sent a name) -> "another panel"
         let connectedPanels = [];        // [{ id, name }] from controllerCount
 
-        const socket = io({ auth: { token: controlToken, deviceName: myDeviceName } });
+        const socket = io({ auth: { token: controlToken, deviceName: myDeviceName, panelId: myPanelId, deviceId: myDeviceId } });
         socket.on('connect', checkServerBuild);
 
         socket.on('authError', ({ message }) => {
@@ -2265,7 +2291,9 @@
             const takeOverBtn = document.getElementById('controllerTakeOverBtn');
 
             const who = activeControllerName || 'another panel';
-            setViewOnly(!isActiveController, wasActiveController === true && !isActiveController
+            setViewOnly(!isActiveController, controllerReconnecting
+                ? `- ${activeControllerName || 'the controlling panel'} is disconnected`
+                : wasActiveController === true && !isActiveController
                 ? `- ${who} took control`
                 : `- ${who} is in control`);
             document.getElementById('deviceNameLabel').textContent = myDeviceName;
@@ -2321,10 +2349,11 @@
             renderControllerStatusBar();
         });
 
-        socket.on('controllerStatus', ({ activeControllerSocketId, activeControllerName: name }) => {
+        socket.on('controllerStatus', ({ activeControllerSocketId, activeControllerName: name, reconnecting }) => {
             isActiveController = (activeControllerSocketId === socket.id);
             activeControllerId = activeControllerSocketId || null;
             activeControllerName = name || null;
+            controllerReconnecting = !!reconnecting;
             controllerStatusReceived = true;
             renderControllerStatusBar();
         });
