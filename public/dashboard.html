@@ -528,7 +528,7 @@
                 });
                 const data = await response.json();
                 if (!data.ok) {
-                    alert(`❌ ${data.error || 'Failed to create room'}`);
+                    uiNotice("Couldn't create the room", data.error || 'Failed to create room.');
                     return;
                 }
                 input.value = '';
@@ -536,7 +536,7 @@
                 openRoomLinksModal('Room created', slug, data.controlUrl, data.displayUrl, triggerEl);
             } catch (error) {
                 console.error('Error creating room:', error);
-                alert('❌ Failed to create room. Please try again.');
+                uiNotice("Couldn't create the room", 'Failed to create room. Please try again.');
             }
         }
 
@@ -569,7 +569,7 @@
                 const data = await response.json();
                 if (!data.ok) {
                     closeModal();
-                    alert(`❌ ${data.error || 'Failed to regenerate links'}`);
+                    uiNotice("Couldn't regenerate the links", data.error || 'Failed to regenerate links.');
                     return;
                 }
                 await fetchRooms();
@@ -577,7 +577,7 @@
             } catch (error) {
                 console.error('Error regenerating links:', error);
                 closeModal();
-                alert('❌ Failed to regenerate links. Please try again.');
+                uiNotice("Couldn't regenerate the links", 'Failed to regenerate links. Please try again.');
             }
         }
 
@@ -608,6 +608,54 @@
             document.removeEventListener('keydown', handleModalKeydown);
             if (modalTriggerEl) modalTriggerEl.focus();
             modalTriggerEl = null;
+            // Any closing that isn't the confirm button (Cancel, Escape,
+            // click-outside, another modal replacing it) answers "no".
+            if (modalResolve) { const r = modalResolve; modalResolve = null; r(false); }
+        }
+
+        // Promise-based confirm / notice on the same modal shell - replaces the
+        // browser's confirm()/alert() boxes on this page. Plain text in (escaped
+        // here), newlines kept.
+        let modalResolve = null;
+
+        function uiConfirm({ title, body, okLabel = 'OK', danger = false, notice = false }, triggerEl) {
+            closeModal(); // settle anything already open first
+            const text = escapeHtml(body || '');
+            openModal(`
+                <h2 id="modalTitle" style="margin:0 0 12px 0;font-size:1.2rem;color:#fafafa;">${escapeHtml(title)}</h2>
+                <p style="margin:0 0 20px 0;color:#ccc;font-size:0.9rem;line-height:1.5;white-space:pre-line;">${text}</p>
+                <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;">
+                    ${notice ? '' : '<button onclick="closeModal()" style="padding:10px 18px;border-radius:8px;border:1px solid #444;background:transparent;color:#ccc;cursor:pointer;font-size:0.9rem;">Cancel</button>'}
+                    <button onclick="confirmModal()" style="padding:10px 18px;border-radius:8px;border:none;background:${danger ? '#c62828' : '#1976d2'};color:#fff;cursor:pointer;font-weight:600;font-size:0.9rem;">${escapeHtml(okLabel)}</button>
+                </div>
+            `, triggerEl || document.activeElement);
+            return new Promise(resolve => { modalResolve = resolve; });
+        }
+
+        function confirmModal() {
+            const r = modalResolve;
+            modalResolve = null;
+            closeModal();
+            if (r) r(true);
+        }
+
+        const uiNotice = (title, body) => uiConfirm({ title, body, notice: true });
+
+        // Brief non-blocking confirmation for things that simply worked - a
+        // success shouldn't need a click to dismiss.
+        function uiToast(message) {
+            let el = document.getElementById('dashToast');
+            if (!el) {
+                el = document.createElement('div');
+                el.id = 'dashToast';
+                el.setAttribute('role', 'status');
+                el.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:1001;background:#2e7d32;color:#fff;padding:10px 18px;border-radius:8px;font-weight:600;box-shadow:0 6px 20px rgba(0,0,0,0.5);max-width:calc(100vw - 32px);box-sizing:border-box;';
+                document.body.appendChild(el);
+            }
+            el.textContent = message;
+            el.style.display = 'block';
+            clearTimeout(el._hide);
+            el._hide = setTimeout(() => { el.style.display = 'none'; }, 2500);
         }
 
         function flashCopied(buttonEl) {
@@ -1000,8 +1048,12 @@
 
             if (isPlatformAdmin) {
                 const clientCount = new Set(targets.map(r => r.clientName)).size;
-                const confirmMsg = `Stop ALL running rooms across ALL clients?\n\nThis will pause ${targets.length} room(s) across ${clientCount} client(s), platform-wide.\n\nContinue?`;
-                if (!confirm(confirmMsg)) return;
+                const ok = await uiConfirm({
+                    title: 'Stop ALL running rooms across ALL clients?',
+                    body: `This will pause ${targets.length} room(s) across ${clientCount} client(s), platform-wide.`,
+                    okLabel: 'Stop all', danger: true,
+                });
+                if (!ok) return;
             }
 
             await Promise.all(targets.map(r =>
@@ -1055,13 +1107,14 @@
             // Platform-admin actions on another client's room get an extra-explicit
             // confirmation naming the client; a normal client's own-room confirmation
             // is unchanged from Phase 2.
-            const confirmMsg = room.clientName
-                ? `Delete room "${room.slug}" belonging to client "${room.clientName}"?\n\nThis will:\n• Remove the room permanently\n• Disconnect all connected clients\n• Cannot be undone\n\nDelete this room?`
-                : `Are you sure you want to delete room "${room.slug}"?\n\nThis will:\n• Remove the room permanently\n• Disconnect all connected clients\n• Cannot be undone\n\nDelete this room?`;
-
-            if (!confirm(confirmMsg)) {
-                return;
-            }
+            const ok = await uiConfirm({
+                title: room.clientName
+                    ? `Delete room "${room.slug}" belonging to client "${room.clientName}"?`
+                    : `Delete room "${room.slug}"?`,
+                body: 'This will:\n• Remove the room permanently\n• Disconnect all connected clients\n• Cannot be undone',
+                okLabel: 'Delete room', danger: true,
+            });
+            if (!ok) return;
 
             try {
                 const response = await authFetch(roomActionUrl(room, ''), {
@@ -1076,10 +1129,10 @@
                 await fetchRooms();
 
                 // Show success message briefly
-                alert(`✅ Room "${room.slug}" deleted successfully`);
+                uiToast(`Room "${room.slug}" deleted`);
             } catch (error) {
                 console.error('Error deleting room:', error);
-                alert('❌ Failed to delete room. Please try again.');
+                uiNotice("Couldn't delete the room", 'Failed to delete room. Please try again.');
             }
         }
 

@@ -1104,6 +1104,20 @@
             </div>
         </div>
 
+        <!-- Generic in-page confirm/notice dialog (uiConfirm / uiNotice) - same look
+             as the Take Over modal; replaces the browser's own confirm()/alert()
+             boxes on this page. Escape / click-outside = Cancel. -->
+        <div id="appDialogOverlay" data-view-ok style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 1000; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box;" onclick="if (event.target === this) closeAppDialog(false);">
+            <div id="appDialog" role="dialog" aria-modal="true" aria-labelledby="appDialogTitle" aria-describedby="appDialogBody" tabindex="-1" style="background: #1a1a1a; border: 1px solid #333; border-radius: 12px; padding: 24px; max-width: 400px; width: 100%; box-sizing: border-box; box-shadow: 0 8px 32px rgba(0,0,0,0.5); outline: none;">
+                <h2 id="appDialogTitle" style="margin: 0 0 12px 0; font-size: 1.2rem; color: #fafafa;"></h2>
+                <p id="appDialogBody" style="margin: 0 0 20px 0; color: #ccc; font-size: 0.9rem; line-height: 1.5; white-space: pre-line;"></p>
+                <div style="display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap;">
+                    <button id="appDialogCancel" onclick="closeAppDialog(false)" style="padding: 10px 18px; border-radius: 8px; border: 1px solid #444; background: transparent; color: #ccc; cursor: pointer; font-size: 0.9rem;">Cancel</button>
+                    <button id="appDialogOk" onclick="closeAppDialog(true)" style="padding: 10px 18px; border-radius: 8px; border: none; background: #1976d2; color: #fff; cursor: pointer; font-weight: 600; font-size: 0.9rem;">OK</button>
+                </div>
+            </div>
+        </div>
+
         <div class="timer-control-row">
             <!-- Col 1: Timer preview + ends-at info. justify-content:center was
                  harmless at the old, roughly-square 185px column width; now
@@ -1711,6 +1725,49 @@
             send();
         }
 
+        // Generic in-page dialogs (replace the browser's confirm()/alert() boxes).
+        // Promise-based: resolve true for OK/confirm, false for Cancel, Escape,
+        // click-outside, or the panel losing control (setViewOnly). The page keeps
+        // running while one is open, so callers re-check anything that may have
+        // moved on before acting. Text only (textContent), never HTML.
+        let appDialogResolve = null;
+        let appDialogReturnFocus = null;
+
+        function handleAppDialogKeydown(e) {
+            if (e.key === 'Escape') closeAppDialog(false);
+        }
+
+        function openAppDialog({ title, body, okLabel = 'OK', cancelLabel = 'Cancel', danger = false, notice = false }) {
+            closeAppDialog(false); // never stack two
+            appDialogReturnFocus = document.activeElement;
+            document.getElementById('appDialogTitle').textContent = title;
+            document.getElementById('appDialogBody').textContent = body || '';
+            const ok = document.getElementById('appDialogOk');
+            ok.textContent = okLabel;
+            ok.style.background = danger ? '#c62828' : '#1976d2';
+            const cancel = document.getElementById('appDialogCancel');
+            cancel.textContent = cancelLabel;
+            cancel.hidden = notice;
+            document.getElementById('appDialogOverlay').style.display = 'flex';
+            document.getElementById('appDialog').focus();
+            document.addEventListener('keydown', handleAppDialogKeydown);
+            return new Promise(resolve => { appDialogResolve = resolve; });
+        }
+
+        function closeAppDialog(result) {
+            const resolve = appDialogResolve;
+            if (!resolve) return;
+            appDialogResolve = null;
+            document.getElementById('appDialogOverlay').style.display = 'none';
+            document.removeEventListener('keydown', handleAppDialogKeydown);
+            if (appDialogReturnFocus && appDialogReturnFocus.focus && !viewOnly) appDialogReturnFocus.focus();
+            appDialogReturnFocus = null;
+            resolve(result);
+        }
+
+        const uiConfirm = (opts) => openAppDialog(opts);
+        const uiNotice = (title, body) => openAppDialog({ title, body, notice: true });
+
         // In-page confirmation for retargeting a live timer (replaces the old
         // blocking window.confirm, same content). Unlike confirm() the page keeps
         // running while it's open, so: the figures tick live (they'd otherwise go
@@ -1901,7 +1958,7 @@
         // control token this page was opened with.
         function copyRoomLinks(event) {
             if (!roomInfo) {
-                alert('Room info not loaded yet - try again in a moment.');
+                uiNotice('Links not ready yet', "The room info hasn't loaded yet - try again in a moment.");
                 return;
             }
             const controlUrl = roomInfo.controlUrl;
@@ -1940,7 +1997,7 @@
                 btn.textContent = '✅ Copied!';
                 setTimeout(() => btn.textContent = originalText, 2000);
             }).catch(err => {
-                alert('Failed to copy: ' + err);
+                uiNotice("Couldn't copy the links", String((err && err.message) || err));
             });
         }
 
@@ -2092,7 +2149,7 @@
             // Drop focus from any control being edited at the moment control was lost,
             // and abandon an open End-at confirmation - it could no longer apply.
             if (on && isViewOnlyBlocked(document.activeElement)) document.activeElement.blur();
-            if (on) closeEndAtConfirm();
+            if (on) { closeEndAtConfirm(); closeAppDialog(false); }
         }
 
         function blockInViewOnly(e) {
@@ -2884,11 +2941,11 @@
             el.style.color = isError ? '#f44336' : '#90caf9';
         }
 
-        function importRundownList() {
+        async function importRundownList() {
             const text = document.getElementById('rundownImportText').value;
             const mode = importMode();
             // Validate first; nothing below runs unless the whole paste parsed cleanly.
-            const plan = RundownText.planImport(rundownItems, text, mode);
+            let plan = RundownText.planImport(rundownItems, text, mode);
             if (!plan.ok) {
                 setImportMsg('Nothing was changed. Fix these lines and try again:\n' +
                     plan.errors.map(e => e.line ? `  line ${e.line}: ${e.message}` : `  ${e.message}`).join('\n'), true);
@@ -2897,10 +2954,18 @@
             if (plan.added === 0) { setImportMsg(''); return; } // empty append: nothing to do (as before)
 
             if (mode === 'replace') {
-                const ok = confirm(`Replace the current rundown (${plan.removed} item${plan.removed === 1 ? '' : 's'}) ` +
-                    `with the pasted one (${plan.added} item${plan.added === 1 ? '' : 's'})?\n\n` +
-                    `The current rundown will be removed. You can undo this straight afterwards with "Undo last Replace".`);
+                const ok = await uiConfirm({
+                    title: 'Replace the rundown?',
+                    body: `Replace the current rundown (${plan.removed} item${plan.removed === 1 ? '' : 's'}) ` +
+                        `with the pasted one (${plan.added} item${plan.added === 1 ? '' : 's'})?\n\n` +
+                        `The current rundown will be removed. You can undo this straight afterwards with "Undo last Replace".`,
+                    okLabel: 'Replace', danger: true,
+                });
                 if (!ok) return;
+                // The page kept running while the dialog was open - re-plan against
+                // the rundown and paste box as they are NOW.
+                plan = RundownText.planImport(rundownItems, document.getElementById('rundownImportText').value, 'replace');
+                if (!plan.ok || plan.added === 0) return;
                 rundownBackup = { items: rundownItems.map(i => ({ name: i.name, durationMs: i.durationMs })) };
                 rundownItems = plan.items;
                 currentRundownIndex = -1;
@@ -2932,14 +2997,18 @@
             document.getElementById('speedValue').textContent = speed.toFixed(2) + 'x';
         }
 
-        function applySpeed() {
+        async function applySpeed() {
+            const clickedBtn = window.event && window.event.target; // read before any await - the global event doesn't survive it
             const speed = parseFloat(document.getElementById('speedSlider').value);
             
             // Warning if timer is running
             if (currentState.mode === 'running') {
-                if (!confirm(`⚠️ Timer is currently running.\n\nApplying speed change (${speed.toFixed(2)}x) will affect the timer immediately.\n\nContinue?`)) {
-                    return;
-                }
+                const ok = await uiConfirm({
+                    title: 'Change the speed of the running timer?',
+                    body: `Applying ${speed.toFixed(2)}x affects the running timer and every display immediately.`,
+                    okLabel: `Apply ${speed.toFixed(2)}x`,
+                });
+                if (!ok) return;
             }
 
                 // Apply speed to hidden input for compatibility
@@ -2955,7 +3024,8 @@
             emitSettings();
             
             // Visual feedback
-            const btn = event.target;
+            const btn = clickedBtn;
+            if (!btn) return;
             const originalText = btn.textContent;
             btn.textContent = '✅ Applied!';
             btn.style.background = '#388e3c';
