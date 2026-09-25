@@ -8,6 +8,7 @@ const auth = require('./auth');
 const { buildRoomLinks } = require('./urls');
 const bridgeStatus = require('./bridgeStatus');
 const timerModes = require('./timerModes');
+const { sanitizeDeviceName } = require('./deviceNames');
 const crypto = require('crypto');
 const buildInfo = require('./buildInfo');
 
@@ -64,8 +65,17 @@ bridgeStatusRegistry.startSweep((roomId, status) => {
   io.to(roomId).emit('bridgeStatusUpdate', status);
 });
 
+// activeControllerName: the controller panel's self-chosen device name (see
+// deviceNames.js - a label, not identity), or null if it never sent one.
+// Additive field: a listener that only reads activeControllerSocketId is unaffected.
+function controllerStatusPayload(roomId) {
+  const activeId = roomControllers.get(roomId) || null;
+  const active = activeId && io.sockets.sockets.get(activeId);
+  return { activeControllerSocketId: activeId, activeControllerName: (active && active.deviceName) || null };
+}
+
 function broadcastControllerStatus(roomId) {
-  io.to(roomId).emit('controllerStatus', { activeControllerSocketId: roomControllers.get(roomId) || null });
+  io.to(roomId).emit('controllerStatus', controllerStatusPayload(roomId));
 }
 
 // ============================================
@@ -193,6 +203,9 @@ io.on('connection', (socket) => {
   socket.join(roomId);
   socket.clientType = role;
   socket.roomId = roomId;
+  // Control panels introduce themselves with a device name (display sockets
+  // have no use for one). Sanitised; null if missing/blank.
+  socket.deviceName = role === 'control' ? sanitizeDeviceName(socket.handshake.auth && socket.handshake.auth.deviceName) : null;
 
   console.log(`👤 Client ${socket.id} joined room: ${roomId} as ${role}`);
 
@@ -239,7 +252,7 @@ io.on('connection', (socket) => {
       roomControllers.set(roomId, socket.id);
       broadcastControllerStatus(roomId);
     } else {
-      socket.emit('controllerStatus', { activeControllerSocketId: currentHolder });
+      socket.emit('controllerStatus', controllerStatusPayload(roomId));
     }
   }
 
@@ -263,6 +276,17 @@ io.on('connection', (socket) => {
     if (socket.clientType !== 'control') return;
     roomControllers.set(roomId, socket.id);
     broadcastControllerStatus(roomId);
+  });
+
+  // Rename this panel. Allowed for observers too - it's a label for this
+  // device, not a room/timer change. Blank/invalid names are ignored.
+  socket.on('setDeviceName', (value) => {
+    if (socket.clientType !== 'control') return;
+    const name = sanitizeDeviceName(value);
+    if (!name || name === socket.deviceName) return;
+    socket.deviceName = name;
+    if (roomControllers.get(roomId) === socket.id) broadcastControllerStatus(roomId);
+    broadcastControllerCount(roomId);
   });
 
   // Handle control commands from control panel
@@ -492,15 +516,20 @@ function broadcastControllerCount(roomId) {
   if (!socketsInRoom) return;
 
   let controllerCount = 0;
+  // Who's connected, for the Control page's panel list (additive field). Which
+  // one is in control is NOT repeated here - it would go stale on Take Over
+  // (only controllerStatus is re-sent then); the page matches ids against that.
+  const panels = [];
   for (const socketId of socketsInRoom) {
     const socket = io.sockets.sockets.get(socketId);
     if (socket && socket.clientType === 'control') {
       controllerCount++;
+      panels.push({ id: socketId, name: socket.deviceName || null });
     }
   }
 
   // Emit to all clients in room
-  io.to(roomId).emit('controllerCount', { count: controllerCount });
+  io.to(roomId).emit('controllerCount', { count: controllerCount, panels });
 }
 
 // Cleanup empty rooms after a delay

@@ -18,7 +18,7 @@ const crypto = require('crypto');
 const { execFileSync } = require('child_process');
 
 // Server-side code only: changing a page under public/ never needs a restart.
-const FINGERPRINT_FILES = ['server.js', 'auth.js', 'db.js', 'urls.js', 'bridgeStatus.js', 'timerModes.js', 'buildInfo.js'];
+const FINGERPRINT_FILES = ['server.js', 'auth.js', 'db.js', 'urls.js', 'bridgeStatus.js', 'timerModes.js', 'deviceNames.js', 'buildInfo.js'];
 
 // -> { fingerprint: '10 hex chars', missing: [names] }. Deterministic: depends only
 // on the file names and bytes (line endings normalised so a git autocrlf

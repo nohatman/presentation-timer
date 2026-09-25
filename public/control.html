@@ -666,6 +666,37 @@
             text-decoration: underline;
         }
 
+        /* This device's name chip (tap to rename) and the tappable panel count. */
+        .device-name-btn {
+            display: inline-block;
+            max-width: 220px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            padding: 3px 10px;
+            border: 1px solid rgba(144, 202, 249, 0.35);
+            border-radius: 5px;
+            background: rgba(144, 202, 249, 0.12);
+            color: #cfe6fb;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .device-name-btn:hover {
+            border-color: #90caf9;
+        }
+        .panel-count-btn {
+            padding: 3px 2px;
+            border: 0;
+            background: none;
+            color: #999;
+            font-size: 0.85rem;
+            white-space: nowrap;
+            text-decoration: underline dotted;
+            text-underline-offset: 3px;
+            cursor: pointer;
+        }
+
         /* Current / new remaining / new end rows in the End-at confirmation. */
         .confirm-rows {
             display: grid;
@@ -870,7 +901,13 @@
                 height: 0;
             }
             #controllerStatusCount {
-                font-size: 0.8rem !important; /* beats its inline 0.85rem */
+                font-size: 0.8rem;
+            }
+            .panel-count-extra {
+                display: none;
+            }
+            .device-name-btn {
+                max-width: 150px;
             }
 
             /* Preview: less card chrome so the display itself gets the width. */
@@ -1055,7 +1092,10 @@
             </div>
             <div class="room-status">
                 <span id="controllerStatusBadge" style="padding: 3px 10px; border-radius: 5px; font-weight: 700; font-size: 0.72rem; letter-spacing: 0.5px; white-space: nowrap; background: #2e7d32; color: #fff;">CONTROLLER</span>
-                <span id="controllerStatusCount" style="color: #999; font-size: 0.85rem; white-space: nowrap;"></span>
+                <!-- This device's name (tap to rename) and who else is connected -
+                     see the device-name block in the script. -->
+                <button type="button" id="deviceNameBtn" class="device-name-btn" onclick="renameDevice()" title="Rename this device" aria-label="This device's name - tap to rename">✎ <span id="deviceNameLabel"></span></button>
+                <button type="button" id="controllerStatusCount" class="panel-count-btn" onclick="showConnectedPanels()" title="Show connected control panels"></button>
                 <button id="controllerTakeOverBtn" style="display: none; padding: 5px 14px; font-size: 0.8rem; border-radius: 5px; border: none; background: #1976d2; color: #fff; cursor: pointer; white-space: nowrap;" onclick="openTakeOverModal()">Take Over</button>
                 <!-- Physical Display Output (CDEther) compact status - P2.1. Hidden
                      until the room has ever reported bridge status this session (a
@@ -1077,7 +1117,7 @@
         <div id="takeOverModalOverlay" data-view-ok style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 1000; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box;" onclick="if (event.target === this) closeTakeOverModal();">
             <div id="takeOverModal" role="dialog" aria-modal="true" aria-labelledby="takeOverModalTitle" tabindex="-1" style="background: #1a1a1a; border: 1px solid #333; border-radius: 12px; padding: 24px; max-width: 400px; width: 100%; box-sizing: border-box; box-shadow: 0 8px 32px rgba(0,0,0,0.5); outline: none;">
                 <h2 id="takeOverModalTitle" style="margin: 0 0 12px 0; font-size: 1.2rem; color: #fafafa;">Take control of this room?</h2>
-                <p style="margin: 0 0 20px 0; color: #ccc; font-size: 0.9rem; line-height: 1.5;">This will immediately transfer control to this device. The current controller will become an observer.</p>
+                <p style="margin: 0 0 20px 0; color: #ccc; font-size: 0.9rem; line-height: 1.5;">This will immediately transfer control to this device. <span id="takeOverLoser">The current controller</span> will become an observer.</p>
                 <div style="display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap;">
                     <button onclick="closeTakeOverModal()" style="padding: 10px 18px; border-radius: 8px; border: 1px solid #444; background: transparent; color: #ccc; cursor: pointer; font-size: 0.9rem;">Cancel</button>
                     <button id="takeOverConfirmBtn" onclick="confirmTakeOver()" style="padding: 10px 18px; border-radius: 8px; border: none; background: #1976d2; color: #fff; cursor: pointer; font-weight: 600; font-size: 0.9rem;">Take Control</button>
@@ -1111,6 +1151,7 @@
             <div id="appDialog" role="dialog" aria-modal="true" aria-labelledby="appDialogTitle" aria-describedby="appDialogBody" tabindex="-1" style="background: #1a1a1a; border: 1px solid #333; border-radius: 12px; padding: 24px; max-width: 400px; width: 100%; box-sizing: border-box; box-shadow: 0 8px 32px rgba(0,0,0,0.5); outline: none;">
                 <h2 id="appDialogTitle" style="margin: 0 0 12px 0; font-size: 1.2rem; color: #fafafa;"></h2>
                 <p id="appDialogBody" style="margin: 0 0 20px 0; color: #ccc; font-size: 0.9rem; line-height: 1.5; white-space: pre-line;"></p>
+                <input type="text" id="appDialogInput" hidden maxlength="40" autocomplete="off" spellcheck="false" aria-labelledby="appDialogTitle" style="width: 100%; max-width: none; box-sizing: border-box; margin: -8px 0 20px 0; font-size: 1rem;">
                 <div style="display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap;">
                     <button id="appDialogCancel" onclick="closeAppDialog(false)" style="padding: 10px 18px; border-radius: 8px; border: 1px solid #444; background: transparent; color: #ccc; cursor: pointer; font-size: 0.9rem;">Cancel</button>
                     <button id="appDialogOk" onclick="closeAppDialog(true)" style="padding: 10px 18px; border-radius: 8px; border: none; background: #1976d2; color: #fff; cursor: pointer; font-weight: 600; font-size: 0.9rem;">OK</button>
@@ -1735,9 +1776,10 @@
 
         function handleAppDialogKeydown(e) {
             if (e.key === 'Escape') closeAppDialog(false);
+            else if (e.key === 'Enter' && e.target && e.target.id === 'appDialogInput') { e.preventDefault(); closeAppDialog(true); }
         }
 
-        function openAppDialog({ title, body, okLabel = 'OK', cancelLabel = 'Cancel', danger = false, notice = false }) {
+        function openAppDialog({ title, body, okLabel = 'OK', cancelLabel = 'Cancel', danger = false, notice = false, input = null }) {
             closeAppDialog(false); // never stack two
             appDialogReturnFocus = document.activeElement;
             document.getElementById('appDialogTitle').textContent = title;
@@ -1748,8 +1790,12 @@
             const cancel = document.getElementById('appDialogCancel');
             cancel.textContent = cancelLabel;
             cancel.hidden = notice;
+            const field = document.getElementById('appDialogInput');
+            field.hidden = input === null;
+            field.value = input === null ? '' : input;
             document.getElementById('appDialogOverlay').style.display = 'flex';
-            document.getElementById('appDialog').focus();
+            if (input === null) document.getElementById('appDialog').focus();
+            else { field.focus(); field.select(); }
             document.addEventListener('keydown', handleAppDialogKeydown);
             return new Promise(resolve => { appDialogResolve = resolve; });
         }
@@ -1767,6 +1813,10 @@
 
         const uiConfirm = (opts) => openAppDialog(opts);
         const uiNotice = (title, body) => openAppDialog({ title, body, notice: true });
+        // Resolves to the entered text, or null on Cancel / Escape / click-outside.
+        const uiPrompt = async (opts) => (await openAppDialog({ ...opts, input: opts.value || '' }))
+            ? document.getElementById('appDialogInput').value
+            : null;
 
         // In-page confirmation for retargeting a live timer (replaces the old
         // blocking window.confirm, same content). Unlike confirm() the page keeps
@@ -1898,7 +1948,38 @@
 
         // Connect using the control token as the sole credential. Role is derived
         // server-side from which token matched - never trust a client-declared type.
-        const socket = io({ auth: { token: controlToken } });
+        // Device name - PairDrop-style: each browser invents a friendly name on
+        // first visit ("Amber Otter"), keeps it in localStorage (so it's the same
+        // for every room on this device), and can rename it from the room header.
+        // Other panels see it ("Peter's iPad is in control"). A label, not a login:
+        // it grants nothing. Private windows / cleared site data get a new one.
+        const DEVICE_NAME_KEY = 'foxyDeviceName';
+        const DEVICE_NAME_MAX = 40; // same cap as the server's deviceNames.js
+        const NAME_ADJECTIVES = ['Amber', 'Brisk', 'Calm', 'Clever', 'Coral', 'Crimson', 'Dapper', 'Eager', 'Gentle', 'Golden',
+            'Jolly', 'Lively', 'Lucky', 'Mellow', 'Misty', 'Nimble', 'Quiet', 'Rapid', 'Rosy', 'Silver', 'Snowy', 'Sunny',
+            'Swift', 'Teal', 'Velvet', 'Witty'];
+        const NAME_ANIMALS = ['Badger', 'Falcon', 'Fox', 'Hare', 'Heron', 'Koala', 'Lemur', 'Lynx', 'Marten', 'Newt', 'Orca',
+            'Otter', 'Owl', 'Panda', 'Puffin', 'Quail', 'Raven', 'Robin', 'Seal', 'Stag', 'Stoat', 'Swan', 'Tiger',
+            'Toucan', 'Walrus', 'Wren'];
+        const pick = (list) => list[Math.floor(Math.random() * list.length)];
+        const cleanDeviceName = (v) => Array.from(String(v || '').replace(/\s+/g, ' ').trim()).slice(0, DEVICE_NAME_MAX).join('').trim();
+
+        function loadDeviceName() {
+            try {
+                const saved = cleanDeviceName(localStorage.getItem(DEVICE_NAME_KEY));
+                if (saved) return saved;
+            } catch {}
+            const fresh = `${pick(NAME_ADJECTIVES)} ${pick(NAME_ANIMALS)}`;
+            try { localStorage.setItem(DEVICE_NAME_KEY, fresh); } catch {}
+            return fresh;
+        }
+
+        let myDeviceName = loadDeviceName();
+        let activeControllerId = null;
+        let activeControllerName = null; // null = unknown (panel never sent a name) -> "another panel"
+        let connectedPanels = [];        // [{ id, name }] from controllerCount
+
+        const socket = io({ auth: { token: controlToken, deviceName: myDeviceName } });
         socket.on('connect', checkServerBuild);
 
         socket.on('authError', ({ message }) => {
@@ -2183,9 +2264,11 @@
             const count = document.getElementById('controllerStatusCount');
             const takeOverBtn = document.getElementById('controllerTakeOverBtn');
 
+            const who = activeControllerName || 'another panel';
             setViewOnly(!isActiveController, wasActiveController === true && !isActiveController
-                ? '- another panel took control'
-                : '- another panel is in control');
+                ? `- ${who} took control`
+                : `- ${who} is in control`);
+            document.getElementById('deviceNameLabel').textContent = myDeviceName;
             wasActiveController = controllerStatusReceived ? isActiveController : null;
 
             if (isActiveController) {
@@ -2198,9 +2281,11 @@
                 takeOverBtn.style.display = 'inline-block';
             }
 
-            count.textContent = connectedControllerCount === 1
-                ? '1 control panel connected'
-                : `${connectedControllerCount} control panels connected`;
+            count.textContent = connectedControllerCount === 1 ? '1 panel' : `${connectedControllerCount} panels`;
+            const connectedWord = document.createElement('span');
+            connectedWord.className = 'panel-count-extra'; // dropped on phones to keep the header to two rows
+            connectedWord.textContent = ' connected';
+            count.appendChild(connectedWord);
 
             updateRundownEditAccess();
         }
@@ -2232,14 +2317,44 @@
 
         socket.on('controllerCount', (data) => {
             connectedControllerCount = data.count;
+            connectedPanels = Array.isArray(data.panels) ? data.panels : [];
             renderControllerStatusBar();
         });
 
-        socket.on('controllerStatus', ({ activeControllerSocketId }) => {
+        socket.on('controllerStatus', ({ activeControllerSocketId, activeControllerName: name }) => {
             isActiveController = (activeControllerSocketId === socket.id);
+            activeControllerId = activeControllerSocketId || null;
+            activeControllerName = name || null;
             controllerStatusReceived = true;
             renderControllerStatusBar();
         });
+
+        // Rename this device. Works for observers too (it's a label for this
+        // device, not a change to the room). Saved locally and sent to the server,
+        // which re-broadcasts so every other panel's wording updates live.
+        async function renameDevice() {
+            const entered = await uiPrompt({
+                title: 'Name this device',
+                body: `Other control panels in this room see it, e.g. "Peter's iPad is in control". Saved on this device for every room.`,
+                value: myDeviceName,
+                okLabel: 'Save',
+            });
+            const name = cleanDeviceName(entered);
+            if (!name || name === myDeviceName) return;
+            myDeviceName = name;
+            try { localStorage.setItem(DEVICE_NAME_KEY, name); } catch {}
+            socket.auth.deviceName = name; // so an automatic reconnect introduces itself correctly too
+            socket.emit('setDeviceName', name);
+            renderControllerStatusBar();
+        }
+
+        function showConnectedPanels() {
+            const lines = (connectedPanels.length ? connectedPanels : [{ id: socket.id, name: myDeviceName }]).map(p => {
+                const label = p.id === socket.id ? `${myDeviceName} (this device)` : (p.name || 'Unnamed panel');
+                return `• ${label}${p.id === activeControllerId ? ' - in control' : ''}`;
+            });
+            uiNotice('Control panels in this room', lines.join('\n'));
+        }
 
         // Physical Display Output (CDEther) compact status - P2.1. Fed by
         // 'bridgeStatusUpdate', sent both once directly on connect (if the
@@ -2293,6 +2408,7 @@
         }
 
         function openTakeOverModal() {
+            document.getElementById('takeOverLoser').textContent = activeControllerName || 'The current controller';
             const overlay = document.getElementById('takeOverModalOverlay');
             const modal = document.getElementById('takeOverModal');
             overlay.style.display = 'flex';
