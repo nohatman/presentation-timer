@@ -622,9 +622,8 @@
             flex-wrap: wrap;
             min-width: 0;
         }
-        .share-links-btn {
-            padding: 10px 16px;
-            white-space: nowrap;
+        .link-short {
+            display: none;
         }
         .preview-times {
             width: 100%;
@@ -734,7 +733,8 @@
            every control greyed out, and the pinned strip with Take over. The
            live preview is deliberately NOT greyed - it must stay true to what
            the display shows. [data-view-ok] marks what still works: room
-           header (Take over, Share Links), Rundown open/close, Text export. */
+           header (Take over, name chip), the links row (incl. Share links),
+           Rundown open/close, Text export. */
         body.view-only {
             background: #15181f;
             padding-bottom: 72px; /* room for the pinned strip */
@@ -856,16 +856,22 @@
                 margin: 0 2px;
                 white-space: nowrap; /* wrap between links, never mid-link */
             }
-            .links span {
+            .links > span {
                 margin: 0 2px !important; /* beats the separators' inline 0 8px */
             }
+            .link-long {
+                display: none;
+            }
+            .link-short {
+                display: inline;
+            }
 
-            /* Room header: two tight rows instead of four loose ones -
-               [name ........ Share] then [CONTROLLER · count · Take Over · PDO].
+            /* Room header: two tight rows -
+               [name ........ CONTROLLER] then [name chip · PDO].
                .room-status becomes display:contents so its children join the
-               header's own flex row, where `order` can put Share beside the
-               name; the zero-height ::after with flex-basis:100% forces the
-               line break after it. */
+               header's own flex row, where `order` can put the status pill
+               beside the name; the zero-height ::after with flex-basis:100%
+               forces the line break after it. */
             .room-header {
                 padding: 8px 12px;
                 gap: 0 10px;
@@ -891,12 +897,9 @@
                 order: 2;
                 margin-top: 6px;
             }
-            .room-status > .share-links-btn {
+            .room-status > #controllerStatusBadge {
                 order: 0;
                 margin-top: 0;
-                padding: 8px 12px;
-                min-height: 40px;
-                font-size: 0.9rem;
             }
             .room-header::after {
                 content: '';
@@ -1125,17 +1128,22 @@
     <div class="container">
         <div class="page-title-row" style="grid-column: 1 / -1; min-width: 0; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px;">
             <h1 style="margin: 0;">Timer Control</h1>
-            <div class="links" style="border: none; padding: 0; text-align: right; min-width: 0;">
-                <a href="#" id="displayLink" target="_blank">Open Display Screen</a>
+            <!-- Setup/admin links, incl. Share links (moved out of the room card - it's
+                 not a live-show action). Short labels on phones keep this one line.
+                 data-view-ok: all of these still work for an observer. -->
+            <div class="links" data-view-ok style="border: none; padding: 0; text-align: right; min-width: 0;">
+                <a href="#" id="displayLink" target="_blank"><span class="link-long">Open Display Screen</span><span class="link-short">Display</span></a>
                 <span style="color: #666; margin: 0 8px;">|</span>
-                <a href="/dashboard" target="foxy-dashboard">Master Dashboard</a>
+                <a href="/dashboard" target="foxy-dashboard"><span class="link-long">Master Dashboard</span><span class="link-short">Dashboard</span></a>
                 <span style="color: #666; margin: 0 8px;">|</span>
-                <a href="/">Home / New Room</a>
+                <a href="/"><span class="link-long">Home / New Room</span><span class="link-short">Home</span></a>
+                <span style="color: #666; margin: 0 8px;">|</span>
+                <a href="#" id="shareLinksLink" onclick="copyRoomLinks(event); return false;" title="Share or copy this room's control and display links">Share links</a>
             </div>
         </div>
 
         <!-- Room header: name stays visually dominant (left, large); controller
-             status (badge/count/Take Over) and Share Links live in a wrapping group
+             status (badge, device-name chip, Take Over) lives in a wrapping group
              on the right - Phase 4 mobile refinement folds the status directly into
              this card instead of a separate full-width row. On narrow viewports the
              group wraps beneath the room name (flex-wrap on both this row and the
@@ -1158,7 +1166,6 @@
                      claims the physical Hive display itself is connected - only
                      reports what the bridge software itself knows. -->
                 <span id="pdoStatusBadge" class="pdo-badge" style="display: none;"></span>
-                <button class="button secondary share-links-btn" onclick="copyRoomLinks(event)">📤 Share Links</button>
             </div>
         </div>
 
