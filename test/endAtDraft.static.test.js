@@ -65,3 +65,18 @@ test('the Apply button starts disabled and the generic input handler skips the E
   assert.match(html, /id="endAtApplyBtn"[^>]*\bdisabled\b/);
   assert.match(html, /input\.id === 'duration' \|\| input\.id === 'endAtTime'\) return/);
 });
+
+test('shared Timer Setup editor: the view helpers are UI-only - none of them emits', () => {
+  for (const fn of ['timerSetupView', 'renderTimerModeView', 'armEndAtIfPending', 'updateEndTimeCalc', 'fmtDurationMs']) {
+    assert.ok(!/socket\.emit|\.emit\(/.test(functionBody(fn)), `${fn} must not emit`);
+  }
+});
+
+test('opening End at with no valid time only shows its editor - it never arms End at (Start/Reset keep using Duration)', () => {
+  const body = functionBody('setTimerMode');
+  const refusal = body.slice(0, body.indexOf('return;'));
+  assert.match(refusal, /endAtViewPending = true/);
+  assert.ok(!/currentTimerMode\s*=|modeTouched\s*=/.test(refusal), 'the refusal branch must not change the armed mode');
+  // arming happens only once the field holds a valid time, and goes back through setTimerMode's own validity gate
+  assert.match(functionBody('armEndAtIfPending'), /endAtViewPending && isValidEndAt\(endAtEl\.value\)\) setTimerMode\('endAt'\)/);
+});

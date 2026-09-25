@@ -22,11 +22,11 @@ pre-existing fields and are unaffected.
 
 | Action | Duration mode | End at mode |
 | --- | --- | --- |
-| Edit Duration field / click a preset, then **Set** / Enter (stopped) | commits, selects Duration (last edit wins) | same |
-| Edit Duration field / click a preset (running/paused) | only stages - Set is disabled; Reset or Start commits it (see below) | same |
-| Set End-at time (**Set** / Enter, see below) | stopped: commits, switches to End at, re-derives time-to-target | same |
-| Set End-at time on a **running/paused** timer | re-targets the live run to the new absolute target after a confirmation (current remaining, proposed remaining, proposed end time) | same |
-| Mode button (any state) | switches which tab is being edited, *locally only* - see below | |
+| Edit Duration field / click a preset, then **Apply** / Enter (stopped) | commits, selects Duration (last edit wins) | same |
+| Edit Duration field / click a preset (running/paused) | only stages - Apply is disabled; Reset or Start commits it (see below) | same |
+| Apply an End-at time (**Apply** / Enter, see below) | stopped: commits, switches to End at, re-derives time-to-target | same |
+| Apply an End-at time on a **running/paused** timer | re-targets the live run to the new absolute target after a confirmation (current remaining, proposed remaining, proposed end time) | same |
+| Mode button (any state) | switches which mode is being edited, *locally only* - see below | |
 | Start | runs the Duration box's current value directly | commits a pending valid draft first, then runs time-to-target from the server clock |
 | Pause / Resume | freeze / unfreeze; the pause shifts the finish later by the pause length (existing behaviour, shown as "If resumed, ends at") | pause freezes the display only; **the finish stays the absolute wall-clock target** - on Resume the remaining time is target - now (it drops by the pause length, or goes into overrun if the target passed) |
 | Reset | commits any pending staged Duration/tab choice first, then resets to it (see below) | commits a pending valid End-at draft first, then resets to time-to-target *now* |
@@ -47,13 +47,17 @@ local-only until a deliberate commit, in every run state:
   a draft (amber border, a hint explaining what will pick it up, **✕** discards it). Nothing reaches the
   server on its own, ever - not even while running/paused (Duration editing was never a *live* thing to
   begin with - the nudge buttons cover that; this box is purely "what Start/Reset use next").
-* **Mode tab click (Duration / End At):** purely local - it only decides which section **Set**/**Reset**/
-  **Start** act on next. It never emits `updateSettings({timerMode})` by itself. Switching to the End At tab
-  needs the field to hold a *valid* time first (committed earlier, or freshly typed) - an empty/incomplete
-  one refuses and focuses the field, so there is always something for Reset/Start to use once the tab *is*
-  selected.
-* **Stopped: Set (or Enter)** is the only thing that pushes a Duration edit to the server directly, exactly
-  as before. **Running/paused: Set is disabled** - there is no live "push this now" for Duration. Instead:
+* **Mode button click (Duration | End at):** purely local - it only decides which mode **Apply**/**Reset**/
+  **Start** act on next. It never emits `updateSettings({timerMode})` by itself. The two modes share ONE
+  editor area (only the selected mode's input is shown; each keeps its own draft, and a dot on the other
+  mode's button flags a draft waiting there). End at only becomes the *armed* mode once its field holds a
+  *valid* time (committed earlier, or freshly typed): clicking End at with an empty/incomplete field opens
+  its editor (amber, "incomplete") and says Start/Reset still use Duration until a complete time is entered,
+  which then arms End at locally - so there is always something for Reset/Start to use once it *is* armed.
+* **Live vs pending:** under the editor a **Live/Running/Paused** line shows what the server currently holds;
+  a separate amber **Pending** line shows any draft and exactly what will make it take effect.
+* **Stopped: Apply (or Enter)** is the only thing that pushes a Duration edit to the server directly, exactly
+  as before. **Running/paused: Apply is disabled** - there is no live "push this now" for Duration. Instead:
   * **Reset** silently commits whatever is currently staged in the active tab (a switched tab, an edited
     Duration, or a valid End-at draft) *before* it resets - so the stopped preview Reset produces reflects
     what was actually showing, not a stale earlier commit. A plain Reset with nothing staged is unaffected -
@@ -74,8 +78,8 @@ through Reset (stops it) then Start (begins fresh with the staged value), never 
 ### End-at is staged (draft), never live-as-you-type
 
 The End-at field is a draft. Typing, blur and focus changes send nothing to the server, so no display
-changes while an operator types. **Set** (or Enter) sends the single `applyEndAt` event
-(`timerModes.applyEndAt`): incomplete/invalid values cannot be applied (Set is disabled; the server also
+changes while an operator types. **Apply** (or Enter) sends the single `applyEndAt` event
+(`timerModes.applyEndAt`): incomplete/invalid values cannot be applied (Apply is disabled; the server also
 refuses them and changes nothing). Stopped: commits directly. Running/paused: the control page first shows
 a confirmation with current remaining, proposed remaining and proposed end time; Cancel sends nothing.
 Confirm updates `endAtTarget`, `runEndAtMs` and `durationMs` in one server step (paused: the frozen display
@@ -120,21 +124,21 @@ one-slot "Undo last Replace" (this browser tab only).
 
 ## Manual UI checklist (no browser test infra in the repo)
 
-1. Timer mode: type an End-at time (+10 min): nothing changes anywhere until you press **Set** (or Enter);
-   blur does not apply. Set -> Reset -> preview shows ~10:00 and End At stays active. Refresh the page: End At +
-   target still shown. Type a duration: mode flips to Duration. On a running timer, Set shows the
+1. Timer mode: type an End-at time (+10 min): nothing changes anywhere until you press **Apply** (or Enter);
+   blur does not apply. Apply -> Reset -> preview shows ~10:00 and End At stays active. Refresh the page: End At +
+   target still shown. Type a duration: mode flips to Duration. On a running timer, Apply shows the
    current/proposed remaining + end-time confirmation; Cancel changes nothing.
-2. Running timer: switch mode; the countdown does not change; hint "applies at next Start or Reset" shows.
+2. Running timer: switch mode; the countdown does not change; the Pending line says the next Reset will use it.
 2b. Stopped: click a preset, or type a duration - a second (Display) screen open elsewhere must NOT
-   change. Set (or Enter) it - the Display updates then. ✕ discards it (Display still unchanged, field
-   reverts). Click the Duration/End At tabs back and forth without pressing Set - the Display never
-   changes. Start with a typed-but-un-Set duration still runs with that value.
-2c. Running: click a preset - the Display must NOT change and the timer keeps counting down (Set is
+   change. Apply (or Enter) it - the Display updates then. ✕ discards it (Display still unchanged, field
+   reverts). Click the Duration/End at buttons back and forth without pressing Apply - the Display never
+   changes. Start with a typed-but-un-applied duration still runs with that value.
+2c. Running: click a preset - the Display must NOT change and the timer keeps counting down (Apply is
    disabled). Press Reset - it stops and the Display now shows the staged preset value. Same for typing a
-   fresh End-at time while running and never pressing Set: Reset picks it up (End-at mode) instead.
-   Separately: type a fresh End-at time while stopped, switch to the End At tab (now allowed once the
-   field is valid, even with nothing committed yet) and press Start directly - it runs toward that typed
-   target.
+   fresh End-at time while running and never pressing Apply: Reset picks it up (End-at mode) instead.
+   Separately: while stopped, click End at with nothing applied yet - its editor opens, the hint says
+   Start/Reset still use Duration (Start really does). Type a complete time - End at arms - and press
+   Start directly: it runs toward that typed target.
 2d. Display page: Home/Fullscreen buttons are visible on load, fade out after a few seconds of no mouse/
    touch activity, and reappear immediately on any movement; both still work while visible.
 3. Rundown -> Edit: click a name, press Tab: only the `MM` of the time is selected; type `12` -> `12:xx`.

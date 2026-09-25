@@ -447,25 +447,153 @@
             border-color: #1976d2;
             color: #fff;
         }
-        .mode-row {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            align-items: center;
-            margin-bottom: 8px;
-        }
         .threshold-row {
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 16px;
         }
         #endAtTime.draft, #duration.draft { border-color: #ff9800; box-shadow: 0 0 0 1px #ff9800; }
-        .end-time-display {
-            font-size: 0.85rem;
-            color: #90caf9;
+
+        /* Timer Setup: one segmented Duration | End at control over ONE editor
+           row, instead of two always-visible input rows. */
+        .setup-heading {
+            font-size: 0.8rem;
+            color: #999;
+            margin-bottom: 6px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .mode-segment {
+            display: flex;
+            border: 1px solid #3a3a3a;
+            border-radius: 6px;
+            overflow: hidden;
+            margin-bottom: 8px;
+        }
+        .mode-segment .mode-button {
+            flex: 1 1 0;
+            border: 0;
+            border-radius: 0;
+            background: #202020;
+            color: #aaa;
+            padding: 10px 8px;
+            font-weight: 600;
+        }
+        .mode-segment .mode-button + .mode-button {
+            border-left: 1px solid #3a3a3a;
+        }
+        .mode-segment .mode-button.active {
+            background: #1565c0;
+            color: #fff;
+        }
+        /* End at opened for typing, but no valid time yet: shown, not armed -
+           Start/Reset still use Duration until a complete time is entered. */
+        .mode-segment .mode-button.incomplete {
+            background: rgba(255, 152, 0, 0.12);
+            color: #ffb74d;
+            box-shadow: inset 0 0 0 2px #ff9800;
+        }
+        /* An unapplied draft is waiting in the mode that isn't showing. */
+        .mode-segment .mode-button.has-draft::after {
+            content: '';
+            display: inline-block;
+            width: 7px;
+            height: 7px;
+            margin-left: 6px;
+            border-radius: 50%;
+            background: #ff9800;
+            vertical-align: middle;
+        }
+        .setup-editor {
+            display: flex;
+            gap: 8px;
+            align-items: stretch;
+        }
+        .setup-editor[hidden] {
+            display: none;
+        }
+        .setup-editor #duration,
+        .setup-editor #endAtTime {
+            flex: 1 1 auto;
+            min-width: 0;
+            max-width: 170px;
+            font-size: 1.1rem;
             font-family: monospace;
-            min-height: 1.2em; /* reserve the line so rows above don't shift as it appears/clears */
-            margin: 2px 0 8px 0;
+        }
+        .setup-apply {
+            padding: 8px 16px;
+            font-weight: 600;
+        }
+        .setup-apply:disabled {
+            background: #2a2a2a;
+            color: #777;
+            box-shadow: none;
+            cursor: default;
+        }
+        .setup-cancel {
+            padding: 8px 12px;
+        }
+        .setup-live {
+            margin-top: 8px;
+            font-size: 0.85rem;
+            color: #cfcfcf;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-height: 1.4em;
+        }
+        .setup-live-tag {
+            font-size: 0.68rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            padding: 2px 7px;
+            border-radius: 4px;
+            background: rgba(144, 202, 249, 0.15);
+            color: #90caf9;
+        }
+        .setup-live-tag.running { background: rgba(46, 125, 50, 0.3); color: #9be7a1; }
+        .setup-live-tag.paused { background: rgba(255, 193, 7, 0.25); color: #ffda6a; }
+        .setup-live-value {
+            font-family: monospace;
+            font-size: 0.95rem;
+        }
+        .setup-hint {
+            margin-top: 6px;
+            padding: 6px 8px;
+            border-left: 3px solid #ff9800;
+            background: rgba(255, 152, 0, 0.08);
+            border-radius: 0 4px 4px 0;
+            font-size: 0.8rem;
+            line-height: 1.4;
+            color: #ffcc80;
+        }
+        .setup-hint.error {
+            border-left-color: #f44336;
+            background: rgba(244, 67, 54, 0.1);
+            color: #ef9a9a;
+        }
+        .setup-hint b {
+            color: #ffb74d;
+            font-family: monospace;
+            font-size: 0.95rem;
+        }
+        .output-mode-buttons {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        label.count-up-label {
+            margin-bottom: 0;
+            padding: 8px 12px;
+            font-size: 0.9rem;
+        }
+        .presets-save-hint {
+            color: #444;
+            font-size: 0.75rem;
+            text-transform: none;
+            letter-spacing: 0;
         }
         .room-header {
             grid-column: 1 / -1;
@@ -731,6 +859,71 @@
             .nudge-grid > :nth-child(1) { order: 2; } /* −1 */
             .nudge-grid > :nth-child(2) { order: 3; } /* +1 */
             .nudge-grid > :nth-child(4) { order: 4; } /* +5 */
+
+            /* Timer Setup, compacted: 44px touch targets throughout, Timer |
+               Clock | Count up on ONE row, and all 8 presets in two rows of 4
+               (rather than hiding some behind a "More" tap - they're
+               operator-customised slots, so no fixed subset is the right one). */
+            .timer-setup-section {
+                padding: 10px;
+                gap: 12px !important; /* beats its inline 10px */
+            }
+            .mode-segment .mode-button,
+            .setup-apply,
+            .setup-cancel,
+            .setup-editor #duration,
+            .setup-editor #endAtTime {
+                min-height: 44px;
+            }
+            .setup-editor #duration,
+            .setup-editor #endAtTime {
+                max-width: none;
+                padding: 8px 10px;
+            }
+            .setup-apply {
+                flex: 0 0 auto;
+                padding: 8px 18px;
+            }
+            .output-controls {
+                display: flex;
+                gap: 6px;
+            }
+            .output-mode-buttons {
+                flex: 2 1 0;
+                margin-bottom: 0;
+                gap: 6px;
+            }
+            .output-mode-buttons .button {
+                min-height: 44px;
+                padding: 8px 6px;
+                white-space: nowrap;
+            }
+            label.count-up-label {
+                flex: 1 1 0;
+                min-width: 0;
+                min-height: 44px;
+                box-sizing: border-box;
+                padding: 6px 8px;
+                border-width: 1px;
+                white-space: nowrap;
+            }
+            label.count-up-label input[type="checkbox"] {
+                margin-right: 6px;
+                flex-shrink: 0;
+            }
+            .count-up-extra,
+            .presets-save-hint {
+                display: none; /* no Ctrl+Click on a phone */
+            }
+            .presets {
+                grid-template-columns: repeat(4, 1fr);
+                gap: 6px;
+            }
+            .preset-button {
+                min-height: 44px;
+                padding: 8px 4px;
+                font-size: 0.95rem;
+            }
         }
     </style>
 </head>
@@ -832,41 +1025,48 @@
                     <button class="button secondary nudge-button" onclick="nudge(5*60*1000)">+5 min</button>
                 </div>
             </div>
-            <!-- Col 3: Timer mode + quick presets -->
-            <div class="section" style="display:flex;flex-direction:column;gap:10px;">
+            <!-- Col 3: Timer setup + quick presets. Duration and End at share ONE
+                 editor area: the segmented control picks which input is showing
+                 (both inputs stay in the DOM with their own Apply/✕ and draft
+                 state - only the visible one can be edited). See
+                 renderTimerModeView for how "showing" relates to the mode that
+                 Start/Reset will actually use. -->
+            <div class="section timer-setup-section" style="display:flex;flex-direction:column;gap:10px;">
                 <div>
-                    <div style="font-size:0.8rem;color:#999;margin-bottom:6px;font-weight:500;text-transform:uppercase;letter-spacing:0.05em;">Timer Mode</div>
-                    <div class="mode-row">
-                        <button class="mode-button active" id="modeDurationBtn" onclick="setTimerMode('duration')">Duration</button>
-                        <input type="text" id="duration" class="time-text" placeholder="0:00" pattern="\d{1,3}:\d{2}" title="Format: MM:SS" maxlength="6" inputmode="numeric" aria-describedby="durationDraftHint">
-                        <button id="durationApplyBtn" class="button primary" onclick="applyDurationDraft()" disabled style="padding:6px 12px;">Set</button>
-                        <button id="durationCancelBtn" class="button secondary" onclick="cancelDurationDraft()" hidden title="Discard the unapplied duration" style="padding:6px 10px;">✕</button>
+                    <div class="setup-heading">Timer Setup</div>
+                    <div class="mode-segment" role="group" aria-label="Timer mode">
+                        <button class="mode-button active" id="modeDurationBtn" onclick="setTimerMode('duration')" aria-pressed="true">Duration</button>
+                        <button class="mode-button" id="modeEndAtBtn" onclick="setTimerMode('endAt')" aria-pressed="false" title="Finish at a clock time">End at</button>
                     </div>
-                    <div class="end-time-display" id="durationEndTimeCalc"></div>
-                    <div id="durationDraftHint" role="status" hidden style="font-size:0.75rem;color:#ff9800;margin-top:-2px;margin-bottom:6px;"></div>
-                    <div class="mode-row" style="margin-top:6px;">
-                        <button class="mode-button" id="modeEndAtBtn" onclick="setTimerMode('endAt')" title="Select an end time first">End At</button>
-                        <input type="time" id="endAtTime" aria-describedby="endAtDraftHint">
-                        <button id="endAtApplyBtn" class="button primary" onclick="applyEndAtDraft()" disabled style="padding:6px 12px;">Set</button>
-                        <button id="endAtCancelBtn" class="button secondary" onclick="cancelEndAtDraft()" hidden title="Discard the unapplied time" style="padding:6px 10px;">✕</button>
+                    <div class="setup-editor" id="durationEditor">
+                        <input type="text" id="duration" class="time-text" placeholder="0:00" pattern="\d{1,3}:\d{2}" title="Format: MM:SS" maxlength="6" inputmode="numeric" aria-label="Duration (MM:SS)" aria-describedby="durationDraftHint">
+                        <button id="durationApplyBtn" class="button primary setup-apply" onclick="applyDurationDraft()" disabled>Apply</button>
+                        <button id="durationCancelBtn" class="button secondary setup-cancel" onclick="cancelDurationDraft()" hidden title="Discard the unapplied duration" aria-label="Discard the unapplied duration">✕</button>
                     </div>
-                    <div class="end-time-display" id="endAtEndTimeCalc"></div>
-                    <div id="endAtDraftHint" role="status" hidden style="font-size:0.75rem;color:#ff9800;margin-top:-2px;margin-bottom:6px;"></div>
-                    <div id="modeApplyHint" hidden style="font-size:0.75rem;color:#888;margin-top:6px;">Timer is running - mode/value changes apply at next Start or Reset.</div>
+                    <div class="setup-editor" id="endAtEditor" hidden>
+                        <input type="time" id="endAtTime" aria-label="End at (clock time)" aria-describedby="endAtDraftHint">
+                        <button id="endAtApplyBtn" class="button primary setup-apply" onclick="applyEndAtDraft()" disabled>Apply</button>
+                        <button id="endAtCancelBtn" class="button secondary setup-cancel" onclick="cancelEndAtDraft()" hidden title="Discard the unapplied time" aria-label="Discard the unapplied time">✕</button>
+                    </div>
+                    <div id="timerSetupLive" class="setup-live"></div>
+                    <div id="durationDraftHint" class="setup-hint" role="status" hidden></div>
+                    <div id="endAtDraftHint" class="setup-hint" role="status" hidden></div>
                 </div>
                 <div>
-                    <div style="font-size:0.8rem;color:#999;margin-bottom:6px;font-weight:500;text-transform:uppercase;letter-spacing:0.05em;">Display Shows</div>
-                    <div style="display:flex;gap:8px;margin-bottom:10px;">
-                        <button class="button" id="modeTimerBtn" onclick="setOutputMode('timer')" style="flex:1;">⏱️ Timer</button>
-                        <button class="button" id="modeClockBtn" onclick="setOutputMode('clock')" style="flex:1;">🕐 Clock</button>
+                    <div class="setup-heading">Display Shows</div>
+                    <div class="output-controls">
+                        <div class="output-mode-buttons">
+                            <button class="button" id="modeTimerBtn" onclick="setOutputMode('timer')" style="flex:1;">⏱️ Timer</button>
+                            <button class="button" id="modeClockBtn" onclick="setOutputMode('clock')" style="flex:1;">🕐 Clock</button>
+                        </div>
+                        <label class="checkbox-label count-up-label">
+                            <input type="checkbox" id="countUp">
+                            <span>Count up<span class="count-up-extra"> after zero</span></span>
+                        </label>
                     </div>
-                    <label class="checkbox-label" style="margin-bottom:0;padding:8px 12px;">
-                        <input type="checkbox" id="countUp">
-                        <span style="font-size:0.9rem;">Count up after zero</span>
-                    </label>
                 </div>
                 <div>
-                    <div style="font-size:0.8rem;color:#999;margin-bottom:6px;font-weight:500;text-transform:uppercase;letter-spacing:0.05em;">Quick Presets <span style="color:#444;font-size:0.75rem;text-transform:none;letter-spacing:0;">· Ctrl+Click to save</span></div>
+                    <div class="setup-heading">Quick Presets <span class="presets-save-hint">· Ctrl+Click to save</span></div>
                     <div class="presets" id="presetsGrid"></div>
                 </div>
             </div>
@@ -1128,30 +1328,65 @@
         // mode whenever nothing is being locally overridden - see applyServerTimerMode.
         function tzOffsetMin() { return new Date().getTimezoneOffset(); }
 
+        // Duration and End at share one editor area, so which input is SHOWING is
+        // tracked separately from currentTimerMode (the mode Start/Reset will use).
+        // They differ in exactly one case: End at was clicked but its field has no
+        // valid time yet. The End at editor is shown so the operator can type one,
+        // but it is NOT armed - Start/Reset keep using Duration (the hint says so)
+        // until a complete time is entered, which then arms End at locally
+        // (armEndAtIfPending) - the same thing the old separate tab click did.
+        let endAtViewPending = false;
+        function timerSetupView() { return endAtViewPending ? 'endAt' : currentTimerMode; }
+
         function setTimerMode(mode) {
             if (mode === 'endAt' && !isValidEndAt(endAtEl.value)) {
                 // A committed target always leaves the field showing it, so this also
-                // covers "already applied earlier" - but a freshly typed, not-yet-Set
+                // covers "already applied earlier" - but a freshly typed, not-yet-Apply'd
                 // target is now allowed too: commitStagedConfig() (Reset/Start) is what
                 // actually validates and uses it, never this tab click itself. An
-                // empty/incomplete field cannot become the active tab - nothing for
-                // Start/Reset to run toward.
+                // empty/incomplete field cannot become the active mode - nothing for
+                // Start/Reset to run toward - so it only opens the editor for typing.
+                endAtViewPending = true;
+                refreshEndAtDraftUI(); // shows the End at editor (and its hint) before focusing it
                 document.getElementById('endAtTime').focus();
                 return;
             }
+            endAtViewPending = false;
             currentTimerMode = mode;
-            modeTouched = true; // self-clears in applyServerTimerMode once the server matches (e.g. after Set)
-            document.getElementById('modeDurationBtn').classList.toggle('active', mode === 'duration');
-            document.getElementById('modeEndAtBtn').classList.toggle('active', mode === 'endAt');
+            modeTouched = true; // self-clears in applyServerTimerMode once the server matches (e.g. after Apply)
+            refreshEndAtDraftUI();
+            refreshDurationDraftUI();
             updateEndTimeCalc();
+        }
+
+        // Typing a complete time into an opened-but-unarmed End at editor arms it
+        // (local only, sends nothing) - see endAtViewPending above.
+        function armEndAtIfPending() {
+            if (endAtViewPending && isValidEndAt(endAtEl.value)) setTimerMode('endAt');
+        }
+
+        // UI-only: segment highlight, which editor is visible, and a dot on the
+        // hidden mode's segment if it still holds an unapplied draft.
+        function renderTimerModeView() {
+            const view = timerSetupView();
+            const durBtn = document.getElementById('modeDurationBtn');
+            const endBtn = document.getElementById('modeEndAtBtn');
+            durBtn.classList.toggle('active', view === 'duration');
+            endBtn.classList.toggle('active', view === 'endAt' && !endAtViewPending);
+            endBtn.classList.toggle('incomplete', endAtViewPending);
+            durBtn.setAttribute('aria-pressed', String(view === 'duration'));
+            endBtn.setAttribute('aria-pressed', String(view === 'endAt'));
+            durBtn.classList.toggle('has-draft', view !== 'duration' && durationDirty);
+            endBtn.classList.toggle('has-draft', view !== 'endAt' && endAtDirty);
+            document.getElementById('durationEditor').hidden = view !== 'duration';
+            document.getElementById('endAtEditor').hidden = view !== 'endAt';
         }
 
         function applyServerTimerMode(state) {
             const serverMode = state.timerMode === 'endAt' ? 'endAt' : 'duration';
             if (!modeTouched) currentTimerMode = serverMode;
-            else if (currentTimerMode === serverMode) modeTouched = false; // converged (Set went through) - safe to follow the server again
-            document.getElementById('modeDurationBtn').classList.toggle('active', currentTimerMode === 'duration');
-            document.getElementById('modeEndAtBtn').classList.toggle('active', currentTimerMode === 'endAt');
+            else if (currentTimerMode === serverMode) modeTouched = false; // converged (Apply went through) - safe to follow the server again
+            if (currentTimerMode === 'endAt') endAtViewPending = false; // armed (e.g. applied from another controller) - nothing pending
             const endAtEl = document.getElementById('endAtTime');
             if (!endAtDirty) endAtEl.value = state.endAtTarget || ''; // never clobber an unapplied draft
             refreshEndAtDraftUI();
@@ -1168,66 +1403,40 @@
                 }
             }
             refreshDurationDraftUI();
-            document.getElementById('modeApplyHint').hidden = state.mode === 'stopped';
             updateEndTimeCalc();
         }
 
-        // Each mode gets its own end-time preview, on its own line under that
-        // mode's row (previously a single shared span sat inline in the Duration
-        // row, so it also showed End At's preview text there whenever End At was
-        // the active mode - and being squeezed for room against the Set button
-        // is what made that row wrap messily). Both are computed independently
-        // of which mode is currently active, so each row always explains itself.
+        // "Live" line: what the server currently holds - the value on the display
+        // while stopped, or the run in progress - kept visually separate from any
+        // draft/pending value (the hints below it), so the operator can always
+        // tell what is actually live from what they're still preparing.
+        function fmtDurationMs(ms) {
+            return formatTimeInput(Math.floor(ms / 60000), Math.floor((ms % 60000) / 1000));
+        }
         function updateEndTimeCalc() {
-            const durationDisplay = document.getElementById('durationEndTimeCalc');
-            // Set is disabled for Duration whenever the timer isn't stopped (see
-            // refreshDurationDraftUI), so while running/paused there is nothing
-            // this preview could actually apply to - a "→ ends at" that keeps
-            // ticking forward with the clock while nothing else is happening
-            // just reads as a mystery. modeApplyHint already covers that case.
-            if (currentState.mode === 'stopped') {
-                const durationMs = getDurationMs();
-                if (durationMs > 0) {
-                    const endTime = new Date(Date.now() + durationMs);
-                    const hours = endTime.getHours().toString().padStart(2, '0');
-                    const minutes = endTime.getMinutes().toString().padStart(2, '0');
-                    const seconds = endTime.getSeconds().toString().padStart(2, '0');
-                    durationDisplay.textContent = `→ ends at ${hours}:${minutes}:${seconds}`;
-                } else {
-                    durationDisplay.textContent = '';
-                }
+            const el = document.getElementById('timerSetupLive');
+            const s = currentState;
+            if (!s.timerMode) { el.innerHTML = ''; return; } // no server state yet
+            const run = s.mode === 'running' || s.mode === 'paused';
+            const tag = s.mode === 'running' ? 'Running' : s.mode === 'paused' ? 'Paused' : 'Live';
+            let what;
+            if (s.timerMode === 'endAt') {
+                what = s.endAtTarget ? `End at ${s.endAtTarget}` : 'End at (no time applied)';
             } else {
-                durationDisplay.textContent = '';
+                // Same value the Duration field shows when nothing is being edited
+                // (see applyServerTimerMode): the run's length while live, else the
+                // configured Duration.
+                what = `Duration ${fmtDurationMs(run ? s.durationMs : (s.configDurationMs !== undefined ? s.configDurationMs : s.durationMs))}`;
             }
-
-            // End At's Set stays live (it can retarget a running timer with
-            // confirmation - see the comment above endAtDirty below), so its
-            // preview is always shown.
-            const endAtDisplay = document.getElementById('endAtEndTimeCalc');
-            const endAtTime = currentState.endAtTarget || '';
-            if (endAtTime) {
-                const [h, m] = endAtTime.split(':');
-                const now = new Date();
-                const target = new Date(now);
-                target.setHours(parseInt(h || '0'), parseInt(m || '0'), 0, 0);
-                if (target <= now) {
-                    target.setDate(target.getDate() + 1);
-                }
-                const hours = target.getHours().toString().padStart(2, '0');
-                const minutes = target.getMinutes().toString().padStart(2, '0');
-                const seconds = target.getSeconds().toString().padStart(2, '0');
-                endAtDisplay.textContent = `→ ends at ${hours}:${minutes}:${seconds}`;
-            } else {
-                endAtDisplay.textContent = '';
-            }
+            el.innerHTML = `<span class="setup-live-tag ${run ? s.mode : ''}">${tag}</span><span class="setup-live-value">${what}</span>`;
         }
 
         // The End-at field is a DRAFT: typing/blur/focus changes never leave this page.
-        // Only Set (button or Enter) sends 'applyEndAt'. A live timer needs an explicit
+        // Only Apply (button or Enter) sends 'applyEndAt'. A live timer needs an explicit
         // confirmation showing the current and proposed remaining time.
         let endAtDirty = false;
-        let endAtApplying = false; // a Set is in flight, awaiting the server's acknowledgement
-        let endAtError = '';       // last failed Set (draft is kept); cleared by any edit / Cancel / success
+        let endAtApplying = false; // an Apply is in flight, awaiting the server's acknowledgement
+        let endAtError = '';       // last failed Apply (draft is kept); cleared by any edit / Cancel / success
         let serverClockOffsetMs = 0; // server clock - this browser's clock, from the last timerState
         const serverNowMs = () => Date.now() + serverClockOffsetMs;
         const endAtEl = document.getElementById('endAtTime');
@@ -1242,15 +1451,29 @@
             if (!endAtDirty) endAtError = ''; // draft is gone (applied or discarded): stale error must not linger
             document.getElementById('endAtCancelBtn').hidden = !endAtDirty;
             document.getElementById('endAtApplyBtn').disabled = !(endAtDirty && valid) || endAtApplying;
-            document.getElementById('endAtApplyBtn').textContent = endAtApplying ? '…' : 'Set';
+            document.getElementById('endAtApplyBtn').textContent = endAtApplying ? '…' : 'Apply';
+            // Pending line: the draft value, and exactly what will make it take
+            // effect. Only shown while the End at editor is the one showing.
+            const running = currentState.mode !== 'stopped';
+            const stillDuration = ' Until then, Start and Reset still use Duration.';
+            let html = '';
+            if (endAtError) html = endAtError;
+            else if (endAtDirty && endAtApplying) html = 'Applying…';
+            else if (endAtDirty && valid) {
+                const val = `<b>${v}</b>${proposeEndAt(v).tomorrow ? ' (tomorrow)' : ''}`;
+                html = running
+                    ? `Pending: End at ${val} - not applied to the ${currentState.mode} timer.<br>Apply changes it now (you'll be asked to confirm); Reset also uses it.`
+                    : `Pending: End at ${val} - not on the display yet.<br>Apply (or Enter) puts it there now; Start and Reset also use it.`;
+            } else if (endAtDirty) html = 'Enter a complete time (HH:MM) to apply.' + (endAtViewPending ? stillDuration : '');
+            else if (endAtViewPending) html = 'Enter the time the timer should finish.' + stillDuration;
+            else if (currentTimerMode === 'endAt' && currentState.timerMode !== 'endAt' && valid) {
+                html = `Pending: switch to End at <b>${v}</b> - the next ${running ? 'Reset' : 'Start or Reset'} will use it.`;
+            }
             const hint = document.getElementById('endAtDraftHint');
-            hint.hidden = !endAtDirty && !endAtError;
-            hint.style.color = endAtError ? '#f44336' : '#ff9800';
-            hint.textContent = endAtError ? endAtError
-                : !endAtDirty ? ''
-                : endAtApplying ? 'Applying…'
-                : valid ? 'Not applied yet - press Set (or Enter). Start uses the last applied time.'
-                : 'Enter a complete time to apply.';
+            hint.classList.toggle('error', !!endAtError);
+            hint.hidden = !html || timerSetupView() !== 'endAt';
+            hint.innerHTML = html; // only validated HH:MM / fixed strings are interpolated
+            renderTimerModeView();
         }
 
         function cancelEndAtDraft() {
@@ -1263,9 +1486,9 @@
         // (or clicking a preset) must not itself change what a connected Display/
         // CDEther is showing while a preset/typed value is only being tried out.
         // Unlike End At there is no live-retarget-with-confirmation for Duration:
-        // Set only ever pushes while stopped (no confirmation dialog needed, since
+        // Apply only ever pushes while stopped (no confirmation dialog needed, since
         // nothing is running to disrupt). While running/paused the box is still a
-        // draft - Set is disabled, but the draft is NOT discarded either: Reset and
+        // draft - Apply is disabled, but the draft is NOT discarded either: Reset and
         // Start both pick up whatever is currently in the box (see resetTimer,
         // startTimer, commitStagedConfig below), so "stage a preset, then Reset (or
         // Start)" is how a live timer picks up a new value - deliberately, in a
@@ -1279,11 +1502,27 @@
             durationEl.classList.toggle('draft', durationDirty);
             document.getElementById('durationCancelBtn').hidden = !durationDirty;
             document.getElementById('durationApplyBtn').disabled = !durationDirty || currentState.mode !== 'stopped';
+            // Pending line: the draft value, and exactly what will make it take
+            // effect. Only shown while the Duration editor is the one showing.
+            const draftMs = getDurationMs();
+            let html = '';
+            if (durationDirty && currentState.mode === 'stopped') {
+                const end = new Date(Date.now() + draftMs).toLocaleTimeString('en-GB');
+                html = `Pending: <b>${fmtDurationMs(draftMs)}</b> (ends ~${end} if started now) - not on the display yet.<br>Apply (or Enter) puts it there now; Start also uses it.`;
+            } else if (durationDirty && currentState.timerMode !== 'endAt' && draftMs === currentState.durationMs) {
+                // Not a typed draft: a live nudge changed this run's length but not
+                // the Duration setting, and the box shows the live length (see
+                // applyServerTimerMode) - describe that truthfully, behaviour unchanged.
+                html = `Live run nudged to <b>${fmtDurationMs(draftMs)}</b> (Duration setting is ${fmtDurationMs(committedMs)}).<br>Reset or Start will keep ${fmtDurationMs(draftMs)}; ✕ restores ${fmtDurationMs(committedMs)}.`;
+            } else if (durationDirty) {
+                html = `Pending: <b>${fmtDurationMs(draftMs)}</b> - not applied to the ${currentState.mode} timer.<br>Reset or Start will use it. Use ±1/±5 to change the live run.`;
+            } else if (currentTimerMode === 'duration' && currentState.timerMode === 'endAt') {
+                html = `Pending: switch to Duration <b>${fmtDurationMs(draftMs)}</b> - the next ${currentState.mode === 'stopped' ? 'Start or Reset' : 'Reset'} will use it.`;
+            }
             const hint = document.getElementById('durationDraftHint');
-            hint.hidden = !durationDirty;
-            hint.textContent = !durationDirty ? '' : currentState.mode === 'stopped'
-                ? 'Not applied yet - press Set (or Enter) to update the display now. Start uses this box regardless.'
-                : 'Not applied to the live timer - Reset or Start will use this value.';
+            hint.hidden = !html || timerSetupView() !== 'duration';
+            hint.innerHTML = html; // only re-formatted numbers are interpolated
+            renderTimerModeView();
         }
 
         function cancelDurationDraft() {
@@ -1373,17 +1612,17 @@
             socket.timeout(5000).emit('applyEndAt', { endAtTarget: v, endAtTzOffsetMin: tzOffsetMin() }, (err, res) => {
                 endAtApplying = false;
                 if (err) {
-                    endAtError = 'The server did not acknowledge Set - nothing was changed. If this keeps happening the timer server is probably running older software: restart it.';
+                    endAtError = 'The server did not acknowledge Apply - nothing was changed. If this keeps happening the timer server is probably running older software: restart it.';
                 } else if (!res || !res.ok) {
-                    endAtError = res && res.reason === 'observer' ? 'Another operator is in control - use Take Over, then Set again. Nothing was changed.'
+                    endAtError = res && res.reason === 'observer' ? 'Another operator is in control - use Take Over, then Apply again. Nothing was changed.'
                         : res && res.reason === 'invalid' ? 'Not a valid time - nothing was changed.'
-                        : 'The server refused Set - nothing was changed.';
+                        : 'The server refused Apply - nothing was changed.';
                 }
                 refreshEndAtDraftUI();
             });
         }
 
-        endAtEl.addEventListener('input', () => { endAtError = ''; refreshEndAtDraftUI(); });
+        endAtEl.addEventListener('input', () => { endAtError = ''; refreshEndAtDraftUI(); armEndAtIfPending(); }); // arming is local only - see endAtViewPending
         endAtEl.addEventListener('keyup', refreshEndAtDraftUI); // half-typed times fire no 'input'; UI-only, sends nothing
         endAtEl.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') { e.preventDefault(); applyEndAtDraft(); }
@@ -2519,7 +2758,7 @@
 
         // Duration field: typing/committing a value selects Duration mode - but, like
         // End At, is a DRAFT (see refreshDurationDraftUI above). Typing/blur/focus
-        // changes never leave this page; only Set (or Enter) does. Editing while
+        // changes never leave this page; only Apply (or Enter) does. Editing while
         // running/paused remains unsupported (use the nudge buttons) - applyDurationDraft
         // itself is a no-op then, matching the previous behaviour for that case.
         function handleDurationInput() {
@@ -2655,7 +2894,7 @@
             // While running/paused the field is not editable state (use the nudge
             // buttons): drop the rejected edit and show the server's value again.
             if (currentState.mode !== 'stopped') applyServerTimerMode(currentState);
-            // Blur never applies a draft (same rule as End At) - just refresh the Set
+            // Blur never applies a draft (same rule as End At) - just refresh the Apply
             // button/hint against the final (post-formatting) value.
             refreshDurationDraftUI();
         });
