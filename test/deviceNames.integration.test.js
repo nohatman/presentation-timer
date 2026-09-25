@@ -86,7 +86,7 @@ test('controller name travels with controllerStatus; every panel is listed in co
     assert.equal(b.status.activeControllerName, "Peter's iPad", 'a joining observer is told who is in control');
     assert.equal(b.count.count, 2);
     assert.deepEqual(b.count.panels.map(p => p.name).sort(), ['Amber Otter', "Peter's iPad"]);
-    assert.deepEqual(b.count.panels.map(p => p.id).sort(), [a.socket.id, b.socket.id].sort());
+    assert.deepEqual(b.count.panels.flatMap(p => p.ids).sort(), [a.socket.id, b.socket.id].sort());
   } finally { a.socket.close(); b.socket.close(); }
 });
 
@@ -109,10 +109,10 @@ test('rename: sanitised, re-broadcast to the room, allowed for an observer, blan
     a.socket.emit('setDeviceName', '  FOH   Desk ' + String.fromCodePoint(0x202e)); await sleep(250);
     assert.equal(b.status.activeControllerName, 'FOH Desk', 'controller rename reaches the observer, cleaned up');
     b.socket.emit('setDeviceName', 'Backstage'); await sleep(250); // b is an observer
-    assert.ok(a.count.panels.some(p => p.id === b.socket.id && p.name === 'Backstage'), 'observer rename is listed');
+    assert.ok(a.count.panels.some(p => p.ids.includes(b.socket.id) && p.name === 'Backstage'), 'observer rename is listed');
     b.socket.emit('setDeviceName', '   '); await sleep(200);
     b.socket.emit('setDeviceName', { not: 'a string' }); await sleep(200);
-    assert.ok(a.count.panels.some(p => p.id === b.socket.id && p.name === 'Backstage'), 'blank/invalid names are ignored');
+    assert.ok(a.count.panels.some(p => p.ids.includes(b.socket.id) && p.name === 'Backstage'), 'blank/invalid names are ignored');
   } finally { a.socket.close(); b.socket.close(); }
 });
 

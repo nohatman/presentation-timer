@@ -192,12 +192,39 @@ test('SAME DEVICE, NEW TAB: closing the controller tab and opening the link agai
   } finally { a.socket.close(); b.socket.close(); }
 });
 
-test('SAME DEVICE, SECOND TAB alongside the first: it does NOT take control from the open tab', async () => {
+test('SAME DEVICE, NEWER TAB alongside the first (e.g. back from the Master Dashboard): the newest tab takes control; the old tab is told it moved to this device', async () => {
   const token = await createRoom();
-  const tab1 = await open(token, 'panel-T1-0009', 'Laptop', 'device-X-0009');
-  const tab2 = await open(token, 'panel-T2-0009', 'Laptop', 'device-X-0009');
+  const other = await open(token, 'panel-O-0009', 'Laptop', 'device-O-0009');
+  const tab1 = await open(token, 'panel-T1-0009', 'Phone', 'device-X-0009');
+  tab1.socket.emit('requestControl'); await sleep(200);
+  assert.ok(tab1.isController);
+  const counts = [];
+  other.socket.on('controllerCount', (c) => counts.push(c));
+  const tab2 = await open(token, 'panel-T2-0009', 'Phone', 'device-X-0009'); // Control Panel opened again from the dashboard
+  await sleep(200);
   try {
-    assert.ok(tab1.isController, 'first tab keeps control');
-    assert.ok(!tab2.isController, 'second tab is an observer while the first is connected');
-  } finally { tab1.socket.close(); tab2.socket.close(); }
+    assert.ok(tab2.isController, 'newest tab on the controlling device is in control');
+    assert.ok(!tab1.isController && tab1.status.controllerOnThisDevice === true, 'old tab: controller is on its own device');
+    assert.ok(!other.isController && other.status.controllerOnThisDevice === false, 'another device is not told that');
+    const last = counts[counts.length - 1];
+    assert.equal(last.count, 2, 'two DEVICES, not three tabs');
+    const phone = last.panels.find(p => p.name === 'Phone');
+    assert.deepEqual(phone.ids.sort(), [tab1.socket.id, tab2.socket.id].sort(), 'both phone tabs grouped under one device');
+  } finally { other.socket.close(); tab1.socket.close(); tab2.socket.close(); }
+});
+
+test('SAME DEVICE: if the controlling tab closes while another tab on that device is open, control moves there immediately (no waiting)', async () => {
+  const token = await createRoom();
+  const other = await open(token, 'panel-O-0010', 'Laptop', 'device-O-0010');
+  const tab1 = await open(token, 'panel-T1-0010', 'Phone', 'device-X-0010');
+  tab1.socket.emit('requestControl'); await sleep(200);
+  // a second tab that joined while tab1 held control... then tab1 takes it back
+  const tab2 = await open(token, 'panel-T2-0010', 'Phone', 'device-X-0010');
+  tab1.socket.emit('requestControl'); await sleep(200);
+  assert.ok(tab1.isController);
+  tab1.socket.close(); await sleep(250);
+  try {
+    assert.ok(tab2.isController, 'sibling tab took over straight away');
+    assert.equal(other.status.reconnecting, false, 'no "disconnected" period for the other device to see');
+  } finally { other.socket.close(); tab2.socket.close(); }
 });

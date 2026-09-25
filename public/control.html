@@ -685,16 +685,14 @@
         .device-name-btn:hover {
             border-color: #90caf9;
         }
-        .panel-count-btn {
-            padding: 3px 2px;
-            border: 0;
-            background: none;
-            color: #999;
-            font-size: 0.85rem;
-            white-space: nowrap;
-            text-decoration: underline dotted;
-            text-underline-offset: 3px;
-            cursor: pointer;
+        .device-name-btn .panel-count {
+            color: #9fb3c8;
+            font-weight: 500;
+        }
+        /* An observer always has the pinned view-only strip, which carries its own
+           Take over - a second one in the room card is just clutter. */
+        body.view-only #controllerTakeOverBtn {
+            display: none !important;
         }
 
         /* Current / new remaining / new end rows in the End-at confirmation. */
@@ -900,14 +898,8 @@
                 flex-basis: 100%;
                 height: 0;
             }
-            #controllerStatusCount {
-                font-size: 0.8rem;
-            }
-            .panel-count-extra {
-                display: none;
-            }
             .device-name-btn {
-                max-width: 150px;
+                max-width: 210px;
             }
 
             /* Preview: less card chrome so the display itself gets the width. */
@@ -1073,7 +1065,7 @@
             <div class="links" style="border: none; padding: 0; text-align: right; min-width: 0;">
                 <a href="#" id="displayLink" target="_blank">Open Display Screen</a>
                 <span style="color: #666; margin: 0 8px;">|</span>
-                <a href="/dashboard" target="_blank">Master Dashboard</a>
+                <a href="/dashboard" target="foxy-dashboard">Master Dashboard</a>
                 <span style="color: #666; margin: 0 8px;">|</span>
                 <a href="/">Home / New Room</a>
             </div>
@@ -1092,10 +1084,10 @@
             </div>
             <div class="room-status">
                 <span id="controllerStatusBadge" style="padding: 3px 10px; border-radius: 5px; font-weight: 700; font-size: 0.72rem; letter-spacing: 0.5px; white-space: nowrap; background: #2e7d32; color: #fff;">CONTROLLER</span>
-                <!-- This device's name (tap to rename) and who else is connected -
-                     see the device-name block in the script. -->
-                <button type="button" id="deviceNameBtn" class="device-name-btn" onclick="renameDevice()" title="Rename this device" aria-label="This device's name - tap to rename">✎ <span id="deviceNameLabel"></span></button>
-                <button type="button" id="controllerStatusCount" class="panel-count-btn" onclick="showConnectedPanels()" title="Show connected control panels"></button>
+                <!-- This device's name + how many devices are connected. Tap: the list
+                     of connected control panels, with "Rename this device". See the
+                     device-name block in the script. -->
+                <button type="button" id="deviceNameBtn" class="device-name-btn" onclick="showConnectedPanels()" title="This device and the other connected control panels" aria-haspopup="dialog">👤 <span id="deviceNameLabel"></span><span id="controllerStatusCount" class="panel-count"></span></button>
                 <button id="controllerTakeOverBtn" style="display: none; padding: 5px 14px; font-size: 0.8rem; border-radius: 5px; border: none; background: #1976d2; color: #fff; cursor: pointer; white-space: nowrap;" onclick="openTakeOverModal()">Take Over</button>
                 <!-- Physical Display Output (CDEther) compact status - P2.1. Hidden
                      until the room has ever reported bridge status this session (a
@@ -2002,8 +1994,9 @@
 
         let activeControllerId = null;
         let controllerReconnecting = false; // the controller's connection dropped; its seat is being kept for it
+        let controllerOnThisDevice = false; // the controller is another tab of this same device
         let activeControllerName = null; // null = unknown (panel never sent a name) -> "another panel"
-        let connectedPanels = [];        // [{ id, name }] from controllerCount
+        let connectedPanels = [];        // [{ ids: [socket ids of that device's tabs], name }] from controllerCount
 
         const socket = io({ auth: { token: controlToken, deviceName: myDeviceName, panelId: myPanelId, deviceId: myDeviceId } });
         socket.on('connect', checkServerBuild);
@@ -2291,7 +2284,9 @@
             const takeOverBtn = document.getElementById('controllerTakeOverBtn');
 
             const who = activeControllerName || 'another panel';
-            setViewOnly(!isActiveController, controllerReconnecting
+            setViewOnly(!isActiveController, controllerOnThisDevice
+                ? '- control moved to another tab on this device'
+                : controllerReconnecting
                 ? `- ${activeControllerName || 'the controlling panel'} is disconnected`
                 : wasActiveController === true && !isActiveController
                 ? `- ${who} took control`
@@ -2309,11 +2304,9 @@
                 takeOverBtn.style.display = 'inline-block';
             }
 
-            count.textContent = connectedControllerCount === 1 ? '1 panel' : `${connectedControllerCount} panels`;
-            const connectedWord = document.createElement('span');
-            connectedWord.className = 'panel-count-extra'; // dropped on phones to keep the header to two rows
-            connectedWord.textContent = ' connected';
-            count.appendChild(connectedWord);
+            // Counted per device (the server groups a device's tabs): only worth
+            // showing once someone else is connected too.
+            count.textContent = connectedControllerCount > 1 ? ` · ${connectedControllerCount} devices` : '';
 
             updateRundownEditAccess();
         }
@@ -2349,11 +2342,12 @@
             renderControllerStatusBar();
         });
 
-        socket.on('controllerStatus', ({ activeControllerSocketId, activeControllerName: name, reconnecting }) => {
+        socket.on('controllerStatus', ({ activeControllerSocketId, activeControllerName: name, reconnecting, controllerOnThisDevice: sameDevice }) => {
             isActiveController = (activeControllerSocketId === socket.id);
             activeControllerId = activeControllerSocketId || null;
             activeControllerName = name || null;
             controllerReconnecting = !!reconnecting;
+            controllerOnThisDevice = !!sameDevice;
             controllerStatusReceived = true;
             renderControllerStatusBar();
         });
@@ -2377,12 +2371,17 @@
             renderControllerStatusBar();
         }
 
-        function showConnectedPanels() {
-            const lines = (connectedPanels.length ? connectedPanels : [{ id: socket.id, name: myDeviceName }]).map(p => {
-                const label = p.id === socket.id ? `${myDeviceName} (this device)` : (p.name || 'Unnamed panel');
-                return `• ${label}${p.id === activeControllerId ? ' - in control' : ''}`;
+        // Connected control panels, one line per DEVICE (its tabs grouped by the
+        // server), with "Rename this device" as the dialog's action.
+        async function showConnectedPanels() {
+            const devices = connectedPanels.length ? connectedPanels : [{ ids: [socket.id], name: myDeviceName }];
+            const lines = devices.map(p => {
+                const label = p.ids.includes(socket.id) ? `${myDeviceName} (this device)` : (p.name || 'Unnamed panel');
+                const tabs = p.ids.length > 1 ? ` · ${p.ids.length} tabs` : '';
+                return `• ${label}${tabs}${p.ids.includes(activeControllerId) ? ' - in control' : ''}`;
             });
-            uiNotice('Control panels in this room', lines.join('\n'));
+            const rename = await uiConfirm({ title: 'Control panels in this room', body: lines.join('\n'), okLabel: 'Rename this device', cancelLabel: 'Close' });
+            if (rename) renameDevice();
         }
 
         // Physical Display Output (CDEther) compact status - P2.1. Fed by

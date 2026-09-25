@@ -64,10 +64,12 @@ const roomControllers = new Map();
 //    gets it back; other panels see "<name> is disconnected" meanwhile;
 //  * only if it doesn't return in time does the previous behaviour happen
 //    (promote another connected control panel, else leave the seat empty).
-// "Same panel" = same tab (panelId), or - once that tab is gone - the same
-// browser/device (deviceId, localStorage), so closing the tab and opening the
-// link again still gets the seat back; a second tab open ALONGSIDE the first
-// doesn't take it.
+// "Same panel" = same tab (panelId) or same browser/device (deviceId,
+// localStorage). Control follows the operator's NEWEST tab on the controlling
+// device: opening the Control page again on that device (a new tab, or back
+// from the Master Dashboard) takes the seat from the older tab straight away -
+// it's the same person - and if the controlling tab closes while another tab
+// on that device is still open, control moves to that tab immediately.
 // Take Over stays available to every panel throughout - nobody is ever locked
 // out waiting for a reservation to expire. A page that sends no panelId can't
 // be recognised on return, so it keeps the old immediate hand-over.
@@ -125,22 +127,43 @@ bridgeStatusRegistry.startSweep((roomId, status) => {
 // activeControllerName: the controller panel's self-chosen device name (see
 // deviceNames.js - a label, not identity), or null if it never sent one.
 // reconnecting: the seat is reserved for a controller whose connection just
-// dropped (activeControllerSocketId is null meanwhile). Both are additive
-// fields: a listener that only reads activeControllerSocketId is unaffected.
-function controllerStatusPayload(roomId) {
+// dropped (activeControllerSocketId is null meanwhile).
+// controllerOnThisDevice: the controller is another tab of the RECIPIENT's own
+// device (so its page can say "moved to another tab on this device" rather than
+// "<its own name> took control"). Computed per recipient, so no device id is
+// ever sent to anyone. All three are additive fields.
+function controllerStatusPayload(roomId, recipient) {
   const activeId = roomControllers.get(roomId) || null;
   const active = activeId && io.sockets.sockets.get(activeId);
   const reconnecting = !activeId && controllerGraceTimers.has(roomId);
   const reserved = roomControllerPanels.get(roomId);
+  const holderDeviceId = active ? active.deviceId : (reserved && reserved.deviceId);
   return {
     activeControllerSocketId: activeId,
     activeControllerName: (active && active.deviceName) || (reconnecting && reserved && reserved.name) || null,
     reconnecting,
+    controllerOnThisDevice: !!(recipient && recipient.deviceId && holderDeviceId === recipient.deviceId && activeId !== recipient.id),
   };
 }
 
 function broadcastControllerStatus(roomId) {
-  io.to(roomId).emit('controllerStatus', controllerStatusPayload(roomId));
+  for (const socketId of io.sockets.adapter.rooms.get(roomId) || []) {
+    const recipient = io.sockets.sockets.get(socketId);
+    if (recipient) recipient.emit('controllerStatus', controllerStatusPayload(roomId, recipient));
+  }
+}
+
+// Another connected control socket of the same panel/device as `socket`, if any.
+function findSiblingTab(roomId, socket) {
+  for (const socketId of io.sockets.adapter.rooms.get(roomId) || []) {
+    if (socketId === socket.id) continue;
+    const other = io.sockets.sockets.get(socketId);
+    if (other && other.clientType === 'control' &&
+        ((socket.deviceId && other.deviceId === socket.deviceId) || (socket.panelId && other.panelId === socket.panelId))) {
+      return other;
+    }
+  }
+  return null;
 }
 
 // ============================================
@@ -320,12 +343,12 @@ io.on('connection', (socket) => {
     const reserved = roomControllerPanels.get(roomId);
     const isReturningController = !!reserved && (
       (!!socket.panelId && reserved.panelId === socket.panelId) ||
-      (!holderStillConnected && !!socket.deviceId && reserved.deviceId === socket.deviceId));
+      (!!socket.deviceId && reserved.deviceId === socket.deviceId));
     if (isReturningController || (!holderStillConnected && !controllerGraceTimers.has(roomId))) {
       setRoomController(roomId, socket);
       broadcastControllerStatus(roomId);
     } else {
-      socket.emit('controllerStatus', controllerStatusPayload(roomId));
+      socket.emit('controllerStatus', controllerStatusPayload(roomId, socket));
     }
   }
 
@@ -563,7 +586,10 @@ io.on('connection', (socket) => {
     if (socket.clientType === 'control' && roomControllers.get(roomId) === socket.id) {
       roomControllers.delete(roomId);
       clearControllerGrace(roomId);
-      if (socket.panelId || socket.deviceId) {
+      const sibling = findSiblingTab(roomId, socket);
+      if (sibling) {
+        setRoomController(roomId, sibling); // another tab of the same device is open: same person, no wait
+      } else if (socket.panelId || socket.deviceId) {
         const timer = setTimeout(() => {
           controllerGraceTimers.delete(roomId);
           if (roomControllers.get(roomId)) return; // reclaimed / taken over meanwhile
@@ -591,21 +617,28 @@ function broadcastControllerCount(roomId) {
   const socketsInRoom = io.sockets.adapter.rooms.get(roomId);
   if (!socketsInRoom) return;
 
-  let controllerCount = 0;
-  // Who's connected, for the Control page's panel list (additive field). Which
-  // one is in control is NOT repeated here - it would go stale on Take Over
-  // (only controllerStatus is re-sent then); the page matches ids against that.
-  const panels = [];
+  // Counted per DEVICE, not per tab/connection: several tabs of the Control
+  // page on one phone (e.g. after going to the Master Dashboard and back) are
+  // one operator, not several. panels: one entry per device with the socket
+  // ids of its tabs - the page matches those against its own id and the
+  // controller's (which one is in control is NOT repeated here: it would go
+  // stale on Take Over, when only controllerStatus is re-sent). Device ids
+  // themselves are never sent.
+  const byDevice = new Map();
   for (const socketId of socketsInRoom) {
     const socket = io.sockets.sockets.get(socketId);
     if (socket && socket.clientType === 'control') {
-      controllerCount++;
-      panels.push({ id: socketId, name: socket.deviceName || null });
+      const key = socket.deviceId || socketId;
+      const entry = byDevice.get(key) || { ids: [], name: null };
+      entry.ids.push(socketId);
+      entry.name = socket.deviceName || entry.name;
+      byDevice.set(key, entry);
     }
   }
+  const panels = [...byDevice.values()];
 
   // Emit to all clients in room
-  io.to(roomId).emit('controllerCount', { count: controllerCount, panels });
+  io.to(roomId).emit('controllerCount', { count: panels.length, panels });
 }
 
 // Cleanup empty rooms after a delay

@@ -929,10 +929,10 @@
                         <div class="room-actions">
                             ${pauseBtn}
                             <div class="room-actions-row">
-                                <a href="${room.controlUrl}" class="action-btn control" target="_blank">
+                                <a href="${room.controlUrl}" class="action-btn control" target="foxy-control-${escapeHtml(room.id)}">
                                     📱 Control Panel
                                 </a>
-                                <a href="${room.displayUrl}" class="action-btn display" target="_blank">
+                                <a href="${room.displayUrl}" class="action-btn display" target="foxy-display-${escapeHtml(room.id)}">
                                     🖥️ Display
                                 </a>
                             </div>
