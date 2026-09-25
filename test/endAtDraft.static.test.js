@@ -92,3 +92,17 @@ test('live End-at retarget asks via the in-page modal (not window.confirm), and 
   assert.match(confirmBody, /endAtEl\.value !== pending\.v/, 're-checks the draft is unchanged before sending');
   assert.match(functionBody('setViewOnly'), /closeEndAtConfirm\(\)/, 'losing control abandons an open confirmation');
 });
+
+test('"RESET -> x" / "START -> x" labels use exactly the conditions Reset/Start commit with, and never send anything', () => {
+  const target = functionBody('stagedTarget');
+  const commit = functionBody('commitStagedConfig');
+  // End at: same guard in both
+  assert.match(target, /\(modeTouched \|\| endAtDirty\) && isValidEndAt\(endAtEl\.value\)/);
+  assert.match(commit, /\(modeTouched \|\| endAtDirty\) && isValidEndAt\(endAtEl\.value\)/);
+  // Duration: same guard in both
+  assert.match(target, /\(modeTouched \|\| durationDirty\)/);
+  assert.match(commit, /modeTouched \|\| durationDirty/);
+  for (const fn of ['stagedTarget', 'renderActionTargets']) {
+    assert.ok(!/socket\.emit|sendEndAt\(/.test(functionBody(fn)), `${fn} must not send`);
+  }
+});

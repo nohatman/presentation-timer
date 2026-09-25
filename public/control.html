@@ -559,25 +559,65 @@
             font-family: monospace;
             font-size: 0.95rem;
         }
+        /* NEW row: the draft, laid out exactly like the LIVE row above it so the
+           two read as a before/after pair. What will apply it is shown ON the
+           buttons (Apply, and "RESET -> 23:00" / "START -> 25:00"), not in prose. */
         .setup-hint {
             margin-top: 6px;
-            padding: 6px 8px;
-            border-left: 3px solid #ff9800;
-            background: rgba(255, 152, 0, 0.08);
-            border-radius: 0 4px 4px 0;
-            font-size: 0.8rem;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 4px 8px;
+            font-size: 0.85rem;
             line-height: 1.4;
-            color: #ffcc80;
+            color: #bdbdbd;
         }
-        .setup-hint.error {
-            border-left-color: #f44336;
-            background: rgba(244, 67, 54, 0.1);
-            color: #ef9a9a;
+        .setup-hint[hidden] {
+            display: none;
         }
-        .setup-hint b {
+        .setup-new-tag {
+            font-size: 0.68rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            padding: 2px 7px;
+            border-radius: 4px;
+            background: rgba(255, 152, 0, 0.22);
             color: #ffb74d;
+        }
+        .setup-new-value {
             font-family: monospace;
             font-size: 0.95rem;
+            color: #ffcc80;
+        }
+        .setup-new-note {
+            color: #9e9e9e;
+            font-size: 0.8rem;
+        }
+        .setup-hint.error {
+            display: block;
+            padding: 6px 8px;
+            border-left: 3px solid #f44336;
+            background: rgba(244, 67, 54, 0.1);
+            border-radius: 0 4px 4px 0;
+            color: #ef9a9a;
+        }
+        /* "-> 23:00" on Start / Reset: what that button will load (a pending draft
+           or mode switch). Amber = pending, same as the draft input's border. */
+        .action-target {
+            font-family: monospace;
+            font-size: 0.78rem;
+            font-weight: 700;
+            letter-spacing: 0;
+            text-transform: none;
+            padding: 1px 6px;
+            border-radius: 4px;
+            background: rgba(0, 0, 0, 0.35);
+            color: #ffcc80;
+            white-space: nowrap;
+        }
+        .action-target[hidden] {
+            display: none;
         }
         .output-mode-buttons {
             display: flex;
@@ -1246,10 +1286,12 @@
                     <button class="button primary main-action-button" id="playPauseBtn" onclick="togglePlayPause()" style="padding:8px;">
                         <svg class="icon-svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path id="playPauseIconPath" d="M8 5v14l11-7z"></path></svg>
                         <span class="label" id="playPauseLabel">Start</span>
+                        <span class="action-target" id="playTarget" hidden></span>
                     </button>
                     <button class="button danger main-action-button reset-button" onclick="resetTimer()" style="padding:8px;">
                         <svg class="icon-svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg>
                         <span class="label">Reset</span>
+                        <span class="action-target" id="resetTarget" hidden></span>
                     </button>
                 </div>
                 <!-- Consistent ordering: minus always left, plus always right, both
@@ -1619,6 +1661,29 @@
             endBtn.classList.toggle('has-draft', view !== 'endAt' && endAtDirty);
             document.getElementById('durationEditor').hidden = view !== 'duration';
             document.getElementById('endAtEditor').hidden = view !== 'endAt';
+            renderActionTargets();
+        }
+
+        // What Reset (and Start, from stopped) will load, if that differs from
+        // what's live - mirrors commitStagedConfig / startTimer's conditions
+        // exactly, so the label can never promise something the button won't do.
+        function stagedTarget() {
+            if (currentTimerMode === 'endAt') {
+                return (modeTouched || endAtDirty) && isValidEndAt(endAtEl.value) ? endAtEl.value : null;
+            }
+            return (modeTouched || durationDirty) ? fmtDurationMs(getDurationMs()) : null;
+        }
+
+        // UI-only: "RESET -> 23:00" / "START -> 25:00" on the buttons themselves.
+        function renderActionTargets() {
+            const target = stagedTarget();
+            const resetT = document.getElementById('resetTarget');
+            resetT.hidden = !target;
+            resetT.textContent = target ? `→ ${target}` : '';
+            const playT = document.getElementById('playTarget');
+            const onStart = !!target && currentState.mode === 'stopped';
+            playT.hidden = !onStart;
+            playT.textContent = onStart ? `→ ${target}` : '';
         }
 
         function applyServerTimerMode(state) {
@@ -1649,9 +1714,18 @@
         // while stopped, or the run in progress - kept visually separate from any
         // draft/pending value (the hints below it), so the operator can always
         // tell what is actually live from what they're still preparing.
+        // For reading, not for the input box: past an hour it's H:MM:SS (a 20-hour
+        // run read "1255:56" as MM:SS). The Duration field itself stays MM:SS.
         function fmtDurationMs(ms) {
-            return formatTimeInput(Math.floor(ms / 60000), Math.floor((ms % 60000) / 1000));
+            const total = Math.floor(ms / 1000);
+            const h = Math.floor(total / 3600), m = Math.floor((total % 3600) / 60), sec = total % 60;
+            return h ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}` : formatTimeInput(m, sec);
         }
+
+        // NEW row content: tag + value + short note (all fixed strings or
+        // validated/re-formatted values - safe for innerHTML).
+        const newRow = (value, note) =>
+            `<span class="setup-new-tag">New</span><span class="setup-new-value">${value}</span>${note ? `<span class="setup-new-note">${note}</span>` : ''}`;
         function updateEndTimeCalc() {
             const el = document.getElementById('timerSetupLive');
             const s = currentState;
@@ -1691,22 +1765,21 @@
             document.getElementById('endAtCancelBtn').hidden = !endAtDirty;
             document.getElementById('endAtApplyBtn').disabled = !(endAtDirty && valid) || endAtApplying;
             document.getElementById('endAtApplyBtn').textContent = endAtApplying ? '…' : 'Apply';
-            // Pending line: the draft value, and exactly what will make it take
-            // effect. Only shown while the End at editor is the one showing.
+            // NEW row: the draft, next to the LIVE row. What applies it is on the
+            // buttons themselves (Apply; "RESET -> 23:00" - see renderActionTargets).
+            // Only shown while the End at editor is the one showing.
             const running = currentState.mode !== 'stopped';
-            const stillDuration = ' Until then, Start and Reset still use Duration.';
+            const stillDuration = '<span class="setup-new-note">Until then, Start and Reset use Duration.</span>';
             let html = '';
             if (endAtError) html = endAtError;
-            else if (endAtDirty && endAtApplying) html = 'Applying…';
+            else if (endAtDirty && endAtApplying) html = newRow(`End at ${v}`, 'applying…');
             else if (endAtDirty && valid) {
-                const val = `<b>${v}</b>${proposeEndAt(v).tomorrow ? ' (tomorrow)' : ''}`;
-                html = running
-                    ? `Pending: End at ${val} - not applied to the ${currentState.mode} timer.<br>Apply changes it now (you'll be asked to confirm); Reset also uses it.`
-                    : `Pending: End at ${val} - not on the display yet.<br>Apply (or Enter) puts it there now; Start and Reset also use it.`;
-            } else if (endAtDirty) html = 'Enter a complete time (HH:MM) to apply.' + (endAtViewPending ? stillDuration : '');
-            else if (endAtViewPending) html = 'Enter the time the timer should finish.' + stillDuration;
+                const when = proposeEndAt(v).tomorrow ? ' (tomorrow)' : '';
+                html = newRow(`End at ${v}${when}`, running ? 'not applied yet · Apply asks to confirm' : 'not live yet');
+            } else if (endAtDirty) html = `<span class="setup-new-note">Enter a complete time (HH:MM).</span>${endAtViewPending ? stillDuration : ''}`;
+            else if (endAtViewPending) html = `<span class="setup-new-note">Enter the time the timer should finish.</span>${stillDuration}`;
             else if (currentTimerMode === 'endAt' && currentState.timerMode !== 'endAt' && valid) {
-                html = `Pending: switch to End at <b>${v}</b> - the next ${running ? 'Reset' : 'Start or Reset'} will use it.`;
+                html = newRow(`End at ${v}`, 'switching from Duration');
             }
             const hint = document.getElementById('endAtDraftHint');
             hint.classList.toggle('error', !!endAtError);
@@ -1741,22 +1814,23 @@
             durationEl.classList.toggle('draft', durationDirty);
             document.getElementById('durationCancelBtn').hidden = !durationDirty;
             document.getElementById('durationApplyBtn').disabled = !durationDirty || currentState.mode !== 'stopped';
-            // Pending line: the draft value, and exactly what will make it take
-            // effect. Only shown while the Duration editor is the one showing.
+            // NEW row: the draft, next to the LIVE row. What applies it is on the
+            // buttons themselves (Apply; "START/RESET -> 25:00" - see
+            // renderActionTargets). Only shown while the Duration editor is showing.
             const draftMs = getDurationMs();
             let html = '';
             if (durationDirty && currentState.mode === 'stopped') {
-                const end = new Date(Date.now() + draftMs).toLocaleTimeString('en-GB');
-                html = `Pending: <b>${fmtDurationMs(draftMs)}</b> (ends ~${end} if started now) - not on the display yet.<br>Apply (or Enter) puts it there now; Start also uses it.`;
+                const end = new Date(Date.now() + draftMs).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+                html = newRow(`Duration ${fmtDurationMs(draftMs)}`, `not live yet · would end ~${end}`);
             } else if (durationDirty && currentState.timerMode !== 'endAt' && draftMs === currentState.durationMs) {
                 // Not a typed draft: a live nudge changed this run's length but not
                 // the Duration setting, and the box shows the live length (see
                 // applyServerTimerMode) - describe that truthfully, behaviour unchanged.
-                html = `Live run nudged to <b>${fmtDurationMs(draftMs)}</b> (Duration setting is ${fmtDurationMs(committedMs)}).<br>Reset or Start will keep ${fmtDurationMs(draftMs)}; ✕ restores ${fmtDurationMs(committedMs)}.`;
+                html = newRow(`Duration ${fmtDurationMs(draftMs)}`, `live run was nudged · setting is ${fmtDurationMs(committedMs)} (✕ restores it)`);
             } else if (durationDirty) {
-                html = `Pending: <b>${fmtDurationMs(draftMs)}</b> - not applied to the ${currentState.mode} timer.<br>Reset or Start will use it. Use ±1/±5 to change the live run.`;
+                html = newRow(`Duration ${fmtDurationMs(draftMs)}`, `not applied to the ${currentState.mode} timer · ±1/±5 change the live run`);
             } else if (currentTimerMode === 'duration' && currentState.timerMode === 'endAt') {
-                html = `Pending: switch to Duration <b>${fmtDurationMs(draftMs)}</b> - the next ${currentState.mode === 'stopped' ? 'Start or Reset' : 'Reset'} will use it.`;
+                html = newRow(`Duration ${fmtDurationMs(draftMs)}`, 'switching from End at');
             }
             const hint = document.getElementById('durationDraftHint');
             hint.hidden = !html || timerSetupView() !== 'duration';
@@ -2726,6 +2800,7 @@
                 label.textContent = 'Start';
                 btn.className = 'button primary main-action-button';
             }
+            renderActionTargets(); // Start's "-> value" only applies while stopped
         }
 
         // Presets: 8 editable slots persisted in localStorage
