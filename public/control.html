@@ -626,6 +626,9 @@
             padding: 10px 16px;
             white-space: nowrap;
         }
+        .preview-times {
+            width: 100%;
+        }
         #previewNowTime {
             margin-top: 8px;
             font-size: 0.95rem;
@@ -835,7 +838,10 @@
             .container > .room-header,
             .timer-control-row > .preview-section,
             .timer-control-row > .main-buttons {
-                margin-bottom: 10px;
+                margin-bottom: 8px;
+            }
+            .page-title-row {
+                margin-bottom: 6px !important; /* beats its inline 8px */
             }
             /* The page title repeats what the browser tab already says; the
                room name below is the identity that matters on a phone. */
@@ -902,20 +908,61 @@
                 max-width: 210px;
             }
 
-            /* Preview: less card chrome so the display itself gets the width. */
+            /* Preview: less card chrome so the display itself gets the width.
+               The "Preview" caption row is dropped - the RUNNING/PAUSED pill sits
+               on the preview's top corner instead - and Now / Ends at share ONE
+               line (the End-at target is already in Timer Setup's Live line). */
             .preview-section {
                 padding: 8px;
+                position: relative;
+            }
+            .preview-head {
+                position: absolute;
+                top: 14px;
+                right: 14px;
+                width: auto !important;
+                margin: 0 !important;
+                z-index: 2;
+            }
+            .preview-label {
+                display: none;
+            }
+            .preview-head .status-badge {
+                margin-left: 0;
+                padding: 2px 8px;
+                font-size: 0.68rem;
+                box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+            }
+            .preview-times {
+                display: flex;
+                flex-wrap: wrap;
+                justify-content: center;
+                align-items: baseline;
+                column-gap: 12px;
+                margin-top: 4px;
+                line-height: 1.5;
             }
             #previewNowTime {
-                margin-top: 4px;
+                width: auto;
+                margin-top: 0;
                 font-size: 0.8rem;
             }
-            /* 3em at line-height 1.5 = exactly two lines reserved ("Ends at" +
-               the End-at "Target" line), so the transport buttons directly
-               below never shift under an operator's finger as it changes. */
+            /* One line reserved (the target line is hidden here), so the
+               transport buttons directly below never shift under a finger. */
             #endsAtDisplay {
+                width: auto;
                 font-size: 0.85rem;
-                min-height: 3em;
+                min-height: 1.5em;
+            }
+            #endsAtDisplay .ends-target {
+                display: none;
+            }
+            /* Short phones (iPhone SE class, older Androids): the preview shrinks
+               just enough for the Timer Setup editor to stay on the first screen -
+               its width follows the space left over (svh = height with the
+               browser's toolbars showing); taller phones keep it full width. */
+            .display-preview-wrap {
+                width: clamp(60%, calc((100svh - 470px) * 16 / 9), 100%);
             }
 
             /* Transport: Start/Pause/Resume is the one wide, dominant target;
@@ -925,6 +972,9 @@
             .main-buttons {
                 padding: 8px;
                 gap: 8px;
+            }
+            .timer-setup-heading {
+                display: none; /* the Duration | End at switch says it all */
             }
             .main-action-row {
                 flex-direction: row;
@@ -987,8 +1037,11 @@
                (rather than hiding some behind a "More" tap - they're
                operator-customised slots, so no fixed subset is the right one). */
             .timer-setup-section {
-                padding: 10px;
+                padding: 8px;
                 gap: 12px !important; /* beats its inline 10px */
+            }
+            .mode-segment {
+                margin-bottom: 6px;
             }
             .mode-segment .mode-button,
             .setup-apply,
@@ -1000,7 +1053,17 @@
             .setup-editor #duration,
             .setup-editor #endAtTime {
                 max-width: none;
-                padding: 8px 10px;
+                padding: 0 10px;
+            }
+            /* Explicit height: phone browsers give a time input a tall built-in
+               height (62px), and Apply/✕ stretched to match it. */
+            .setup-editor #duration,
+            .setup-editor #endAtTime,
+            .setup-editor .setup-apply,
+            .setup-editor .setup-cancel {
+                height: 48px;
+                min-height: 48px;
+                box-sizing: border-box;
             }
             .setup-apply {
                 flex: 0 0 auto;
@@ -1158,15 +1221,17 @@
                  text) sits flush at the top like the other two columns,
                  rather than centering with a gap above "Preview". -->
             <div class="section preview-section" style="display:flex;flex-direction:column;align-items:center;justify-content:flex-start;">
-                <div style="align-self:flex-start;width:100%;display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-                    <span style="font-size:0.85rem;color:#999;font-weight:500;">Preview</span>
+                <div class="preview-head" style="align-self:flex-start;width:100%;display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                    <span class="preview-label" style="font-size:0.85rem;color:#999;font-weight:500;">Preview</span>
                     <span class="status-badge" id="statusBadge">Stopped</span>
                 </div>
                 <div class="display-preview-wrap" id="displayPreviewWrap">
                     <iframe class="display-preview-frame" id="displayPreviewFrame" title="Live display preview" loading="lazy"></iframe>
                 </div>
-                <div id="previewNowTime"></div>
-                <div id="endsAtDisplay"></div>
+                <div class="preview-times">
+                    <div id="previewNowTime"></div>
+                    <div id="endsAtDisplay"></div>
+                </div>
             </div>
             <!-- Col 2: Compact controls -->
             <div class="section main-buttons">
@@ -1200,7 +1265,7 @@
                  Start/Reset will actually use. -->
             <div class="section timer-setup-section" style="display:flex;flex-direction:column;gap:10px;">
                 <div>
-                    <div class="setup-heading">Timer Setup</div>
+                    <div class="setup-heading timer-setup-heading">Timer Setup</div>
                     <div class="mode-segment" role="group" aria-label="Timer mode">
                         <button class="mode-button active" id="modeDurationBtn" onclick="setTimerMode('duration')" aria-pressed="true">Duration</button>
                         <button class="mode-button" id="modeEndAtBtn" onclick="setTimerMode('endAt')" aria-pressed="false" title="Finish at a clock time">End at</button>
@@ -2518,13 +2583,20 @@
                          : s.mode === 'paused'  ? 'If resumed, ends at'
                          :                        'Ends at';
 
-            let html = `<div style="font-size:0.9em;font-weight:600;">${prefix} ${hh}:${mm}:${ss}</div>`;
+            // A finish on a later day (an End-at target already passed today rolls
+            // to tomorrow) must say so - "Ends at 16:00:00" at 17:55 reads as wrong.
+            const dayStart = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+            const daysAhead = Math.round((dayStart(wallEnd) - dayStart(new Date())) / 86400000);
+            const dayNote = daysAhead === 1 ? ' (tomorrow)'
+                : daysAhead > 1 ? ` (${wallEnd.toLocaleDateString('en-GB', { weekday: 'short' })})` : '';
+
+            let html = `<div style="font-size:0.9em;font-weight:600;">${prefix} ${hh}:${mm}:${ss}${dayNote}</div>`;
 
             if (currentTimerMode === 'endAt' && s.endAtTarget) {
-                html += `<div style="color:#aaa;">Target: ${s.endAtTarget}</div>`;
+                html += `<div class="ends-target" style="color:#aaa;">Target: ${s.endAtTarget}</div>`;
             }
             if (Math.abs(speed - 1.0) > 0.01) {
-                html += `<div style="color:#ff9800;">Speed ${speed.toFixed(2)}× active</div>`;
+                html += `<div class="ends-speed" style="color:#ff9800;">Speed ${speed.toFixed(2)}× active</div>`;
             }
 
             el.style.color = '#90caf9';
