@@ -666,6 +666,68 @@
             text-decoration: underline;
         }
 
+        /* View-only (observer) state - see setViewOnly. Unmistakable at a
+           glance: an orange frame round the whole viewport, a colder page cast,
+           every control greyed out, and the pinned strip with Take over. The
+           live preview is deliberately NOT greyed - it must stay true to what
+           the display shows. [data-view-ok] marks what still works: room
+           header (Take over, Share Links), Rundown open/close, Text export. */
+        body.view-only {
+            background: #15181f;
+            padding-bottom: 72px; /* room for the pinned strip */
+        }
+        body.view-only::after {
+            content: '';
+            position: fixed;
+            inset: 0;
+            border: 3px solid #e65100;
+            pointer-events: none;
+            z-index: 899;
+        }
+        body.view-only .wrapper :is(button, input, select, textarea, label, .preset-button):not([data-view-ok], [data-view-ok] *) {
+            opacity: 0.35;
+            filter: grayscale(1);
+            cursor: not-allowed;
+        }
+        .view-only-bar {
+            position: fixed;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 900;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+            background: #e65100;
+            color: #fff;
+            box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.45);
+            font-size: 0.95rem;
+        }
+        .view-only-bar[hidden] {
+            display: none;
+        }
+        .view-only-text {
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+        .view-only-bar .view-only-takeover {
+            flex: 0 0 auto;
+            min-height: 44px;
+            padding: 8px 18px;
+            background: #fff;
+            color: #e65100;
+            font-weight: 700;
+            border-radius: 6px;
+        }
+        /* A tap on any greyed-out control flashes the strip - never a dead tap. */
+        .view-only-bar.flash {
+            animation: viewOnlyFlash 0.35s ease-in-out 2;
+        }
+        @keyframes viewOnlyFlash {
+            50% { background: #ffb74d; color: #1a1a1a; transform: translateY(-4px); }
+        }
+
         /* Mobile layout fix: root cause of the page opening wider than the
            viewport was two grids with fixed/min pixel column widths that never
            shrink regardless of viewport - .container's minmax(320px, 1fr) x2
@@ -928,6 +990,14 @@
     </style>
 </head>
 <body>
+    <!-- View-only strip: shown while this panel is an observer (see setViewOnly).
+         Pinned to the bottom edge - always in reach, thumb-friendly on a phone -
+         so taking control never means scrolling back to the room header. -->
+    <div id="viewOnlyBar" class="view-only-bar" role="status" aria-live="polite" data-view-ok hidden>
+        <span class="view-only-icon" aria-hidden="true">👁</span>
+        <span class="view-only-text"><strong>View only</strong> <span id="viewOnlyReason">- another panel is in control</span></span>
+        <button type="button" class="button view-only-takeover" onclick="openTakeOverModal()">Take over</button>
+    </div>
     <div class="wrapper">
     <div class="container">
         <div class="page-title-row" style="grid-column: 1 / -1; min-width: 0; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px;">
@@ -947,7 +1017,7 @@
              this card instead of a separate full-width row. On narrow viewports the
              group wraps beneath the room name (flex-wrap on both this row and the
              group itself), never causing horizontal overflow. -->
-        <div class="room-header">
+        <div class="room-header" data-view-ok>
             <div class="room-name-block">
                 <div class="room-label" style="font-size: 0.9rem; color: #999; margin-bottom: 4px;">Room</div>
                 <div class="room-name-display" id="roomName"></div>
@@ -967,13 +1037,13 @@
         </div>
 
         <div id="serverBuildBanner" role="alert" hidden style="grid-column: 1 / -1; background: #b71c1c; color: #fff; padding: 12px 16px; border-radius: 8px; font-weight: 600; border: 2px solid #ff8a80;"></div>
-        <div id="controlRejectedNotice" style="display: none; grid-column: 1 / -1; background: #b71c1c; color: #fff; padding: 10px 16px; border-radius: 8px; margin-bottom: 1rem; font-weight: 500;"></div>
+        <div id="controlRejectedNotice" role="alert" style="display: none; position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 1001; width: max-content; max-width: calc(100vw - 32px); box-sizing: border-box; background: #b71c1c; color: #fff; padding: 10px 16px; border-radius: 8px; font-weight: 500; box-shadow: 0 6px 20px rgba(0,0,0,0.5);"></div>
 
         <!-- Custom Take Over confirmation modal - deliberately not window.confirm(),
              matches the dark interface, and supports focus management/Escape/
              click-outside as required. Confirming still performs the existing
              always-available immediate takeover (no approval step). -->
-        <div id="takeOverModalOverlay" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 1000; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box;" onclick="if (event.target === this) closeTakeOverModal();">
+        <div id="takeOverModalOverlay" data-view-ok style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 1000; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box;" onclick="if (event.target === this) closeTakeOverModal();">
             <div id="takeOverModal" role="dialog" aria-modal="true" aria-labelledby="takeOverModalTitle" tabindex="-1" style="background: #1a1a1a; border: 1px solid #333; border-radius: 12px; padding: 24px; max-width: 400px; width: 100%; box-sizing: border-box; box-shadow: 0 8px 32px rgba(0,0,0,0.5); outline: none;">
                 <h2 id="takeOverModalTitle" style="margin: 0 0 12px 0; font-size: 1.2rem; color: #fafafa;">Take control of this room?</h2>
                 <p style="margin: 0 0 20px 0; color: #ccc; font-size: 0.9rem; line-height: 1.5;">This will immediately transfer control to this device. The current controller will become an observer.</p>
@@ -1077,7 +1147,7 @@
 
         <!-- Programme / Rundown - Full Width -->
         <div class="section" style="grid-column:1/-1;">
-            <h3 onclick="toggleRundownPanel()"
+            <h3 onclick="toggleRundownPanel()" data-view-ok
                 style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:10px;">
                 <span id="rundownToggleIcon" style="font-size:0.8rem;color:#999;">▶</span>
                 Programme / Rundown
@@ -1110,7 +1180,7 @@
                 <!-- Scrollable speaker list -->
                 <div id="rundownList" style="max-height:260px;overflow-y:auto;margin-bottom:8px;"></div>
                 <!-- Copy-all panel: whole rundown as plain text -->
-                <div id="rundownExportPanel" style="display:none;border:1px solid #444;border-radius:6px;padding:12px;background:#111;margin-bottom:8px;">
+                <div id="rundownExportPanel" data-view-ok style="display:none;border:1px solid #444;border-radius:6px;padding:12px;background:#111;margin-bottom:8px;">
                     <div style="font-size:0.85rem;color:#999;margin-bottom:8px;">
                         Whole rundown as text (<code style="color:#90caf9;">Name, MM:SS</code> per line). Copy it, reorder it anywhere, then paste it back with <b>Replace</b>.
                     </div>
@@ -1158,7 +1228,7 @@
                 <div id="rundownActionBar" style="display:flex;gap:8px;position:sticky;bottom:0;z-index:5;background:#1a1a1a;padding:8px 0 2px;border-top:1px solid #2a2a2a;">
                     <button id="rundownAddBtn" onclick="addRundownItem()" class="button secondary" style="flex:1;">+ Add</button>
                     <button id="rundownPasteBtn" onclick="toggleImportPanel()" class="button secondary" style="flex:1;">📋 Paste</button>
-                    <button onclick="toggleExportPanel()" class="button secondary" style="flex:1;">📄 Text</button>
+                    <button onclick="toggleExportPanel()" class="button secondary" style="flex:1;" data-view-ok>📄 Text</button>
                     <button id="rundownEditBtn" onclick="toggleRundownEditMode()" class="button secondary" style="flex:1;">✏️ Edit</button>
                 </div>
             </div>
@@ -1880,10 +1950,79 @@
         let isActiveController = true;
         let connectedControllerCount = 1;
 
+        // View-only mode. An observer's commands are rejected by the server
+        // (requireActiveController) - but the only feedback used to be a notice
+        // at the top of the page, so an operator scrolled down could change
+        // things and wonder why nothing happened. Now the page itself refuses:
+        // every control outside [data-view-ok] is greyed out, and a capture-phase
+        // guard swallows clicks/typing/shortcuts on them BEFORE any handler runs
+        // (so nothing is sent and no local draft looks applied), flashing the
+        // pinned strip instead. Scrolling is untouched. One switch, deliberately
+        // independent of WHY the page is view-only, so a future client
+        // view-link can reuse it (with no Take over).
+        const VIEW_ONLY_GUARD = 'button, input, select, textarea, label, [onclick], [draggable="true"], .preset-button';
+        const VIEW_ONLY_SHORTCUT_KEYS = [' ', 'r', 'R', '+', '=', '-', '_', 'Enter', 'ArrowUp', 'ArrowDown'];
+        let viewOnly = false;
+        let controllerStatusReceived = false; // the page's initial isActiveController=true is a placeholder until the server says
+        let wasActiveController = null;
+
+        function isViewOnlyBlocked(target) {
+            if (!viewOnly || !(target instanceof Element)) return false;
+            if (target.closest('[data-view-ok]')) return false;
+            return !!target.closest(VIEW_ONLY_GUARD);
+        }
+
+        function flashViewOnlyBar() {
+            const bar = document.getElementById('viewOnlyBar');
+            bar.classList.remove('flash');
+            void bar.offsetWidth; // restart the animation on repeated taps
+            bar.classList.add('flash');
+        }
+
+        function setViewOnly(on, reason) {
+            viewOnly = on;
+            document.body.classList.toggle('view-only', on);
+            document.getElementById('viewOnlyBar').hidden = !on;
+            if (reason) document.getElementById('viewOnlyReason').textContent = reason;
+            // Drop focus from any control being edited at the moment control was lost.
+            if (on && isViewOnlyBlocked(document.activeElement)) document.activeElement.blur();
+        }
+
+        function blockInViewOnly(e) {
+            if (!isViewOnlyBlocked(e.target)) return;
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            if (e.type === 'click') flashViewOnlyBar();
+        }
+        // pointerdown/mousedown: stop focus, slider drags and select pop-ups;
+        // click: stop every onclick (incl. inline ones - the capture phase at
+        // window runs first); beforeinput/paste/drop/dragstart: no typing, pasting
+        // or dragging into or out of a control. None of these affect scrolling.
+        ['pointerdown', 'mousedown', 'click', 'dblclick', 'beforeinput', 'paste', 'drop', 'dragstart']
+            .forEach(type => window.addEventListener(type, blockInViewOnly, true));
+        window.addEventListener('focusin', (e) => {
+            if (isViewOnlyBlocked(e.target) && e.target.matches('input, textarea, select')) e.target.blur(); // no phone keyboard pop-up
+        }, true);
+        window.addEventListener('keydown', (e) => {
+            if (!viewOnly || e.key === 'Tab' || e.ctrlKey || e.metaKey || e.altKey) return; // keep keyboard navigation + copy
+            const onControl = isViewOnlyBlocked(e.target);
+            const onShortcut = VIEW_ONLY_SHORTCUT_KEYS.includes(e.key)
+                && !(e.target instanceof Element && e.target.closest('[data-view-ok], input, textarea, select'));
+            if (!onControl && !onShortcut) return;
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            flashViewOnlyBar();
+        }, true);
+
         function renderControllerStatusBar() {
             const badge = document.getElementById('controllerStatusBadge');
             const count = document.getElementById('controllerStatusCount');
             const takeOverBtn = document.getElementById('controllerTakeOverBtn');
+
+            setViewOnly(!isActiveController, wasActiveController === true && !isActiveController
+                ? '- another panel took control'
+                : '- another panel is in control');
+            wasActiveController = controllerStatusReceived ? isActiveController : null;
 
             if (isActiveController) {
                 badge.textContent = 'CONTROLLER';
@@ -1934,6 +2073,7 @@
 
         socket.on('controllerStatus', ({ activeControllerSocketId }) => {
             isActiveController = (activeControllerSocketId === socket.id);
+            controllerStatusReceived = true;
             renderControllerStatusBar();
         });
 
@@ -1978,6 +2118,7 @@
             notice.style.display = 'block';
             clearTimeout(notice._hideTimer);
             notice._hideTimer = setTimeout(() => { notice.style.display = 'none'; }, 4000);
+            if (viewOnly) flashViewOnlyBar(); // backstop only - view-only normally stops the action before it's sent
         });
 
         // Custom Take Over confirmation modal - no window.confirm(). Confirming
