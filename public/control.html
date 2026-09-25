@@ -487,6 +487,38 @@
             color: #90caf9;
             font-family: monospace;
         }
+        .room-status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            min-width: 0;
+        }
+        .share-links-btn {
+            padding: 10px 16px;
+            white-space: nowrap;
+        }
+        #previewNowTime {
+            margin-top: 8px;
+            font-size: 0.95rem;
+            color: #999;
+            font-family: monospace;
+            text-align: center;
+            width: 100%;
+        }
+        #endsAtDisplay {
+            font-size: 0.95rem;
+            color: #90caf9;
+            text-align: center;
+            min-height: 2.5em;
+            line-height: 1.5;
+            width: 100%;
+        }
+        .nudge-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
         .preview {
             height: 60px;
             border-radius: 6px;
@@ -542,26 +574,170 @@
             .timer-control-row > .section {
                 margin-bottom: 16px;
             }
-            /* Stacked (one above the other) made sense on desktop's narrow
-               190px column, but on mobile col 2 is the full page width (see
-               .timer-control-row above) - stacked there meant two full-width
-               130px-tall buttons, a lot of scrolling for not much reason.
-               Side by side instead, and smaller - "too big to be functional"
-               was the actual complaint, not just the shape. */
+            /* Live-show cockpit: on a phone the first screen should be room/
+               status, the preview, Start/Pause/Resume, Reset and the nudges -
+               everything needed in the next few seconds - without scrolling.
+               Everything below is spacing/arrangement only; the lower setup
+               sections (Timer Mode onwards) are deliberately left alone. */
+            .wrapper {
+                padding: 10px;
+            }
+            .container > .room-header,
+            .timer-control-row > .preview-section,
+            .timer-control-row > .main-buttons {
+                margin-bottom: 10px;
+            }
+            /* The page title repeats what the browser tab already says; the
+               room name below is the identity that matters on a phone. */
+            .page-title-row h1 {
+                display: none;
+            }
+            .links {
+                font-size: 0.8rem;
+                margin-top: 0;
+            }
+            .links a {
+                margin: 0 2px;
+                white-space: nowrap; /* wrap between links, never mid-link */
+            }
+            .links span {
+                margin: 0 2px !important; /* beats the separators' inline 0 8px */
+            }
+
+            /* Room header: two tight rows instead of four loose ones -
+               [name ........ Share] then [CONTROLLER · count · Take Over · PDO].
+               .room-status becomes display:contents so its children join the
+               header's own flex row, where `order` can put Share beside the
+               name; the zero-height ::after with flex-basis:100% forces the
+               line break after it. */
+            .room-header {
+                padding: 8px 12px;
+                gap: 0 10px;
+                border-width: 1px;
+            }
+            .room-label {
+                display: none;
+            }
+            .room-name-block {
+                flex: 1 1 0;
+                min-width: 0;
+            }
+            .room-name-display {
+                font-size: 1.25rem;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            .room-status {
+                display: contents;
+            }
+            .room-status > * {
+                order: 2;
+                margin-top: 6px;
+            }
+            .room-status > .share-links-btn {
+                order: 0;
+                margin-top: 0;
+                padding: 8px 12px;
+                min-height: 40px;
+                font-size: 0.9rem;
+            }
+            .room-header::after {
+                content: '';
+                order: 1;
+                flex-basis: 100%;
+                height: 0;
+            }
+            #controllerStatusCount {
+                font-size: 0.8rem !important; /* beats its inline 0.85rem */
+            }
+
+            /* Preview: less card chrome so the display itself gets the width. */
+            .preview-section {
+                padding: 8px;
+            }
+            #previewNowTime {
+                margin-top: 4px;
+                font-size: 0.8rem;
+            }
+            /* 3em at line-height 1.5 = exactly two lines reserved ("Ends at" +
+               the End-at "Target" line), so the transport buttons directly
+               below never shift under an operator's finger as it changes. */
+            #endsAtDisplay {
+                font-size: 0.85rem;
+                min-height: 3em;
+            }
+
+            /* Transport: Start/Pause/Resume is the one wide, dominant target;
+               Reset sits beside it narrow and outlined - still unmistakably
+               red/destructive, but visibly the secondary action. Fixed pixel
+               heights, not aspect-ratio (see .main-action-button above). */
+            .main-buttons {
+                padding: 8px;
+                gap: 8px;
+            }
             .main-action-row {
                 flex-direction: row;
+                gap: 8px;
             }
             .main-action-button {
-                width: 120px;
-                height: 120px;
+                height: 76px;
             }
+            #playPauseBtn {
+                flex: 1 1 auto;
+                width: auto;
+                flex-direction: row;
+                gap: 10px;
+            }
+            #playPauseBtn .icon-svg {
+                width: 38px;
+                height: 38px;
+            }
+            #playPauseBtn .label {
+                font-size: 1.15rem;
+            }
+            .reset-button {
+                width: 88px;
+                gap: 4px;
+            }
+            /* .button.danger's own specificity, so this outline wins over its fill */
+            .button.danger.reset-button,
+            .button.danger.reset-button:hover {
+                background: transparent;
+                color: #ef9a9a;
+                box-shadow: inset 0 0 0 2px #c62828;
+            }
+            .reset-button .icon-svg {
+                width: 26px;
+                height: 26px;
+            }
+            .reset-button .label {
+                font-size: 0.75rem;
+            }
+
+            /* Nudges: one row, read left-to-right as a number line -
+               −5 −1 | +1 +5. `order` rather than reordering the DOM so the
+               desktop 2x2 (fine on top, minus left) stays exactly as it is. */
+            .nudge-grid {
+                grid-template-columns: repeat(4, 1fr);
+                gap: 6px;
+            }
+            .nudge-button {
+                min-height: 44px;
+                padding: 10px 4px;
+                white-space: nowrap;
+            }
+            .nudge-grid > :nth-child(3) { order: 1; } /* −5 */
+            .nudge-grid > :nth-child(1) { order: 2; } /* −1 */
+            .nudge-grid > :nth-child(2) { order: 3; } /* +1 */
+            .nudge-grid > :nth-child(4) { order: 4; } /* +5 */
         }
     </style>
 </head>
 <body>
     <div class="wrapper">
     <div class="container">
-        <div style="grid-column: 1 / -1; min-width: 0; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px;">
+        <div class="page-title-row" style="grid-column: 1 / -1; min-width: 0; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px;">
             <h1 style="margin: 0;">Timer Control</h1>
             <div class="links" style="border: none; padding: 0; text-align: right; min-width: 0;">
                 <a href="#" id="displayLink" target="_blank">Open Display Screen</a>
@@ -579,11 +755,11 @@
              group wraps beneath the room name (flex-wrap on both this row and the
              group itself), never causing horizontal overflow. -->
         <div class="room-header">
-            <div>
-                <div style="font-size: 0.9rem; color: #999; margin-bottom: 4px;">Room</div>
+            <div class="room-name-block">
+                <div class="room-label" style="font-size: 0.9rem; color: #999; margin-bottom: 4px;">Room</div>
                 <div class="room-name-display" id="roomName"></div>
             </div>
-            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0;">
+            <div class="room-status">
                 <span id="controllerStatusBadge" style="padding: 3px 10px; border-radius: 5px; font-weight: 700; font-size: 0.72rem; letter-spacing: 0.5px; white-space: nowrap; background: #2e7d32; color: #fff;">CONTROLLER</span>
                 <span id="controllerStatusCount" style="color: #999; font-size: 0.85rem; white-space: nowrap;"></span>
                 <button id="controllerTakeOverBtn" style="display: none; padding: 5px 14px; font-size: 0.8rem; border-radius: 5px; border: none; background: #1976d2; color: #fff; cursor: pointer; white-space: nowrap;" onclick="openTakeOverModal()">Take Over</button>
@@ -593,7 +769,7 @@
                      claims the physical Hive display itself is connected - only
                      reports what the bridge software itself knows. -->
                 <span id="pdoStatusBadge" class="pdo-badge" style="display: none;"></span>
-                <button class="button secondary" style="padding: 10px 16px; white-space: nowrap;" onclick="copyRoomLinks(event)">📤 Share Links</button>
+                <button class="button secondary share-links-btn" onclick="copyRoomLinks(event)">📤 Share Links</button>
             </div>
         </div>
 
@@ -621,7 +797,7 @@
                  flex-start, so content (the fixed 16:9 preview box below +
                  text) sits flush at the top like the other two columns,
                  rather than centering with a gap above "Preview". -->
-            <div class="section" style="display:flex;flex-direction:column;align-items:center;justify-content:flex-start;">
+            <div class="section preview-section" style="display:flex;flex-direction:column;align-items:center;justify-content:flex-start;">
                 <div style="align-self:flex-start;width:100%;display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
                     <span style="font-size:0.85rem;color:#999;font-weight:500;">Preview</span>
                     <span class="status-badge" id="statusBadge">Stopped</span>
@@ -629,8 +805,8 @@
                 <div class="display-preview-wrap" id="displayPreviewWrap">
                     <iframe class="display-preview-frame" id="displayPreviewFrame" title="Live display preview" loading="lazy"></iframe>
                 </div>
-                <div id="previewNowTime" style="margin-top:8px;font-size:0.95rem;color:#999;font-family:monospace;text-align:center;width:100%;"></div>
-                <div id="endsAtDisplay" style="font-size:0.95rem;color:#90caf9;text-align:center;min-height:2.5em;line-height:1.5;width:100%;"></div>
+                <div id="previewNowTime"></div>
+                <div id="endsAtDisplay"></div>
             </div>
             <!-- Col 2: Compact controls -->
             <div class="section main-buttons">
@@ -639,7 +815,7 @@
                         <svg class="icon-svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path id="playPauseIconPath" d="M8 5v14l11-7z"></path></svg>
                         <span class="label" id="playPauseLabel">Start</span>
                     </button>
-                    <button class="button danger main-action-button" onclick="resetTimer()" style="padding:8px;">
+                    <button class="button danger main-action-button reset-button" onclick="resetTimer()" style="padding:8px;">
                         <svg class="icon-svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg>
                         <span class="label">Reset</span>
                     </button>
@@ -649,7 +825,7 @@
                      layout had the minus column descending (-5, -1) while the plus
                      column ascended (+1, +5), which read as arbitrary. Fine
                      adjustment on top since it's the one reached for more often. -->
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                <div class="nudge-grid">
                     <button class="button secondary nudge-button" onclick="nudge(-60*1000)">−1 min</button>
                     <button class="button secondary nudge-button" onclick="nudge(60*1000)">+1 min</button>
                     <button class="button secondary nudge-button" onclick="nudge(-5*60*1000)">−5 min</button>
