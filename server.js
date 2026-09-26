@@ -608,7 +608,6 @@ io.on('connection', (socket) => {
     // Broadcast updated controller count after disconnect
     setTimeout(() => {
       broadcastControllerCount(roomId);
-      checkAndCleanupRoom(roomId);
     }, 100);
   });
 });
@@ -642,43 +641,11 @@ function broadcastControllerCount(roomId) {
   io.to(roomId).emit('controllerCount', { count: panels.length, panels });
 }
 
-// Cleanup empty rooms after a delay
-const roomCleanupTimers = new Map();
-
-function checkAndCleanupRoom(roomId) {
-  // Clear any existing cleanup timer for this room
-  if (roomCleanupTimers.has(roomId)) {
-    clearTimeout(roomCleanupTimers.get(roomId));
-  }
-
-  // Check if room is empty
-  const socketsInRoom = io.sockets.adapter.rooms.get(roomId);
-  if (!socketsInRoom || socketsInRoom.size === 0) {
-    // Only cleanup rooms that are in 'stopped' mode
-    // This prevents configured/paused rooms from being deleted
-    const roomState = timerRooms.get(roomId);
-    if (roomState && roomState.mode !== 'stopped') {
-      console.log(`⏸️  Room ${roomId} is empty but not stopped - keeping it`);
-      return;
-    }
-
-    // Schedule cleanup after 30 minutes of inactivity
-    const timer = setTimeout(() => {
-      // Double-check room is still empty and stopped before deleting
-      const stillEmpty = !io.sockets.adapter.rooms.get(roomId) || io.sockets.adapter.rooms.get(roomId).size === 0;
-      const currentState = timerRooms.get(roomId);
-      if (stillEmpty && currentState && currentState.mode === 'stopped') {
-        timerRooms.delete(roomId);
-        forgetRoomController(roomId);
-        db.deleteRoom(Number(roomId));
-        roomCleanupTimers.delete(roomId);
-        console.log(`🗑️  Cleaned up empty room: ${roomId}`);
-      }
-    }, 30 * 60 * 1000); // 30 minutes
-
-    roomCleanupTimers.set(roomId, timer);
-  }
-}
+// Rooms are only ever deleted deliberately (dashboard / admin delete, or a
+// demo room reaching its expiry - see demoRooms below). There used to be an
+// "empty and stopped for 30 minutes" auto-delete here, left over from when
+// rooms were created implicitly by name; it silently deleted clients' rooms
+// (and their links) set up ahead of a show.
 
 // Phase 6c.3: forces every currently-connected control/display socket for a
 // client's rooms to drop, at the moment of suspension - the socket-level
@@ -902,10 +869,6 @@ app.delete('/api/rooms/:roomId', auth.requireDashboardAuth, auth.resolveOwnedRoo
   forgetRoomController(roomId);
   db.deleteRoom(room.id);
 
-  if (roomCleanupTimers.has(roomId)) {
-    clearTimeout(roomCleanupTimers.get(roomId));
-    roomCleanupTimers.delete(roomId);
-  }
 
   const socketsInRoom = io.sockets.adapter.rooms.get(roomId);
   if (socketsInRoom) {
@@ -1001,10 +964,6 @@ app.delete('/api/admin/rooms/:id', auth.requireDashboardAuth, auth.requirePlatfo
   forgetRoomController(roomId);
   db.deleteRoom(room.id);
 
-  if (roomCleanupTimers.has(roomId)) {
-    clearTimeout(roomCleanupTimers.get(roomId));
-    roomCleanupTimers.delete(roomId);
-  }
 
   const socketsInRoom = io.sockets.adapter.rooms.get(roomId);
   if (socketsInRoom) {
