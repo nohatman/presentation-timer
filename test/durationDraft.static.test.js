@@ -100,3 +100,8 @@ test('the generic "input changed -> re-send settings" listener skips the in-page
   assert.match(block, /input\.closest\('#appDialogOverlay'\)\) return;/);
   assert.ok(html.indexOf('id="appDialogInput"') > html.indexOf('id="appDialogOverlay"'), 'the rename field lives inside the dialog overlay');
 });
+
+test('typing a message is not a settings change: the generic re-send-settings listener skips the message box', () => {
+  const block = html.slice(html.indexOf("document.querySelectorAll('input').forEach(input => {"), html.indexOf("document.querySelectorAll('input').forEach(input => {") + 900);
+  assert.match(block, /input\.id === 'messageInput'\) return;/);
+});

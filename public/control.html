@@ -712,11 +712,11 @@
         .message-live-bar {
             width: 100%;
             box-sizing: border-box;
-            margin-top: 8px;
+            margin-top: 6px;
             display: flex;
             align-items: center;
             gap: 8px;
-            padding: 6px 6px 6px 10px;
+            padding: 3px 3px 3px 10px;
             border-radius: 8px;
             border: 1px solid rgba(186, 104, 200, 0.55);
             background: rgba(186, 104, 200, 0.14);
@@ -724,7 +724,123 @@
         .message-live-bar[hidden] {
             display: none;
         }
-        .message-live-tag {
+        .message-live-text {
+            flex: 1 1 auto;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: #f3e5f5;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+        .message-live-text::before {
+            content: '';
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            margin-right: 8px;
+            border-radius: 50%;
+            background: #ce93d8;
+            vertical-align: 1px;
+        }
+        .message-live-clear {
+            flex: 0 0 auto;
+            min-height: 32px;
+            padding: 4px 14px;
+            font-size: 0.85rem;
+            background: #ab47bc;
+            color: #fff;
+            font-weight: 700;
+            border-radius: 6px;
+        }
+        .message-live-clear:hover {
+            background: #9c27b0;
+        }
+
+        /* Message compose buttons: colour = state, caption = what a press does.
+           blue SHOW (nothing on screen) · purple ● LIVE (this is on screen, text
+           unchanged) · amber UPDATE (on screen but edited - press to send the
+           edit) · outlined SWITCH (the other mode is live). */
+        .msg-send-btn {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 1px;
+            border: 2px solid transparent;
+            background: #2a2a2a;
+            color: #9e9e9e;
+            font-weight: 600;
+        }
+        .msg-btn-state {
+            font-size: 0.66rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+        }
+        .msg-btn-state:empty {
+            display: none;
+        }
+        .msg-send-btn.state-show {
+            background: #1565c0;
+            color: #fff;
+        }
+        .msg-send-btn.state-live {
+            background: rgba(186, 104, 200, 0.28);
+            border-color: #ba68c8;
+            color: #f3e5f5;
+        }
+        .msg-send-btn.state-update {
+            background: #ff9800;
+            color: #1a1a1a;
+        }
+        .msg-send-btn.state-switch {
+            background: #2a2a2a;
+            border-color: #616161;
+            color: #e0e0e0;
+        }
+        .msg-send-btn:disabled,
+        #msgClearBtn:disabled {
+            opacity: 0.4;
+            cursor: default;
+            box-shadow: none;
+        }
+        #msgClearBtn:disabled {
+            background: #3a3a3a;
+            color: #9e9e9e;
+        }
+        #messageInput.draft {
+            border-color: #ff9800;
+            box-shadow: 0 0 0 1px #ff9800;
+        }
+        .message-status {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            margin-bottom: 8px;
+            font-size: 0.85rem;
+        }
+        .message-status:empty {
+            display: none;
+        }
+        .message-status-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+        }
+        .message-status-row .msg-status-text {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: #e0e0e0;
+        }
+        .message-status-row .msg-status-note {
+            color: #9e9e9e;
+            white-space: nowrap;
+        }
+        .msg-live-tag {
             flex: 0 0 auto;
             font-size: 0.68rem;
             font-weight: 700;
@@ -734,27 +850,6 @@
             border-radius: 4px;
             background: rgba(186, 104, 200, 0.3);
             color: #f3e5f5;
-        }
-        .message-live-text {
-            flex: 1 1 auto;
-            min-width: 0;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            color: #f3e5f5;
-            font-size: 0.9rem;
-        }
-        .message-live-clear {
-            flex: 0 0 auto;
-            min-height: 40px;
-            padding: 6px 16px;
-            background: #ab47bc;
-            color: #fff;
-            font-weight: 700;
-            border-radius: 6px;
-        }
-        .message-live-clear:hover {
-            background: #9c27b0;
         }
 
         /* This device's name chip (tap to rename) and the tappable panel count. */
@@ -1356,7 +1451,6 @@
                      Clear, right under the preview where the operator is already
                      looking (composing stays in the Message section further down). -->
                 <div id="messageLiveBar" class="message-live-bar" role="status" hidden>
-                    <span class="message-live-tag" id="messageLiveTag"></span>
                     <span class="message-live-text" id="messageLiveText"></span>
                     <button type="button" class="button message-live-clear" onclick="clearMessage()">Clear</button>
                 </div>
@@ -1612,16 +1706,17 @@
                 <input type="text" id="messageInput" maxlength="500"
                        placeholder="Type a message for the output screen…"
                        style="flex:1;padding:12px;font-size:1rem;"
+                       oninput="renderMessageControls()"
                        onkeydown="if(event.key==='Enter'&&this.value.trim())sendMessage(lastMessageMode);">
             </div>
             <div style="display:flex;gap:8px;margin-bottom:10px;">
-                <button class="button" id="msgBtnOverlay" onclick="sendMessage('overlay')"
-                        style="flex:2;background:#1565c0;color:#fff;"
-                        title="Replaces the timer with the message">Full Screen</button>
-                <button class="button" id="msgBtnTicker" onclick="sendMessage('ticker')"
-                        style="flex:2;background:#4a4a4a;color:#e5e5e5;"
-                        title="Scrolls above the timer">Ticker</button>
-                <button class="button danger" onclick="clearMessage()" style="flex:1;">Clear</button>
+                <!-- Each button says what pressing it does (see renderMessageControls):
+                     SHOW / ● LIVE / UPDATE (amber: edited, not on screen yet) / SWITCH. -->
+                <button class="button msg-send-btn" id="msgBtnOverlay" onclick="sendMessage('overlay')"
+                        style="flex:2;" title="Replaces the timer with the message"><span>Full Screen</span><span class="msg-btn-state"></span></button>
+                <button class="button msg-send-btn" id="msgBtnTicker" onclick="sendMessage('ticker')"
+                        style="flex:2;" title="Scrolls above the timer"><span>Ticker</span><span class="msg-btn-state"></span></button>
+                <button class="button danger" id="msgClearBtn" onclick="clearMessage()" style="flex:1;" title="Take the message off the display">Clear</button>
             </div>
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
                 <span style="font-size:0.85rem;color:#999;white-space:nowrap;">Ticker speed:</span>
@@ -1634,7 +1729,7 @@
                 <button class="button msg-speed-btn" data-speed="2.0" onclick="setTickerSpeed(2.0)"
                         style="flex:1;font-size:0.8rem;padding:6px;">Very Fast</button>
             </div>
-            <div id="messageStatus" style="font-size:0.85rem;color:#90caf9;min-height:1.2em;margin-bottom:6px;"></div>
+            <div id="messageStatus" class="message-status"></div>
             <div id="messageHistory" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
             <small style="color:#666;display:block;margin-top:6px;">Full Screen hides timer · Ticker scrolls above it · Enter resends in last mode · Click history to reload</small>
         </div>
@@ -3592,6 +3687,7 @@
             if (input.id === 'rundownAutoStart') return;
             if (input.id === 'duration' || input.id === 'endAtTime') return; // own listeners (End at is a draft until Set)
             if (input.closest('#appDialogOverlay')) return; // the in-page dialog's own field (e.g. rename) is not a setting
+            if (input.id === 'messageInput') return; // message text isn't a setting either - it's sent by Full Screen / Ticker
 
             input.addEventListener('change', () => {
                 saveSettings();
@@ -3666,21 +3762,54 @@
         function recallMessage(idx) {
             const msg = loadMessageHistory()[idx];
             if (msg) document.getElementById('messageInput').value = msg;
+            renderMessageControls();
         }
 
-        function highlightModeBtn(activeMode) {
-            const overlay = document.getElementById('msgBtnOverlay');
-            const ticker  = document.getElementById('msgBtnTicker');
-            if (activeMode === 'overlay') {
-                overlay.style.cssText = 'flex:2;background:#1976d2;color:#fff;box-shadow:0 0 12px rgba(25,118,210,0.7);';
-                ticker.style.cssText  = 'flex:2;background:#2a2a2a;color:#555;';
-            } else if (activeMode === 'ticker') {
-                overlay.style.cssText = 'flex:2;background:#2a2a2a;color:#555;';
-                ticker.style.cssText  = 'flex:2;background:#1976d2;color:#fff;box-shadow:0 0 12px rgba(25,118,210,0.7);';
-            } else {
-                overlay.style.cssText = 'flex:2;background:#1565c0;color:#fff;';
-                ticker.style.cssText  = 'flex:2;background:#4a4a4a;color:#e5e5e5;';
+        // The compose area's state, always derived from what the SERVER says is on
+        // screen (currentState.message / messageMode) versus what's in the box -
+        // never from which button was pressed last. Each send button's colour and
+        // caption say what pressing it will do; the box turns amber, and a NEW row
+        // appears, when the text differs from what's live. UI-only - sends nothing.
+        function renderMessageControls() {
+            const input = document.getElementById('messageInput');
+            const typed = input.value.trim();
+            const liveMode = currentState.message && currentState.messageMode && currentState.messageMode !== 'none' ? currentState.messageMode : 'none';
+            const liveText = liveMode === 'none' ? '' : currentState.message;
+            const edited = liveMode !== 'none' && !!typed && typed !== liveText;
+            const CAPTIONS = { show: 'SHOW', live: '● LIVE', update: 'UPDATE', switch: 'SWITCH', empty: '' };
+            for (const [id, mode] of [['msgBtnOverlay', 'overlay'], ['msgBtnTicker', 'ticker']]) {
+                const btn = document.getElementById(id);
+                const state = liveMode === mode ? (edited ? 'update' : 'live')
+                    : !typed ? 'empty'
+                    : liveMode === 'none' ? 'show' : 'switch';
+                btn.className = `button msg-send-btn state-${state}`;
+                btn.disabled = state === 'empty' || (state === 'live' && !typed);
+                btn.setAttribute('aria-pressed', String(state === 'live'));
+                btn.querySelector('.msg-btn-state').textContent = CAPTIONS[state];
             }
+            document.getElementById('msgClearBtn').disabled = liveMode === 'none';
+            input.classList.toggle('draft', edited);
+
+            // LIVE row (what's on screen) + NEW row (an unsent edit). Built with
+            // textContent - message text is user input.
+            const status = document.getElementById('messageStatus');
+            status.replaceChildren();
+            const row = (tagText, tagClass, text, note) => {
+                const r = document.createElement('div');
+                r.className = 'message-status-row';
+                const tag = document.createElement('span');
+                tag.className = tagClass;
+                tag.textContent = tagText;
+                const t = document.createElement('span');
+                t.className = 'msg-status-text';
+                t.textContent = `"${text}"`;
+                t.title = text;
+                r.append(tag, t);
+                if (note) { const n = document.createElement('span'); n.className = 'msg-status-note'; n.textContent = note; r.append(n); }
+                status.append(r);
+            };
+            if (liveMode !== 'none') row(liveMode === 'ticker' ? 'Live · Ticker' : 'Live · Full screen', 'msg-live-tag', liveText);
+            if (edited) row('New', 'setup-new-tag', typed, 'not on screen yet');
         }
 
         function sendMessage(mode) {
@@ -3689,12 +3818,11 @@
             lastMessageMode = mode;
             socket.emit('setMessage', { text, mode, speed: currentTickerSpeed });
             saveToHistory(text);
-            highlightModeBtn(mode);
+            // Buttons update when the server confirms (updateMessageUI), not optimistically.
         }
 
         function clearMessage() {
             socket.emit('setMessage', { text: '', mode: 'none' });
-            highlightModeBtn('none');
         }
 
         function setTickerSpeed(speed) {
@@ -3721,19 +3849,12 @@
             if (!statusEl) return;
             const mode = state.messageMode || 'none';
             const text = state.message || '';
-            highlightModeBtn(text ? mode : 'none');
-            // "Message on screen" bar under the preview: shown only while one is live.
+            // "Message active" bar under the preview: shown only while one is live.
+            // Just the fact + Clear - the text itself is visible in the preview.
             const live = mode !== 'none' && !!text;
             document.getElementById('messageLiveBar').hidden = !live;
-            document.getElementById('messageLiveTag').textContent = mode === 'ticker' ? 'Ticker' : 'On screen';
-            document.getElementById('messageLiveText').textContent = live ? `"${text}"` : '';
-            document.getElementById('messageLiveText').title = text;
-            if (mode === 'none' || !text) {
-                statusEl.textContent = '';
-            } else {
-                const label = mode === 'overlay' ? 'Full Screen' : 'Ticker';
-                statusEl.textContent = `Active (${label}): "${text.length > 60 ? text.slice(0,60)+'…' : text}"`;
-            }
+            document.getElementById('messageLiveText').textContent = mode === 'ticker' ? 'Ticker message active' : 'Full-screen message active';
+            renderMessageControls();
         }
 
         // Render history on load
