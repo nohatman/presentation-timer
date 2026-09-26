@@ -708,6 +708,55 @@
             text-decoration: underline;
         }
 
+        /* "Message on screen" bar under the preview - see updateMessageUI. */
+        .message-live-bar {
+            width: 100%;
+            box-sizing: border-box;
+            margin-top: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 6px 6px 10px;
+            border-radius: 8px;
+            border: 1px solid rgba(186, 104, 200, 0.55);
+            background: rgba(186, 104, 200, 0.14);
+        }
+        .message-live-bar[hidden] {
+            display: none;
+        }
+        .message-live-tag {
+            flex: 0 0 auto;
+            font-size: 0.68rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            padding: 2px 7px;
+            border-radius: 4px;
+            background: rgba(186, 104, 200, 0.3);
+            color: #f3e5f5;
+        }
+        .message-live-text {
+            flex: 1 1 auto;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: #f3e5f5;
+            font-size: 0.9rem;
+        }
+        .message-live-clear {
+            flex: 0 0 auto;
+            min-height: 40px;
+            padding: 6px 16px;
+            background: #ab47bc;
+            color: #fff;
+            font-weight: 700;
+            border-radius: 6px;
+        }
+        .message-live-clear:hover {
+            background: #9c27b0;
+        }
+
         /* This device's name chip (tap to rename) and the tappable panel count. */
         .device-name-btn {
             display: inline-block;
@@ -1302,6 +1351,14 @@
                 <div class="preview-times">
                     <div id="previewNowTime"></div>
                     <div id="endsAtDisplay"></div>
+                </div>
+                <!-- Only while a message is on the Display: what it says + one-tap
+                     Clear, right under the preview where the operator is already
+                     looking (composing stays in the Message section further down). -->
+                <div id="messageLiveBar" class="message-live-bar" role="status" hidden>
+                    <span class="message-live-tag" id="messageLiveTag"></span>
+                    <span class="message-live-text" id="messageLiveText"></span>
+                    <button type="button" class="button message-live-clear" onclick="clearMessage()">Clear</button>
                 </div>
             </div>
             <!-- Col 2: Compact controls -->
@@ -3665,6 +3722,12 @@
             const mode = state.messageMode || 'none';
             const text = state.message || '';
             highlightModeBtn(text ? mode : 'none');
+            // "Message on screen" bar under the preview: shown only while one is live.
+            const live = mode !== 'none' && !!text;
+            document.getElementById('messageLiveBar').hidden = !live;
+            document.getElementById('messageLiveTag').textContent = mode === 'ticker' ? 'Ticker' : 'On screen';
+            document.getElementById('messageLiveText').textContent = live ? `"${text}"` : '';
+            document.getElementById('messageLiveText').title = text;
             if (mode === 'none' || !text) {
                 statusEl.textContent = '';
             } else {
