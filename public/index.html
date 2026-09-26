@@ -2,265 +2,550 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Foxy's Presentation Timer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Foxy Timer - stage timing for live event crews</title>
+    <meta name="description" content="Speaker countdowns, rundowns and Stream Deck control for live event crews. Hosted, or on your own show network so the clocks keep running when the venue internet doesn't.">
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <style>
+        :root {
+            --bg: #0b0b0c;
+            --bg-2: #121214;
+            --card: #161618;
+            --line: #26262a;
+            --text: #ececee;
+            --muted: #9a9aa2;
+            --faint: #6b6b73;
+            --fox: #ff6a1a;
+            --fox-2: #ff8a3d;
+            --green: #4caf50;
+            --amber: #ff9800;
+            --red: #f44336;
+            --purple: #b36bff;
+            --radius: 14px;
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Mono', 'Roboto Mono', Menlo, Consolas, monospace;
+        }
+        * { box-sizing: border-box; }
+        html { scroll-behavior: smooth; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             margin: 0;
-            padding: 0;
-            min-height: 100vh;
-            background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
-            color: #e5e5e5;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            background: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.55;
+            -webkit-font-smoothing: antialiased;
         }
-        .container {
-            max-width: 600px;
-            width: 90%;
-            padding: 3rem;
-            background: rgba(26, 26, 26, 0.9);
-            border-radius: 16px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-            border: 1px solid #2a2a2a;
-        }
-        h1 {
-            color: #fafafa;
-            margin-bottom: 0.5rem;
-            font-size: 2.5rem;
-            text-align: center;
-        }
-        .subtitle {
-            text-align: center;
-            color: #999;
-            margin-bottom: 2rem;
-            font-size: 1.1rem;
-        }
-        .section {
-            background: #1a1a1a;
-            padding: 2rem;
-            border-radius: 12px;
-            margin-bottom: 1.5rem;
-            border: 1px solid #2a2a2a;
-        }
-        .section h2 {
-            margin-top: 0;
-            margin-bottom: 1rem;
-            font-size: 1.3rem;
-            color: #f5f5f5;
-        }
-        .input-group {
-            display: flex;
-            gap: 0.5rem;
-            margin-bottom: 1rem;
-        }
-        input[type="text"] {
-            flex: 1;
-            padding: 12px 16px;
-            border: 1px solid #333;
-            border-radius: 8px;
-            font-size: 1rem;
-            background: #101010;
-            color: #e5e5e5;
+        a { color: inherit; }
+        .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+
+        /* ---------- Nav ---------- */
+        .nav {
+            position: sticky; top: 0; z-index: 10;
+            background: rgba(11, 11, 12, 0.82);
+            backdrop-filter: saturate(160%) blur(12px);
+            -webkit-backdrop-filter: saturate(160%) blur(12px);
+            border-bottom: 1px solid transparent;
             transition: border-color 0.2s;
         }
-        input[type="text"]:focus {
-            outline: none;
-            border-color: #90caf9;
+        .nav.scrolled { border-bottom-color: var(--line); }
+        .nav .wrap { display: flex; align-items: center; gap: 24px; height: 64px; }
+        .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; font-weight: 700; letter-spacing: -0.01em; }
+        .brand img { width: 28px; height: 28px; }
+        .nav-links { display: flex; align-items: center; gap: 22px; margin-left: auto; font-size: 0.95rem; }
+        .nav-links a { text-decoration: none; color: var(--muted); }
+        .nav-links a:hover { color: var(--text); }
+        .btn {
+            display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+            padding: 11px 20px; border-radius: 10px; border: 1px solid transparent;
+            font: inherit; font-weight: 600; font-size: 0.95rem;
+            text-decoration: none; cursor: pointer; white-space: nowrap;
+            transition: background 0.15s, border-color 0.15s, transform 0.15s;
         }
-        .button {
-            padding: 12px 24px;
-            border: none;
-            border-radius: 8px;
-            font-size: 1rem;
-            cursor: pointer;
-            transition: all 0.2s;
-            font-weight: 500;
-            text-decoration: none;
-            display: inline-block;
-            text-align: center;
+        .btn:active { transform: translateY(1px); }
+        .btn-primary { background: var(--fox); color: #140800; }
+        .btn-primary:hover { background: var(--fox-2); }
+        .btn-ghost { border-color: var(--line); color: var(--text); background: transparent; }
+        .btn-ghost:hover { border-color: #3a3a40; background: var(--bg-2); }
+        .nav-links .btn { color: #140800; padding: 8px 16px; }
+        .nav-links .login { color: var(--text); }
+
+        /* ---------- Hero ---------- */
+        .hero { padding: 72px 0 56px; position: relative; overflow: hidden; }
+        .hero::before {
+            content: ''; position: absolute; inset: -20% -10% auto auto; width: 70%; height: 120%;
+            background: radial-gradient(closest-side, rgba(255, 106, 26, 0.13), transparent 70%);
+            pointer-events: none;
         }
-        .button.primary {
-            background: #2e7d32;
-            color: white;
-            box-shadow: 0 2px 8px rgba(46, 125, 50, 0.3);
+        .hero .wrap { display: grid; grid-template-columns: 1fr 1.05fr; gap: 56px; align-items: center; position: relative; }
+        .eyebrow {
+            display: inline-block; font-size: 0.8rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+            color: var(--fox-2); margin-bottom: 18px;
         }
-        .button.primary:hover {
-            background: #256628;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(46, 125, 50, 0.4);
+        h1 {
+            font-size: clamp(2.2rem, 4.6vw, 3.6rem); line-height: 1.06; letter-spacing: -0.03em;
+            margin: 0 0 20px; font-weight: 750;
         }
-        .button.secondary {
-            background: #1976d2;
-            color: white;
-            box-shadow: 0 2px 8px rgba(25, 118, 210, 0.3);
+        h1 .soft { color: var(--muted); }
+        .lede { font-size: 1.13rem; color: var(--muted); margin: 0 0 30px; max-width: 34em; }
+        .cta-row { display: flex; gap: 12px; flex-wrap: wrap; }
+        .cta-row .btn { padding: 14px 24px; font-size: 1rem; }
+        .by { margin-top: 26px; font-size: 0.88rem; color: var(--faint); }
+
+        /* Stage display mock */
+        .stage { position: relative; }
+        .screen {
+            aspect-ratio: 16 / 9; background: #000; border-radius: 12px;
+            border: 1px solid #2c2c31; box-shadow: 0 30px 80px rgba(0,0,0,0.6), 0 0 0 6px #151517;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            position: relative; overflow: hidden;
         }
-        .button.secondary:hover {
-            background: #1565c0;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(25, 118, 210, 0.4);
+        .screen .speaker { position: absolute; top: 7%; left: 0; right: 0; text-align: center; color: #cfcfd4; font-size: clamp(0.8rem, 1.7vw, 1.15rem); font-weight: 600; }
+        .screen .digits {
+            font-family: var(--mono); font-variant-numeric: tabular-nums; font-weight: 700;
+            font-size: clamp(3.4rem, 10vw, 7.4rem); line-height: 1; letter-spacing: -0.02em;
+            color: var(--green); transition: color 0.4s;
         }
-        .button:active {
-            transform: translateY(0);
+        .screen .next { position: absolute; bottom: 7%; left: 0; right: 0; text-align: center; color: #85858d; font-size: clamp(0.7rem, 1.4vw, 0.95rem); }
+        .screen .tally { position: absolute; top: 12px; right: 14px; font-size: 0.65rem; font-weight: 700; letter-spacing: 0.08em; color: #666; }
+        .screen .tally::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--red); margin-right: 6px; vertical-align: 1px; animation: blink 1.6s infinite; }
+        @keyframes blink { 50% { opacity: 0.25; } }
+
+        .phone {
+            position: absolute; right: -18px; bottom: -44px; width: 150px;
+            background: #0e0e10; border: 1px solid #2c2c31; border-radius: 22px; padding: 10px 9px 12px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.7), 0 0 0 4px #151517;
+            font-size: 0.62rem; color: var(--muted);
         }
-        .quick-start {
-            margin-top: 1rem;
+        .phone .notch { width: 40px; height: 4px; background: #26262a; border-radius: 4px; margin: 0 auto 8px; }
+        .phone .chip { display: flex; align-items: center; gap: 5px; background: #17171a; border: 1px solid var(--line); border-radius: 20px; padding: 3px 7px; width: max-content; color: #d6d6da; }
+        .phone .chip i { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+        .phone .mini { margin: 8px 0; background: #000; border-radius: 6px; padding: 8px 0; text-align: center; font-family: var(--mono); font-weight: 700; font-size: 1.35rem; color: var(--green); transition: color 0.4s; }
+        .phone .pbtn { background: var(--fox); color: #140800; font-weight: 700; text-align: center; border-radius: 7px; padding: 6px 0; margin-bottom: 5px; font-size: 0.7rem; }
+        .phone .nudges { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+        .phone .nudges span { border: 1px solid var(--line); border-radius: 5px; text-align: center; padding: 3px 0; color: #c9c9ce; }
+        .phone .live { margin-top: 7px; display: flex; justify-content: space-between; border-top: 1px solid var(--line); padding-top: 6px; }
+        .phone .live b { color: var(--green); font-weight: 700; letter-spacing: 0.05em; }
+
+        /* ---------- Works-with strip ---------- */
+        .strip { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--bg-2); margin-top: 40px; }
+        .strip .wrap { display: flex; flex-wrap: wrap; gap: 12px 36px; align-items: center; justify-content: center; padding-top: 22px; padding-bottom: 22px; font-size: 0.92rem; color: var(--muted); }
+        .strip .label { color: var(--faint); font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 600; }
+        .strip span strong { color: var(--text); font-weight: 600; }
+
+        /* ---------- Sections ---------- */
+        section { padding: 96px 0; }
+        .section-head { max-width: 640px; margin-bottom: 48px; }
+        .section-head h2 { font-size: clamp(1.7rem, 3.2vw, 2.4rem); letter-spacing: -0.025em; line-height: 1.12; margin: 0 0 14px; }
+        .section-head p { color: var(--muted); font-size: 1.06rem; margin: 0; }
+
+        .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+        .card {
+            background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+            padding: 26px 24px;
         }
-        .quick-start .button,
-        .quick-start a.button {
-            width: 100%;
-            margin-bottom: 0.5rem;
-            display: block;
-            box-sizing: border-box;
+        .card .ic {
+            width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center;
+            background: rgba(255, 106, 26, 0.12); color: var(--fox-2); margin-bottom: 16px;
         }
-        .features {
-            text-align: left;
-            margin: 1.5rem 0;
+        .card .ic svg { width: 20px; height: 20px; }
+        .card h3 { margin: 0 0 8px; font-size: 1.08rem; letter-spacing: -0.01em; }
+        .card p { margin: 0; color: var(--muted); font-size: 0.96rem; }
+        .card.wide { grid-column: span 2; }
+        .card.feature { grid-column: span 2; display: grid; grid-template-columns: 1fr 1fr; gap: 28px; align-items: center; }
+        .card.feature .diagram { font-family: var(--mono); font-size: 0.8rem; color: var(--muted); background: #0d0d0f; border: 1px solid var(--line); border-radius: 10px; padding: 18px; line-height: 1.9; }
+        .diagram .ok { color: var(--green); }
+        .diagram .x { color: var(--red); }
+        .diagram .hub { color: var(--fox-2); font-weight: 700; }
+
+        /* Details */
+        .details { background: var(--bg-2); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+        .spec { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0 48px; }
+        .spec div { padding: 18px 0; border-bottom: 1px solid var(--line); display: grid; grid-template-columns: 180px 1fr; gap: 16px; }
+        .spec dt { font-weight: 600; color: var(--text); margin: 0; }
+        .spec dd { margin: 0; color: var(--muted); font-size: 0.96rem; }
+
+        /* Ways to run */
+        .modes { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .mode { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 30px 28px; }
+        .mode .tag { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fox-2); }
+        .mode h3 { margin: 8px 0 10px; font-size: 1.3rem; letter-spacing: -0.015em; }
+        .mode p { color: var(--muted); margin: 0 0 14px; }
+        .mode ul { margin: 0; padding: 0; list-style: none; color: var(--muted); font-size: 0.95rem; }
+        .mode li { padding: 5px 0 5px 20px; position: relative; }
+        .mode li::before { content: ''; position: absolute; left: 2px; top: 13px; width: 8px; height: 2px; background: var(--fox); }
+
+        /* Contact */
+        .contact .wrap { display: grid; grid-template-columns: 0.9fr 1.1fr; gap: 56px; align-items: start; }
+        .contact .section-head { margin-bottom: 20px; }
+        .contact .points { list-style: none; margin: 24px 0 0; padding: 0; color: var(--muted); }
+        .contact .points li { padding: 6px 0; }
+        .contact .points strong { color: var(--text); }
+        form { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 28px; display: grid; gap: 16px; }
+        .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        label { display: grid; gap: 6px; font-size: 0.88rem; color: var(--muted); font-weight: 500; }
+        input, textarea, select {
+            font: inherit; font-size: 1rem; color: var(--text); background: #0d0d0f;
+            border: 1px solid #2e2e33; border-radius: 9px; padding: 11px 13px; width: 100%;
         }
-        .features ul {
-            list-style: none;
-            padding: 0;
-            margin: 0;
+        textarea { min-height: 110px; resize: vertical; }
+        input:focus, textarea:focus, select:focus { outline: none; border-color: var(--fox); box-shadow: 0 0 0 3px rgba(255,106,26,0.18); }
+        .interest { display: flex; flex-wrap: wrap; gap: 8px; }
+        .interest label { display: inline-flex; align-items: center; gap: 7px; border: 1px solid #2e2e33; border-radius: 30px; padding: 7px 13px; cursor: pointer; color: var(--text); font-size: 0.9rem; }
+        .interest input { width: auto; accent-color: var(--fox); }
+        .interest label:has(input:checked) { border-color: var(--fox); background: rgba(255,106,26,0.08); }
+        .form-note { font-size: 0.85rem; color: var(--faint); margin: 0; }
+        .form-status { font-size: 0.95rem; margin: 0; display: none; }
+        .form-status.ok { display: block; color: var(--green); }
+        .form-status.err { display: block; color: #ff8a80; }
+        .hp { position: absolute; left: -9999px; }
+
+        /* Footer */
+        footer { border-top: 1px solid var(--line); padding: 32px 0 calc(32px + env(safe-area-inset-bottom)); color: var(--faint); font-size: 0.88rem; }
+        footer .wrap { display: flex; gap: 20px; flex-wrap: wrap; align-items: center; justify-content: space-between; }
+        footer nav { display: flex; gap: 20px; }
+        footer a { text-decoration: none; color: var(--muted); }
+        footer a:hover { color: var(--text); }
+
+        /* ---------- Responsive ---------- */
+        @media (max-width: 960px) {
+            .hero .wrap { grid-template-columns: 1fr; gap: 48px; }
+            .cards { grid-template-columns: 1fr 1fr; }
+            .card.feature { grid-column: span 2; }
+            .spec { grid-template-columns: 1fr; }
+            .contact .wrap { grid-template-columns: 1fr; gap: 32px; }
         }
-        .features li {
-            padding: 0.5rem 0;
-            padding-left: 1.5rem;
-            position: relative;
+        @media (max-width: 700px) {
+            .wrap { padding: 0 16px; }
+            .nav-links a:not(.btn):not(.login) { display: none; }
+            .nav-links { gap: 16px; }
+            .hero { padding: 40px 0 48px; }
+            .lede { font-size: 1.03rem; }
+            .cta-row .btn { flex: 1 1 100%; }
+            .phone { width: 118px; right: -4px; bottom: -40px; border-radius: 18px; }
+            .phone .mini { font-size: 1.05rem; }
+            .phone .nudges, .phone .live { display: none; }
+            section { padding: 64px 0; }
+            .section-head { margin-bottom: 32px; }
+            .cards, .modes { grid-template-columns: 1fr; }
+            .card.wide { grid-column: auto; }
+            .card.feature { grid-column: auto; grid-template-columns: 1fr; gap: 20px; }
+            .spec div { grid-template-columns: 1fr; gap: 4px; }
+            .row2 { grid-template-columns: 1fr; }
+            form { padding: 20px; }
+            footer .wrap { flex-direction: column; align-items: flex-start; }
         }
-        .features li:before {
-            content: '✓';
-            position: absolute;
-            left: 0;
-            color: #4caf50;
-            font-weight: bold;
-        }
-        .error {
-            color: #f44336;
-            font-size: 0.9rem;
-            margin-top: 0.5rem;
-            display: none;
-        }
-        .help-text {
-            font-size: 0.9rem;
-            color: #999;
-            margin-top: 0.5rem;
-        }
-        .rooms-list {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-            gap: 1rem;
-            margin-top: 1rem;
-        }
-        .room-card {
-            background: #101010;
-            border: 1px solid #333;
-            border-radius: 8px;
-            padding: 1rem;
-            cursor: pointer;
-            transition: all 0.2s;
-            text-decoration: none;
-            color: inherit;
-            display: block;
-        }
-        .room-card:hover {
-            border-color: #4caf50;
-            background: #151515;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(76, 175, 80, 0.2);
-        }
-        .room-card-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 0.5rem;
-        }
-        .room-name {
-            font-weight: 600;
-            font-size: 1.1rem;
-            color: #f5f5f5;
-            word-break: break-word;
-        }
-        .room-status {
-            display: inline-block;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            text-transform: uppercase;
-        }
-        .room-status.running {
-            background: #4caf50;
-            color: white;
-        }
-        .room-status.paused {
-            background: #ff9800;
-            color: white;
-        }
-        .room-status.stopped {
-            background: #666;
-            color: white;
-        }
-        .room-timer {
-            font-size: 1.5rem;
-            font-weight: 600;
-            color: #90caf9;
-            margin: 0.5rem 0;
-            font-family: monospace;
-        }
-        .room-info {
-            font-size: 0.85rem;
-            color: #999;
-            display: flex;
-            gap: 1rem;
-        }
-        .empty-rooms {
-            text-align: center;
-            color: #666;
-            padding: 2rem;
-            font-style: italic;
-        }
-        .loading {
-            text-align: center;
-            color: #999;
-            padding: 1rem;
+        @media (prefers-reduced-motion: reduce) {
+            html { scroll-behavior: auto; }
+            .screen .tally::before { animation: none; }
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>⏱️ Foxy's Presentation Timer</h1>
-        <p class="subtitle">Multi-room countdown timers for presentations</p>
 
-        <div class="section">
-            <h2>Get Started</h2>
-            <p class="help-text">Rooms are created and managed from the Master Dashboard. Sign in with your account - contact BizShows if you don't have credentials yet.</p>
-            <div class="quick-start">
-                <a href="/dashboard" class="button primary">
-                    🎯 Open Master Dashboard
-                </a>
+<header class="nav" id="nav">
+    <div class="wrap">
+        <a class="brand" href="/"><img src="/favicon.svg" alt=""> Foxy Timer</a>
+        <nav class="nav-links">
+            <a href="#why">Why Foxy</a>
+            <a href="#details">Details</a>
+            <a href="#contact">Contact</a>
+            <a class="login" href="/dashboard">Log in</a>
+            <a class="btn btn-primary" href="#contact">Get a trial</a>
+        </nav>
+    </div>
+</header>
+
+<main>
+    <!-- Hero -->
+    <div class="hero">
+        <div class="wrap">
+            <div>
+                <span class="eyebrow">Stage timing for live event crews</span>
+                <h1>The show timer that keeps running <span class="soft">when the venue Wi&#8209;Fi doesn't.</span></h1>
+                <p class="lede">Speaker countdowns, rundowns and Stream Deck control. Use it hosted, or run it from a laptop at FOH on your own show network.</p>
+                <div class="cta-row">
+                    <a class="btn btn-primary" href="#contact">Get a free trial</a>
+                    <a class="btn btn-ghost" href="#why">What's different</a>
+                </div>
+                <p class="by">Built by BizShows, and used on our own live events.</p>
+            </div>
+
+            <div class="stage" aria-hidden="true">
+                <div class="screen">
+                    <div class="tally">LIVE</div>
+                    <div class="speaker">Keynote &middot; Dr Priya Shah</div>
+                    <div class="digits" id="demoDigits">0:40</div>
+                    <div class="next">Up next: Panel &amp; audience Q&amp;A</div>
+                </div>
+                <div class="phone">
+                    <div class="notch"></div>
+                    <div class="chip"><i></i> Calm Raven</div>
+                    <div class="mini" id="demoMini">0:40</div>
+                    <div class="pbtn">PAUSE</div>
+                    <div class="nudges"><span>&minus;5</span><span>&minus;1</span><span>+1</span><span>+5</span></div>
+                    <div class="live"><b>LIVE</b> <span>25:00</span></div>
+                </div>
             </div>
         </div>
 
-        <div class="features">
-            <h3 style="margin-bottom: 1rem;">Features:</h3>
-            <ul>
-                <li>Separate control and display screens</li>
-                <li>Color-coded warnings (green → amber → red)</li>
-                <li>Multiple independent timer rooms</li>
-                <li>Real-time synchronization across devices</li>
-                <li>Adjustable speed for practice runs</li>
-                <li>Count-up after zero</li>
-                <li>Clock display mode</li>
-                <li>Fullscreen support</li>
-            </ul>
-        </div>
-
-        <div style="text-align: center; margin-top: 2rem; padding-top: 2rem; border-top: 1px solid #2a2a2a; color: #666;">
-            <p style="margin: 0;">Open-source • MIT License</p>
+        <div class="strip">
+            <div class="wrap">
+                <span class="label">Plays well with</span>
+                <span><strong>Bitfocus Companion</strong> &amp; Stream Deck</span>
+                <span><strong>CDEther / Hive</strong> LED clocks</span>
+                <span>Any vision mixer, via <strong>chromakey</strong></span>
+                <span>Any screen with a <strong>browser</strong></span>
+            </div>
         </div>
     </div>
 
+    <!-- Why -->
+    <section id="why">
+        <div class="wrap">
+            <div class="section-head">
+                <h2>Built around what goes wrong on show day.</h2>
+                <p>You already know what a countdown does. These are the reasons to trust this one when a room is full.</p>
+            </div>
+
+            <div class="cards">
+                <div class="card feature">
+                    <div>
+                        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></div>
+                        <h3>Your network, your show</h3>
+                        <p>Run the show server on a Windows laptop at FOH, with nothing to install. Every display and control panel talks to it over the venue LAN. If the internet drops, the clocks don't notice. Prefer hosted? The same timer runs in the cloud with no setup.</p>
+                    </div>
+                    <div class="diagram">
+                        Internet &nbsp;&nbsp;&nbsp;&nbsp;<span class="x">&times; down</span><br>
+                        <span class="hub">FOH laptop</span> &nbsp;<span class="ok">&#9679; running</span><br>
+                        &nbsp;&#9500; Stage display&nbsp;&nbsp;&nbsp;<span class="ok tick">0:40</span><br>
+                        &nbsp;&#9500; Confidence mon.&nbsp;<span class="ok tick">0:40</span><br>
+                        &nbsp;&#9500; Stream Deck&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="ok tick">0:40</span><br>
+                        &nbsp;&#9492; Show caller's phone <span class="ok tick">0:40</span>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></div>
+                    <h3>On the Stream Deck</h3>
+                    <p>A native Companion module with a start/pause toggle, nudges, set duration, rundown Prev / Take / Next, and live time and colour on the keys.</p>
+                </div>
+
+                <div class="card">
+                    <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg></div>
+                    <h3>One operator in control</h3>
+                    <p>Other panels watch in view-only, and everyone can see who's driving. If a phone sleeps or a page refreshes, the operator keeps their seat for 30 minutes. Handing over takes one tap.</p>
+                </div>
+
+                <div class="card">
+                    <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg></div>
+                    <h3>Run it from your phone</h3>
+                    <p>The live controls fit on one phone screen: timer, Start/Pause, Reset, ±1 and ±5. Changes wait as a draft until you Apply, so nothing reaches the screen by accident.</p>
+                </div>
+
+                <div class="card">
+                    <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
+                    <h3>Real clocks as well as screens</h3>
+                    <p>A bridge drives CDEther / Hive LED displays from the same timer, so the lectern clock and the stage screen always agree.</p>
+                </div>
+
+                <div class="card">
+                    <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><path d="M17 14v6M14 17h6"/></svg></div>
+                    <h3>Every breakout on one dashboard</h3>
+                    <p>Run all your rooms side by side. Each room gets its own secret control and display links, with no guessable room codes for the audience to find.</p>
+                </div>
+
+                <div class="card wide">
+                    <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+                    <h3>Talk to the stage, quietly</h3>
+                    <p>Send "Wrap up" or "Take questions" to the speaker, full screen or as a ticker, without touching the countdown. The display shows who's on and who's next from your rundown, so the speaker always knows where they are.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Details -->
+    <section id="details" class="details">
+        <div class="wrap">
+            <div class="section-head">
+                <h2>The details operators ask about.</h2>
+                <p>What you'd want to know before trusting it with a keynote.</p>
+            </div>
+            <dl class="spec">
+                <div><dt>Duration or End at</dt><dd>Count down a length of time, or count to a clock time ("finish at 14:30"). The server keeps the time, so every screen agrees.</dd></div>
+                <div><dt>Rundown</dt><dd>Load a running order of speakers and session lengths, then use Prev / Take / Next. Speaker and "up next" lines appear on the display.</dd></div>
+                <div><dt>Warnings</dt><dd>Green, amber, red, then purple on overrun. You set the thresholds and colours per room.</dd></div>
+                <div><dt>Messages</dt><dd>Send "Wrap up" or "Take questions" to the stage, full screen or as a ticker. Clear it with one tap.</dd></div>
+                <div><dt>Clean output</dt><dd>Chromakey or any background colour, hide any element, and the timer fits to width on any screen, portrait or landscape.</dd></div>
+                <div><dt>Overrun & clock</dt><dd>Count up after zero, H:MM:SS past an hour, and a time-of-day clock mode for breaks.</dd></div>
+                <div><dt>Keyboard</dt><dd>Space to start or pause, R to reset, +/- to nudge, and arrows and Enter to work through the rundown.</dd></div>
+                <div><dt>Survives restarts</dt><dd>Rooms and timer state are saved, so a server restart picks up where it left off.</dd></div>
+            </dl>
+        </div>
+    </section>
+
+    <!-- Ways to run -->
+    <section id="run">
+        <div class="wrap">
+            <div class="section-head">
+                <h2>Two ways to run it.</h2>
+                <p>Same timer and same links either way. Choose per show.</p>
+            </div>
+            <div class="modes">
+                <div class="mode">
+                    <span class="tag">Hosted</span>
+                    <h3>Open a browser and go</h3>
+                    <p>Nothing to install. Good for hybrid events, remote operators and quick setups.</p>
+                    <ul>
+                        <li>Log in, create rooms, send out the links</li>
+                        <li>Operate from anywhere with a connection</li>
+                        <li>Companion connects over the internet</li>
+                    </ul>
+                </div>
+                <div class="mode">
+                    <span class="tag">Local show server</span>
+                    <h3>Your laptop, your LAN</h3>
+                    <p>For shows where the network is yours and the internet can't be trusted.</p>
+                    <ul>
+                        <li>Double-click to start on Windows, no admin rights needed</li>
+                        <li>Displays and phones join over the venue network</li>
+                        <li>Carries on through an internet outage</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Contact -->
+    <section id="contact" class="contact details">
+        <div class="wrap">
+            <div>
+                <div class="section-head">
+                    <h2>Try it on your next show.</h2>
+                    <p>Tell us what you're running and we'll set you up with a free trial account. Want to talk it through first? Just say so.</p>
+                </div>
+                <ul class="points">
+                    <li><strong>Already a customer?</strong> <a href="/dashboard">Log in to your dashboard</a></li>
+                    <li><strong>Production company or crew?</strong> Ask about multi-room and multi-user accounts.</li>
+                </ul>
+            </div>
+
+            <form id="contactForm" novalidate>
+                <div class="row2">
+                    <label>Name<input name="name" autocomplete="name" required></label>
+                    <label>Email<input name="email" type="email" autocomplete="email" required></label>
+                </div>
+                <label><span>Company <span style="color:var(--faint)">(optional)</span></span><input name="company" autocomplete="organization"></label>
+                <div>
+                    <label style="margin-bottom:8px">I'm interested in</label>
+                    <div class="interest">
+                        <label><input type="checkbox" name="interest" value="trial" checked> A free trial</label>
+                        <label><input type="checkbox" name="interest" value="local"> Local show server</label>
+                        <label><input type="checkbox" name="interest" value="companion"> Companion / Stream Deck</label>
+                        <label><input type="checkbox" name="interest" value="call"> A quick call</label>
+                    </div>
+                </div>
+                <label>What are you running?<textarea name="message" placeholder="e.g. 3-day conference, 6 breakout rooms, main stage with confidence monitors"></textarea></label>
+                <input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
+                <button class="btn btn-primary" type="submit" id="contactSubmit">Send</button>
+                <p class="form-status" id="formStatus" role="status"></p>
+                <p class="form-note">We only use your details to reply to you.</p>
+            </form>
+        </div>
+    </section>
+</main>
+
+<footer>
+    <div class="wrap">
+        <span>&copy; <span id="year">2026</span> BizShows &middot; Foxy Timer</span>
+        <nav>
+            <a href="#why">Why Foxy</a>
+            <a href="#contact">Contact</a>
+            <a href="/dashboard">Log in</a>
+        </nav>
+    </div>
+</footer>
+
+<script>
+    document.getElementById('year').textContent = new Date().getFullYear();
+
+    // Sticky nav gets a hairline once the page scrolls.
+    const nav = document.getElementById('nav');
+    const onScroll = () => nav.classList.toggle('scrolled', window.scrollY > 8);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+
+    // Hero demo: a 40s countdown in real seconds that walks through the warning
+    // colours and a short overrun, then loops. Purely decorative.
+    (function () {
+        const digits = document.getElementById('demoDigits');
+        const mini = document.getElementById('demoMini');
+        const ticks = document.querySelectorAll('.diagram .tick');
+        const START = 40, OVERRUN = 6;
+        let t = START;
+        function colourFor(s) {
+            if (s < 0) return 'var(--purple)';
+            if (s <= 10) return 'var(--red)';
+            if (s <= 25) return 'var(--amber)';
+            return 'var(--green)';
+        }
+        function fmt(s) {
+            const a = Math.abs(s);
+            return (s < 0 ? '+' : '') + Math.floor(a / 60) + ':' + String(a % 60).padStart(2, '0');
+        }
+        function render() {
+            const text = fmt(t), colour = colourFor(t);
+            digits.textContent = mini.textContent = text;
+            digits.style.color = mini.style.color = colour;
+            ticks.forEach(function (el) { el.textContent = text; el.style.color = colour; });
+        }
+        render();
+        setInterval(function () {
+            t = t <= -OVERRUN ? START : t - 1;
+            render();
+        }, 1000);
+    })();
+
+    // Contact form. Posts to /api/contact; the fallback message covers a server
+    // that doesn't have that endpoint (e.g. an older local show server).
+    const form = document.getElementById('contactForm');
+    const statusEl = document.getElementById('formStatus');
+    const submitBtn = document.getElementById('contactSubmit');
+    function setStatus(kind, text) {
+        statusEl.className = 'form-status ' + kind;
+        statusEl.textContent = text;
+    }
+    form.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const fd = new FormData(form);
+        const payload = {
+            name: (fd.get('name') || '').trim(),
+            email: (fd.get('email') || '').trim(),
+            company: (fd.get('company') || '').trim(),
+            interests: fd.getAll('interest'),
+            message: (fd.get('message') || '').trim(),
+            website: fd.get('website') || ''
+        };
+        if (!payload.name || !/^\S+@\S+\.\S+$/.test(payload.email)) {
+            setStatus('err', 'Please add your name and a valid email address.');
+            return;
+        }
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Sending…';
+        try {
+            const res = await fetch('/api/contact', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            form.reset();
+            setStatus('ok', "Thanks! We've got your message and will be in touch shortly.");
+        } catch (err) {
+            setStatus('err', "Sorry, that didn't send. Please try again in a moment.");
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Send';
+        }
+    });
+</script>
 </body>
 </html>
