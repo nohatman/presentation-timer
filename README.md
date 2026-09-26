@@ -85,6 +85,14 @@ See [TIMER-MODES.md](TIMER-MODES.md) for the exact Duration / End at behaviour a
 - Home / Fullscreen buttons that fade out when not in use
 - Also drives a physical CDEther/Hive display via the bridge in [tools/cdether-bridge](tools/cdether-bridge)
 
+## 📦 Free Local Show Server download (Windows)
+
+```bash
+npm run build:local     # on Windows x64 -> dist/FoxyTimer-Local-<commit>.zip (~36 MB)
+```
+
+A zip a crew member unzips on a Windows laptop and double-clicks **Start Foxy Timer**. Node is bundled (the same `node.exe` that ran the build, so the `better-sqlite3` binary matches), so nothing is installed and no internet is needed. On first run a **Main stage** room is created and the dashboard opens. On the laptop itself (`localhost`) the dashboard needs no login; every other device still needs a link or a login. Links shown there use the laptop's LAN address, with **Share links & QR** on each room card. Rooms live in the download's `data` folder, which survives replacing the rest with a newer download.
+
 ## 💻 Portable Version (Windows)
 
 ```bash

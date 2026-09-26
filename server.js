@@ -12,6 +12,19 @@ const { sanitizeDeviceName, sanitizePanelId } = require('./deviceNames');
 const enquiries = require('./enquiries');
 const demoRooms = require('./demoRooms');
 const QRCode = require('qrcode');
+const { selectLanAddresses } = require('./tools/local-server/lib/lan');
+
+// Base URL for links meant for OTHER devices. On the Local Show Server, a page
+// opened on the laptop itself is on localhost, which a phone or display can't
+// reach - so those links use the laptop's LAN address instead.
+function shareBaseUrl(proto, host) {
+  if (process.env.FOXY_MODE === 'local' && /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i.test(host || '')) {
+    const lan = selectLanAddresses().primary;
+    const port = (host.match(/:(\d+)$/) || [])[1];
+    if (lan) return `http://${lan.address}${port ? ':' + port : ''}`;
+  }
+  return `${proto}://${host}`;
+}
 const crypto = require('crypto');
 const buildInfo = require('./buildInfo');
 
@@ -32,6 +45,7 @@ app.use(express.json());
 
 // Serve static files with cache-control (avoid stale HTML after deploy)
 app.use(express.static(path.join(__dirname, 'public'), {
+  index: false, // '/' is a route below (the Local Show Server redirects it)
   setHeaders: (res, filePath) => {
     if (filePath.endsWith('.html')) {
       res.setHeader('Cache-Control', 'no-store');
@@ -316,7 +330,7 @@ io.on('connection', (socket) => {
   let roomInfo = { slug: access.room.slug };
   if (role === 'control') {
     const proto = socket.handshake.headers['x-forwarded-proto'] || (socket.handshake.secure ? 'https' : 'http');
-    const baseUrl = `${proto}://${socket.handshake.headers.host}`;
+    const baseUrl = shareBaseUrl(proto, socket.handshake.headers.host);
     roomInfo = { ...roomInfo, ...buildRoomLinks(baseUrl, access.room) };
   }
   socket.emit('timerState', { ...initialState, serverNow: Date.now(), ...(roomInfo ? { roomInfo } : {}) });
@@ -797,7 +811,7 @@ function summarizeRoom(row, req) {
     remainingMs = state.durationMs;
   }
 
-  const baseUrl = `${req.protocol}://${req.get('host')}`;
+  const baseUrl = shareBaseUrl(req.protocol, req.get('host'));
   const links = buildRoomLinks(baseUrl, row);
 
   return {
@@ -824,7 +838,8 @@ app.get('/api/whoami', auth.requireDashboardAuth, (req, res) => {
     ok: true,
     clientId: req.client.id,
     name: req.client.name,
-    isPlatformAdmin: !!req.client.is_platform_admin
+    isPlatformAdmin: !!req.client.is_platform_admin,
+    localOperator: req.authMethod === 'localOperator'
   });
 });
 
@@ -859,7 +874,7 @@ app.post('/api/rooms', auth.requireDashboardAuth, (req, res) => {
 
   console.log(`📦 Created room "${cleanSlug}" (id=${room.id}) for client "${req.client.name}"`);
 
-  const baseUrl = `${req.protocol}://${req.get('host')}`;
+  const baseUrl = shareBaseUrl(req.protocol, req.get('host'));
   const links = buildRoomLinks(baseUrl, room);
   res.json({ ok: true, roomId: String(room.id), slug: cleanSlug, ...links });
 });
@@ -901,7 +916,7 @@ app.post('/api/rooms/:roomId/regenerate-tokens', auth.requireDashboardAuth, auth
     }
   }
 
-  const baseUrl = `${req.protocol}://${req.get('host')}`;
+  const baseUrl = shareBaseUrl(req.protocol, req.get('host'));
   const links = buildRoomLinks(baseUrl, updated);
   res.json({ ok: true, roomId: req.roomId, ...links });
 });
@@ -992,7 +1007,7 @@ app.post('/api/admin/rooms/:id/regenerate-tokens', auth.requireDashboardAuth, au
     }
   }
 
-  const baseUrl = `${req.protocol}://${req.get('host')}`;
+  const baseUrl = shareBaseUrl(req.protocol, req.get('host'));
   const links = buildRoomLinks(baseUrl, updated);
   res.json({ ok: true, roomId: req.roomId, slug: req.room.slug, clientName: req.room.client_name, ...links });
 });
@@ -1603,6 +1618,17 @@ app.post('/api/admin/enquiries/:id/handled', ...adminClientAuth, (req, res) => {
   res.json({ ok: true, enquiry: db.getEnquiryById(id) });
 });
 
+// QR code (SVG) for a room link, for the dashboard. Authenticated so it isn't
+// an open QR service; POST so the token in the link stays out of URLs/logs.
+app.post('/api/qr', auth.requireDashboardAuth, async (req, res) => {
+  const text = req.body && req.body.text;
+  if (typeof text !== 'string' || !text || text.length > 2000) {
+    return res.status(400).json({ ok: false, error: 'Missing or invalid "text"' });
+  }
+  const svg = await QRCode.toString(text, { type: 'svg', margin: 1, errorCorrectionLevel: 'M' });
+  res.json({ ok: true, svg });
+});
+
 // ============================================
 // REST API - "Try it now" demo rooms (see demoRooms.js)
 // ============================================
@@ -1630,7 +1656,7 @@ app.post('/api/demo', async (req, res) => {
   timerRooms.set(String(room.id), state);
   db.writeRoomState(room.id, state);
 
-  const links = buildRoomLinks(`${req.protocol}://${req.get('host')}`, room);
+  const links = buildRoomLinks(shareBaseUrl(req.protocol, req.get('host')), room);
   const qr = (text) => QRCode.toString(text, { type: 'svg', margin: 1, errorCorrectionLevel: 'M' });
   const [controlQr, displayQr] = await Promise.all([qr(links.controlUrl), qr(links.displayUrl)]);
   console.log(`🧪 Demo room ${room.slug} (id=${room.id}) created, expires ${new Date(expiresAt).toISOString()}`);
@@ -1639,6 +1665,18 @@ app.post('/api/demo', async (req, res) => {
 
 // Deletes expired demo rooms. Anyone still connected is told the demo has
 // ended (control/display show that instead of a generic "invalid link").
+// First run of a Local Show Server: a ready-made room so the operator can
+// start straight away. Only when the local client has no rooms at all.
+function ensureLocalStarterRoom() {
+  const client = db.getOrCreateLocalClient();
+  if (db.getRoomsForClient(client.id).length) return;
+  const room = db.createRoom(client.id, 'Main stage');
+  const state = createDefaultTimerState();
+  timerRooms.set(String(room.id), state);
+  db.writeRoomState(room.id, state);
+  console.log('Created a "Main stage" room for this show laptop');
+}
+
 function sweepExpiredDemoRooms() {
   for (const room of db.getExpiredRooms()) {
     const roomId = String(room.id);
@@ -1692,6 +1730,8 @@ if (LOCAL_MODE && process.env.FOXY_SHUTDOWN_TOKEN) {
 }
 
 app.get('/', (req, res) => {
+  // A show laptop has no use for the marketing page: go straight to the rooms.
+  if (LOCAL_MODE) return res.redirect('/dashboard');
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
@@ -1752,6 +1792,7 @@ app.get('/admin/clients/:id', requirePlatformAdminPage, (req, res) => {
 // Load persisted rooms before starting
 loadRooms();
 sweepExpiredDemoRooms();
+if (LOCAL_MODE) ensureLocalStarterRoom();
 setInterval(sweepExpiredDemoRooms, demoConfig.sweepMs).unref();
 
 // Start server

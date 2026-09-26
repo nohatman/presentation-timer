@@ -179,6 +179,27 @@ function isSameOrigin(req) {
 // cookie (new). This is an emergency/compatibility fallback for Bearer, not a
 // weakening of it - ownership is still always resolved from req.client
 // exactly as before, regardless of which method authenticated the request.
+// Local Show Server (FOXY_MODE=local): whoever is sitting at the show laptop
+// itself gets the dashboard without logging in, as the built-in local client.
+// Both checks matter: the TCP peer must be loopback (req.socket, never req.ip,
+// which trusts X-Forwarded-For) AND the Host must be a loopback name, so a
+// DNS-rebinding page in the laptop's browser (Host = attacker's domain) cannot
+// ride on it. And the request must come from this app's own pages (same
+// origin, for reads too): CORS is open and no cookie is involved, so otherwise
+// any website open in the laptop's browser could fetch localhost and read the
+// room links. Other devices on the LAN still need links or a login.
+const LOOPBACK_PEERS = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
+const LOOPBACK_HOST = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i;
+
+function isLocalOperatorRequest(req) {
+  const fetchSite = req.headers['sec-fetch-site'];
+  return process.env.FOXY_MODE === 'local'
+    && LOOPBACK_PEERS.has(req.socket && req.socket.remoteAddress)
+    && LOOPBACK_HOST.test(req.headers.host || '')
+    && isSameOrigin(req)
+    && (!fetchSite || fetchSite === 'same-origin' || fetchSite === 'none');
+}
+
 function requireDashboardAuth(req, res, next) {
   const header = req.headers.authorization || '';
   const match = /^Bearer\s+(.+)$/i.exec(header);
@@ -193,6 +214,11 @@ function requireDashboardAuth(req, res, next) {
 
   const rawToken = parseCookies(req)[SESSION_COOKIE];
   const user = db.getSessionUser(rawToken);
+  if (!user && isLocalOperatorRequest(req)) {
+    req.client = db.getOrCreateLocalClient();
+    req.authMethod = 'localOperator';
+    return next();
+  }
   if (!user) {
     return respondUnauthenticated(res, rawToken, 'Not authenticated');
   }
@@ -260,6 +286,7 @@ module.exports = {
   requireClientAuth,
   resolveOwnedRoom,
   resolveSocketAccess,
+  isLocalOperatorRequest,
   requirePlatformAdmin,
   resolveRoomById,
   // sessions

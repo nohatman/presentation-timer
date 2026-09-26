@@ -108,3 +108,9 @@ test('contact form: store, admin list, handled, spam, auth and rate limit', asyn
   assert.equal((await post('/api/contact', { name: 'B', email: 'b@b.co' })).status, 200);
   assert.equal((await post('/api/contact', { name: 'C', email: 'c@b.co' })).status, 429);
 });
+
+test('hosted mode: / serves the landing page', async () => {
+  const res = await fetch(`${BASE_URL}/`, { redirect: 'manual' });
+  assert.equal(res.status, 200);
+  assert.match(await res.text(), /One show clock/);
+});

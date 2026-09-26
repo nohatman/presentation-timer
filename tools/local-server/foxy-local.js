@@ -9,6 +9,8 @@
 //   node tools/local-server/foxy-local.js status [--json]
 //   ... start | stop [--force-unmanaged] | restart
 //   ... open-control [--room slug] | open-display [--room slug] | links
+//   ... go    start if needed, open the dashboard, then the menu (the download's
+//             'Start Foxy Timer' uses this)
 //   options: --port N (default 3000, or FOXY_PORT)
 //
 // This runs the server as an explicit LOCAL show-day process (FOXY_MODE=local).
@@ -97,6 +99,29 @@ async function showLinks(rl, slug) {
   return 0;
 }
 
+function openDashboard() {
+  const url = `http://localhost:${cfg.port}/dashboard`;
+  console.log(`Dashboard (rooms and links): ${url}`);
+  if (!openUrl(url)) console.log('(browser not opened - FOXY_NO_BROWSER is set)');
+}
+
+// One double-click to a working show: start the server unless it's already up,
+// open the dashboard on this laptop, then leave the menu open.
+async function go() {
+  const st = await sup.gatherStatus(cfg);
+  if (st.state === 'STOPPED') {
+    console.log('Starting Foxy Timer...');
+    const r = await sup.start(cfg);
+    console.log(r.message);
+    if (!r.ok) return menu();
+    console.log('If Windows asks whether to allow Node.js on networks, choose Allow (private networks),');
+    console.log('otherwise phones and displays on the show network cannot connect.');
+  }
+  const now = await sup.gatherStatus(cfg);
+  if (now.state !== 'STOPPED' && now.state !== 'PORT_CONFLICT') openDashboard();
+  return menu();
+}
+
 async function doStart() { const r = await sup.start(cfg); console.log(r.message); return r.ok ? 0 : 1; }
 async function doStop(force) { const r = await sup.stop(cfg, { forceUnmanaged: force }); console.log(r.message); return r.ok ? 0 : 1; }
 async function doRestart() { const r = await sup.restart(cfg); console.log(r.message); return r.ok ? 0 : 1; }
@@ -109,6 +134,7 @@ async function menu() {
     printStatus(st);
     const running = st.state !== 'STOPPED' && st.state !== 'PORT_CONFLICT';
     console.log('');
+    console.log('  [D] Open dashboard (rooms, links, QR codes)');
     console.log('  [1] Open Control page');
     console.log('  [2] Open Display page');
     console.log(`  [3] ${running ? 'Restart server' : 'Start server'}`);
@@ -121,7 +147,10 @@ async function menu() {
     if (answer === null) break; // input ended
     const choice = answer.trim().toLowerCase();
     if (choice === 'q') break;
-    if (choice === '1') await openPage('control', rl);
+    if (choice === 'd') {
+      if (running) openDashboard(); else console.log('The server is not running - start it first.');
+    }
+    else if (choice === '1') await openPage('control', rl);
     else if (choice === '2') await openPage('display', rl);
     else if (choice === '3') console.log((running ? await sup.restart(cfg) : await sup.start(cfg)).message);
     else if (choice === '4') await doStop(false);
@@ -151,8 +180,9 @@ async function menu() {
     case 'open-display': code = await openPage('display', null, opt('room')); break;
     case 'links': code = await showLinks(null, opt('room')); break;
     case 'menu': code = await menu(); break;
+    case 'go': code = await go(); break;
     default:
-      console.log('Usage: foxy-local.js [status|start|stop|restart|open-control|open-display|links] [--port N] [--room name] [--json]');
+      console.log('Usage: foxy-local.js [go|status|start|stop|restart|open-control|open-display|links] [--port N] [--room name] [--json]');
       code = 1;
   }
   process.exit(code);

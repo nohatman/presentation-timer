@@ -333,6 +333,14 @@ function getClientByApiKey(rawKey) {
   return client;
 }
 
+// The Local Show Server's built-in client: owns the rooms made on a show laptop
+// (see auth.isLocalOperatorRequest). Created on first use; has no users.
+const LOCAL_CLIENT_NAME = 'Local show';
+
+function getOrCreateLocalClient() {
+  return getClientByName(LOCAL_CLIENT_NAME) || getClientById(createClient(LOCAL_CLIENT_NAME).id);
+}
+
 function getClientByName(name) {
   return db.prepare('SELECT * FROM clients WHERE name = ?').get(name) || null;
 }
@@ -987,6 +995,7 @@ module.exports = {
   reactivateClient,
   getClientByApiKey,
   getClientByName,
+  getOrCreateLocalClient,
   getClientById,
   listClients,
   getClientsWithCounts,

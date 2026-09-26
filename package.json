@@ -11,7 +11,8 @@
     "start": "node server.js",
     "dev": "node server.js",
     "test": "node --test test/*.test.js",
-    "build:portable": "pkg . --targets node18-win-x64 --output portable/presentation-timer.exe"
+    "build:portable": "pkg . --targets node18-win-x64 --output portable/presentation-timer.exe",
+    "build:local": "node scripts/build-local-download.js"
   },
   "pkg": {
     "assets": [

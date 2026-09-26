@@ -14,8 +14,14 @@ function run(file, args, timeout = 10000) {
   return execFileSync(file, args, { timeout, windowsHide: true, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
 }
 
+// By full path: a trimmed PATH (it happens on locked-down show laptops) can
+// leave out System32\WindowsPowerShell, and then every process lookup fails.
+const POWERSHELL = process.env.SystemRoot
+  ? require('path').join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
+  : 'powershell.exe';
+
 function powershell(script) {
-  return run('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script], 15000);
+  return run(POWERSHELL, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script], 15000);
 }
 
 // -> { pid, name, commandLine } or null when there is no such process.
