@@ -1,38 +1,30 @@
-# Presentation Timer
+# Foxy's Presentation Timer
 
-A modern web-based presentation timer with **multi-room support**, separate control and display screens, and real-time synchronization. Perfect for conferences, workshops, and presentations with multiple simultaneous sessions.
+A web-based presentation timer with **multi-room support**, separate control and display screens, and real-time synchronization. Built for conferences, workshops and live events with several sessions running at once. Runs hosted (Railway) or as a local show server on a venue LAN.
 
 ## ✨ Features
 
-- **🏢 Multi-Room Architecture**: Create unlimited independent timers with unique room names
-- **🎛️ Dual Screen Interface**: Separate control panel and large display screen
-- **⏰ Flexible Timing**: Set duration or end at a specific clock time
-- **⚡ Speed Control**: Run timer faster or slower than real-time (great for practice!)
-- **🎨 Color Warnings**: Visual feedback with green → amber → red transitions
-- **➕ Count Up Option**: Continue timing after zero (elapsed time display)
-- **🕐 Clock Mode**: Show current time instead of countdown
-- **🔄 Real-time Sync**: All devices in same room stay perfectly synchronized via WebSocket
-- **📱 Responsive Design**: Works on desktop, tablet, and mobile
-- **🖥️ Fullscreen Support**: Optimized for projection
-- **🎯 Improved UI**: Dark theme with smooth animations and better visual feedback
+- **🏢 Multi-room, multi-client**: each client account manages its own rooms from the Master Dashboard
+- **🎛️ Separate control and display screens**, linked by secret per-room links (no guessable room names)
+- **⏰ Duration or End at**: count down a length of time, or to a clock time; both server-authoritative
+- **📱 Phone-first control page**: timer, Start/Pause/Reset, ±1/±5 and Timer Setup fit on one phone screen
+- **👥 Multiple control panels per room**: one is in control, the others are view-only until they tap Take over
+- **🏷️ Device names**: each browser gets a friendly name ("Calm Raven") so panels can see who is in control
+- **💬 Messages to the display**: full-screen or ticker, with one-tap Clear from the top of the control page
+- **📋 Programme / rundown**: a running order of sessions with Prev / Take / Next
+- **🎨 Warning colours**: green → amber → red, with configurable thresholds, colours and background (incl. chromakey)
+- **⚡ Speed control**, count-up after zero, clock mode
+- **🎚️ Bitfocus Companion** integration via REST API (see [COMPANION.md](COMPANION.md))
+- **💾 Persistent**: rooms and timer state are stored in SQLite and survive server restarts
 
 ## 🚀 Quick Start
 
-### 1. Install Dependencies
 ```bash
 npm install
-```
-
-### 2. Run Locally
-```bash
 npm start
 ```
 
-### 3. Open in Browser
-- **Home (Room Selector)**: http://localhost:3000
-- **Control Panel**: http://localhost:3000/control?room=yourroom
-- **Display Screen**: http://localhost:3000/display?room=yourroom
-- **Default Room**: http://localhost:3000/control (uses "default" room)
+Then open http://localhost:3000 → **Master Dashboard** → sign in → **Create Room**. The dashboard gives each room a **Control** link and a **Display** link (both contain a secret token - share them like passwords). Accounts are provisioned with the scripts in [`scripts/`](scripts/) (e.g. `create-client.js`, `create-user.js`); see [MULTI_TENANT_STATUS.md](MULTI_TENANT_STATUS.md) for the account model.
 
 ## 🖥️ Local Show Server (Windows, show days)
 
@@ -40,292 +32,84 @@ Double-click **`Foxy-Local-Show-Server.bat`** to start/stop/restart the server, 
 Display pages, see the LAN address for other devices, and get a warning if an old server process is
 still running older code than the files on disk. See [tools/local-server/README.md](tools/local-server/README.md).
 
-## 🎪 Multi-Room Usage
+## 🎮 Using the Control Page
 
-### Creating and Using Rooms
+**Top of the page (live operation)**
+- **Room card**: room name and this device's name chip. The chip shows whether you're **in control** (green dot, or the CONTROLLER pill on desktop) or **observing**, and how many devices are connected; tap it to see the connected panels or rename this device.
+- **Preview**: the real display, scaled down, with Now / Ends at. When a message is on the display, a slim **"message active"** bar with a **Clear** button appears here.
+- **Start / Pause / Resume** (big) and **Reset** (outlined), plus **−5 −1 +1 +5 min** nudges.
 
-1. **Navigate to Home Page** - Opens the room selector
-2. **Enter a Room Name** - e.g., "presentation1", "workshop-a", "main-stage"
-3. **Click "Go"** - Creates or joins that room's control panel
-4. **Share Display Link** - Click "Copy Links" button to share with display screen
-5. **Multiple Rooms** - Each room operates independently
+**Timer Setup**
+- **Duration | End at** switch over a single editor. Type a value and press **Apply** (or Enter). Tapping into the Duration box selects the whole value so you can just type.
+- A **LIVE** row shows what the server is running; a **NEW** row shows a draft you haven't applied. Nothing you type changes the display until you apply it.
+- While something is pending, **Reset** (and Start, when stopped) shows what it will load, e.g. **RESET → 23:00**. Changing End at on a running timer asks for confirmation first.
+- **Display Shows** Timer / Clock, **Count up** after zero, and eight **Quick Presets** (Ctrl+Click a preset to save the current duration into it).
 
-### Room Examples
-- `http://localhost:3000/control?room=keynote` - Keynote presentation control
-- `http://localhost:3000/display?room=keynote` - Keynote display screen
-- `http://localhost:3000/control?room=workshop-1` - Workshop 1 control
-- `http://localhost:3000/display?room=workshop-1` - Workshop 1 display
+**Further down**: Programme / Rundown, Warning Thresholds, Display Appearance (size, speed 0.5×–1.5×, colours, background, what's shown), and **Message to Display Screen** - its Full Screen / Ticker buttons say what a press does (**SHOW**, **● LIVE**, amber **UPDATE** when you've edited a live message, **SWITCH**).
 
-**Tip**: Room names are case-sensitive. "Room1" and "room1" are different rooms.
+**Several control panels on one room**
+- The first panel is in control; others are **view-only**: an orange frame, greyed controls and a pinned **"View only - Calm Raven is in control · Take over"** strip.
+- Control belongs to a panel, not a connection: a refresh, a phone sleeping or a network blip keeps your seat (held for 30 minutes), and the newest tab on the controlling device takes over from older ones. Anyone can Take over at any time.
+
+**Keyboard shortcuts**: `Space` start/pause/resume · `R` reset · `+`/`-` ±1 min (Shift for ±5) · with the rundown open: `↑`/`↓` browse, `Enter` take.
+
+See [TIMER-MODES.md](TIMER-MODES.md) for the exact Duration / End at behaviour and a manual test checklist.
+
+## 🖥️ Display Screen
+
+- Large countdown that fits any screen (portrait or landscape, fit-to-width), H:MM:SS past an hour
+- Colour warnings: green → amber → red, purple when overrunning
+- Speaker name and "up next" lines from the rundown (each can be hidden)
+- Full-screen and ticker messages
+- Home / Fullscreen buttons that fade out when not in use
+- Also drives a physical CDEther/Hive display via the bridge in [tools/cdether-bridge](tools/cdether-bridge)
 
 ## 💻 Portable Version (Windows)
 
-Want to run from a USB stick without installing Node.js?
-
-### Build Portable Version
 ```bash
 npm install --save-dev pkg
 npm run build:portable
 ```
 
-This creates a `portable/` folder with:
-- `presentation-timer.exe` (standalone, ~39 MB with Node.js bundled)
-- `public/` folder (web interface)
-- `START.bat` (quick launch script)
-- `README-PORTABLE.txt` (instructions)
-
-### Use on Any PC
-1. Copy the entire `portable/` folder to your USB stick
-2. On any Windows PC, double-click `START.bat`
-3. Open browser to http://localhost:3000
-4. No installation or admin rights required!
-
-## 🎮 Usage
-
-### Control Panel
-
-**Room Information**
-- Displays current room name
-- "Copy Links" button to share control and display URLs
-
-**Timer Setup**
-1. **Set Duration**: Enter minutes and seconds, or use quick presets (5, 10, 15, 30, 45, 60 min)
-2. **End At Time**: Set a specific clock time to end (auto-calculates remaining duration)
-3. **Thresholds**: Configure when amber (warning) and red (urgent) colors appear
-4. **Speed**: Adjust timer speed (0.1x to 5x - useful for rehearsals)
-5. **Options**: Enable count-up after zero, or show clock instead of timer
-
-**Controls**
-- **Start**: Begin countdown
-- **Pause**: Pause timer (can resume later)
-- **Resume**: Continue from paused state
-- **Reset**: Stop and reset to initial state
-- **Nudge**: Fine-tune time (±15s, ±1min, ±5min buttons)
-
-**Keyboard Shortcuts**
-- `Space`: Start/Pause/Resume
-- `R`: Reset timer
-- `+/=`: Add 1 minute (Shift+ for 5 minutes)
-- `-/_`: Subtract 1 minute (Shift+ for 5 minutes)
-
-### Display Screen
-
-- **Large Timer Display**: 18vw font size for maximum visibility
-- **Color-Coded Warnings**: 
-  - Green: Normal time remaining
-  - Amber: Warning threshold reached
-  - Red: Urgent - final countdown (includes pulse animation)
-  - Purple: Timer finished
-- **Status Indicator**: Shows timer state (Ready, Running, Paused)
-- **Fullscreen Mode**: Click "Fullscreen" button or press F11
-- **Room Badge**: Shows current room name in corner
-- **Smooth Animations**: Enhanced visual effects and transitions
+Creates a `portable/` folder with a standalone `presentation-timer.exe` (Node.js bundled), the `public/` web interface and a `START.bat`. Copy the folder to any Windows PC and double-click `START.bat` - no installation or admin rights needed.
 
 ## ☁️ Cloud Deployment
 
-### Railway (Recommended)
+### Railway (current hosting)
 
-**Why Railway?**
-- ✅ WebSocket support (required for real-time sync)
-- ✅ Free tier available ($5 credit/month)
-- ✅ Automatic HTTPS
-- ✅ Easy GitHub integration
-- ✅ Zero configuration needed
+- WebSocket support (required), automatic HTTPS, GitHub integration
+- Pushing to `main` redeploys; `railway.toml` and `Procfile` are included
+- The port comes from `process.env.PORT`; set `DATABASE_PATH` to a persistent volume path so the SQLite database survives redeploys
 
-**Deployment Steps**
-
-1. **Push to GitHub**
-   ```bash
-   git init
-   git add .
-   git commit -m "Multi-room presentation timer"
-   git remote add origin <your-github-url>
-   git push -u origin main
-   ```
-
-2. **Deploy to Railway**
-   - Go to [railway.app](https://railway.app)
-   - Click "New Project" → "Deploy from GitHub"
-   - Select your repository
-   - Railway auto-detects Node.js
-   - Deployment starts automatically!
-
-3. **Access Your App**
-   - Railway provides a URL: `https://your-app.railway.app`
-   - Share this URL with your team
-   - Example: `https://your-app.railway.app/control?room=conference2024`
-
-**Configuration**
-- Port is automatically set via `process.env.PORT`
-- No environment variables required
-- `railway.toml` and `Procfile` included for optimization
-
-### Other Platforms
-
-#### Render
-1. Connect GitHub repository
-2. Select "Web Service"
-3. Build command: `npm install`
-4. Start command: `npm start`
-5. Deploy!
-
-#### Fly.io
-```bash
-fly launch
-fly deploy
-```
-
-#### DigitalOcean App Platform
-1. Create new app from GitHub
-2. Detect Node.js automatically
-3. Deploy
-
-**❌ NOT Compatible**: Netlify, Vercel (WebSocket limitations)
+Other WebSocket-capable Node hosts (Render, Fly.io, DigitalOcean App Platform) also work. **Not compatible**: Netlify, Vercel (WebSocket limitations).
 
 ## 🏗️ Technical Details
 
-### Architecture
-- **Backend**: Node.js + Express + Socket.IO
-- **Frontend**: Vanilla HTML/CSS/JavaScript (no framework overhead!)
-- **Real-time**: WebSocket communication via Socket.IO rooms
-- **State Management**: In-memory per-room state (resets on server restart)
-- **Styling**: Modern CSS with animations, transitions, and dark theme
+- **Backend**: Node.js + Express + Socket.IO; timer logic in [timerModes.js](timerModes.js), accounts/rooms in SQLite via [db.js](db.js)
+- **Frontend**: vanilla HTML/CSS/JavaScript in [public/](public/) (no framework)
+- **Real-time**: one Socket.IO room per timer room; the server is authoritative for all timer state
+- **Access**: control and display links carry separate secret tokens; the dashboard and REST/Companion API use client accounts / API keys
+- **Dependencies**: `express`, `socket.io`, `better-sqlite3`, `bcryptjs`, `cors`
 
-### Dependencies
-```json
-{
-  "express": "^4.18.2",     // Web server
-  "socket.io": "^4.7.2",    // WebSocket real-time communication
-  "cors": "^2.8.5"          // Cross-origin resource sharing
-}
+### Tests
+
+```bash
+npm test
 ```
 
-### Room Architecture
-Each room maintains independent state:
-- Timer mode (stopped/running/paused)
-- Duration and elapsed time
-- Speed multiplier
-- Warning thresholds
-- Display options
-
-Clients join specific rooms via Socket.IO, ensuring isolated operation.
+Unit, integration (real server + real Socket.IO clients) and static guard tests in [test/](test/).
 
 ## 🌐 Browser Compatibility
 
-- ✅ Chrome/Edge (90+)
-- ✅ Firefox (88+)
-- ✅ Safari (14+)
-- ✅ Mobile browsers (iOS Safari, Chrome Android)
-- ⚠️ Requires WebSocket support
-
-## 💡 Tips for Presentations
-
-### Multi-Screen Setup
-1. **Open control panel** on your laptop or phone
-2. **Open display screen** on projector or second monitor
-3. **Use same room name** for both
-4. Control from your device while audience sees the display
-
-### Remote Presentations
-1. **Deploy to Railway** or other cloud platform
-2. **Share display link** with audience
-3. **Control from anywhere** using control panel link
-
-### Multiple Concurrent Sessions
-- **Conference Room A**: `yourapp.railway.app/display?room=room-a`
-- **Conference Room B**: `yourapp.railway.app/display?room=room-b`
-- **Workshop Area**: `yourapp.railway.app/display?room=workshop`
-
-Each operates independently!
-
-### Practice Runs
-- Use **speed control** to run through timing faster (2x, 3x, 5x)
-- Test your warning thresholds
-- Perfect your pacing
-
-### Q&A Sessions
-- Use **"End At Time"** feature
-- Set specific end time (e.g., "14:30")
-- Timer auto-adjusts for breaks
+Current Chrome / Edge / Firefox / Safari, including mobile (iOS Safari, Chrome Android). WebSocket support required.
 
 ## 🐛 Troubleshooting
 
-### Port Already in Use
-```bash
-# Use different port
-PORT=3001 npm start
-```
-
-### Timer Not Syncing
-1. Ensure both screens use same room name (case-sensitive!)
-2. Check browser console for WebSocket errors (F12)
-3. Verify network connection
-4. Refresh both pages
-
-### Display Not Updating
-1. Check if WebSockets are blocked by firewall
-2. Try different browser
-3. Verify server is running
-
-### Mobile Issues
-- Some mobile browsers may require user interaction before WebSocket connects
-- Try tapping screen once after loading
-
-## 🤝 Contributing
-
-Contributions welcome! This is a simple, dependency-light project perfect for learning:
-- Node.js server development
-- WebSocket real-time communication
-- Modern CSS animations
-- Multi-client state management
+- **Display not updating**: check the display link is the one for this room; check WebSockets aren't blocked by a firewall; reload.
+- **"Server is running older code" banner** (local show server): restart the server from the launcher.
+- **Control page says View only**: another panel is in control - tap **Take over** on the strip at the bottom.
+- **Port already in use**: `PORT=3001 npm start`.
 
 ## 📝 License
-
-MIT License - feel free to use and modify for your presentations!
-
-## 🎯 Roadmap
-
-Potential future enhancements:
-- [ ] Persistent storage (database for timer history)
-- [ ] User authentication and private rooms
-- [ ] Timer templates/presets
-- [ ] QR code generation for easy room joining
-- [ ] Mobile app (React Native/Capacitor)
-- [ ] Analytics and usage tracking
-- [ ] Custom themes and branding
-
-## 📚 Use Cases
-
-- **Conferences**: Multiple tracks with independent timers
-- **Workshops**: Time-boxed activities and breaks
-- **Meetings**: Keep discussions on schedule
-- **Presentations**: Professional countdown displays
-- **Hackathons**: Track presentation rounds
-- **Debates**: Fair time allocation
-- **Teaching**: Class activity timing
-- **Events**: Session management
-
----
-
-Built with ❤️ for speakers, presenters, and event organizers everywhere.
-- Mobile browsers supported
-- WebSocket support required
-
-## Tips for Presentations
-
-1. **Screen Setup**: Open display on a secondary monitor or projector
-2. **Remote Control**: Access control panel from phone/tablet via same network
-3. **Presets**: Use quick preset buttons for common durations
-4. **End Time**: Use "End At" feature for Q&A sessions before breaks
-5. **Speed**: Speed up practice runs to save time
-6. **Fullscreen**: Use fullscreen mode for better visibility
-
-## Troubleshooting
-
-- **Timer not syncing**: Ensure both devices are on same network
-- **Display not updating**: Check browser console for WebSocket errors
-- **Mobile issues**: Some mobile browsers may require enabling WebSocket
-
-## License
 
 MIT License - feel free to use and modify for your presentations!

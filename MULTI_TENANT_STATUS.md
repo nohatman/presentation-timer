@@ -6,6 +6,54 @@ full design brief this work follows.
 
 ## Completed phases
 
+### Control page live-operation UX & controller hand-off (25-26 Sep 2026)
+Operator-facing polish of `public/control.html`, driven by real phone testing on
+foxytimer.com, plus two server fixes to the Phase 4 controller model. Commits
+`28cbfb9` .. `9220de9` on `main` (all pushed).
+- **Phone-first layout** (all phone rules inside the existing `max-width: 700px`
+  query; desktop unchanged): links row → one-row room card → preview → Start/Pause
+  + Reset + ±1/±5 → Timer Setup editor all fit on one ~412x760 phone screen
+  (height-aware preview width on short phones). Share links moved to the links row.
+- **Timer Setup**: Duration | End at share ONE editor; "Set" → "Apply"; LIVE row +
+  amber NEW row for drafts; pending actions shown on the buttons ("RESET → 23:00",
+  "START → 25:00") via `stagedTarget()`, which mirrors `commitStagedConfig`'s
+  conditions (static-tested). Timer semantics unchanged - see TIMER-MODES.md.
+- **View-only mode for observers** (`setViewOnly()`): orange frame, greyed
+  controls, pinned bottom strip with Take over; a window capture-phase guard blocks
+  clicks/typing/shortcuts on anything outside `[data-view-ok]`. Built independent
+  of *why* the page is view-only, so a future **client view-only link** can reuse it
+  (still needs a server-enforced read-only token role - hiding Take over is not
+  enough).
+- **Device names** (`deviceNames.js`): PairDrop-style "Adjective Animal" per browser
+  (localStorage), renameable, one-time intro on first visit. A label, never used
+  for permissions. Carried as additive fields on `controllerStatus`
+  (`activeControllerName`, `reconnecting`, per-recipient `controllerOnThisDevice`)
+  and `controllerCount` (`panels`: one entry per device with its tabs' socket ids).
+- **Controller hand-off fix (server)**: control used to be tied to one socket, so a
+  refresh / phone sleep / network blip instantly promoted another panel. Now the
+  page sends a per-tab `panelId` (sessionStorage) and per-browser `deviceId`
+  (localStorage); a dropped controller's seat is held for `CONTROLLER_GRACE_MS`
+  (default 30 min) and given back to the same tab or device; the newest tab on the
+  controlling device takes over from older ones; others see "<name> is
+  disconnected" and can Take over at any time. After the hold: previous behaviour
+  (promote another panel / free the seat). `test/controllerHandoff.integration`.
+- **In-page dialogs everywhere**: every native `confirm()`/`alert()` in
+  control.html and dashboard.html replaced (uiConfirm / uiNotice / uiPrompt; the
+  End-at retarget confirmation ticks live and re-checks before sending);
+  `test/noNativeDialogs.static.test.js` fails if one comes back.
+- **Messages**: slim "message active" bar with one-tap Clear under the preview;
+  compose buttons show SHOW / ● LIVE / amber UPDATE / SWITCH from server state.
+- Bugs fixed on the way: the generic "any input -> re-send settings" listener was
+  catching the dialog and message text boxes (observer rejection notices, spurious
+  emits) - both excluded, static-tested; `deviceNames.js` added to the stale-build
+  fingerprint list (any new server module must be added to `FINGERPRINT_FILES`).
+- Known, deliberately unchanged: a live nudge makes the Duration box read as a draft
+  and Reset then keeps the nudged length (the NEW row says so); a non-numeric
+  duration parses as 0:00.
+- **Next candidates**: Message section polish continued (ticker speed buttons in the
+  same state language); client view-only link (server token role + reuse
+  `setViewOnly`); QR code for the local server's links.
+
 ### Phase 6c.3 — Client status and API key rotation
 - Suspend/reactivate: `db.suspendClient(id)`/`db.reactivateClient(id)`, exposed
   via `POST /api/admin/clients/:id/suspend` and `.../reactivate`
@@ -588,8 +636,10 @@ invalidates all of that user's existing sessions).
     feature-detected Share, not UA-sniffed) to `control.html`'s Share Links
     button and the Platform Admin secret-result modals, both of which
     currently fall short of that pattern.
-  - Replacing remaining native `alert()`/`confirm()`/`prompt()` calls in
-    those same affected flows, where appropriate.
+  - ~~Replacing remaining native `alert()`/`confirm()`/`prompt()` calls in
+    those same affected flows, where appropriate.~~ **Done** (Sep 2026, see
+    "Control page live-operation UX" above) - none remain in `public/`, enforced
+    by `test/noNativeDialogs.static.test.js`.
   - Companion setup guidance and documentation (install/connect steps,
     Server URL vs Client API Key fields, how Railway-hosted and future
     local-server URLs differ, connection-status meaning, troubleshooting) -
