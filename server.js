@@ -9,6 +9,7 @@ const { buildRoomLinks } = require('./urls');
 const bridgeStatus = require('./bridgeStatus');
 const timerModes = require('./timerModes');
 const { sanitizeDeviceName, sanitizePanelId } = require('./deviceNames');
+const enquiries = require('./enquiries');
 const crypto = require('crypto');
 const buildInfo = require('./buildInfo');
 
@@ -1582,6 +1583,63 @@ function currentDiskFingerprint() {
   }
   return diskFingerprintCache.value;
 }
+
+// ============================================
+// REST API - landing-page contact form
+// ============================================
+// Public, so rate-limited per IP (same in-memory approach as login). A filled
+// honeypot gets a normal success reply but is not stored. The email is sent
+// after replying, so a slow or failing email provider never blocks or fails
+// the visitor - the enquiry is already saved and listed in admin.
+
+const contactAttempts = new Map(); // ip -> timestamps[]
+const CONTACT_RATE_LIMIT = 5;
+const CONTACT_RATE_WINDOW_MS = 60 * 60 * 1000;
+
+app.post('/api/contact', (req, res) => {
+  const now = Date.now();
+  const recent = (contactAttempts.get(req.ip) || []).filter((t) => now - t < CONTACT_RATE_WINDOW_MS);
+  if (recent.length >= CONTACT_RATE_LIMIT) {
+    contactAttempts.set(req.ip, recent);
+    return res.status(429).json({ ok: false, error: 'Too many messages from here. Please try again later.' });
+  }
+  recent.push(now);
+  contactAttempts.set(req.ip, recent);
+
+  const result = enquiries.validateEnquiry(req.body);
+  if (!result.ok) return res.status(400).json({ ok: false, error: result.error });
+  if (result.spam) return res.json({ ok: true });
+
+  const id = db.createEnquiry(result.enquiry);
+  res.json({ ok: true });
+
+  enquiries.sendNotification(result.enquiry).then((outcome) => {
+    db.setEnquiryEmailStatus(id, outcome.sent ? 'sent' : outcome.reason);
+    if (!outcome.sent && outcome.reason !== 'not_configured') {
+      console.error(`⚠️  Enquiry #${id} saved but the email notification failed: ${outcome.reason}`);
+    }
+  });
+});
+
+app.get('/api/admin/enquiries', ...adminClientAuth, (req, res) => {
+  res.json({ ok: true, enquiries: db.listEnquiries() });
+});
+
+app.post('/api/admin/enquiries/:id/handled', ...adminClientAuth, (req, res) => {
+  const id = Number(req.params.id);
+  const existing = Number.isInteger(id) ? db.getEnquiryById(id) : null;
+  if (!existing) return res.status(404).json({ ok: false, error: 'Enquiry not found' });
+  const handled = !(req.body && req.body.handled === false);
+  db.setEnquiryHandled(id, handled);
+  db.recordAuditLog({
+    actorUserId: req.user.id,
+    action: handled ? 'enquiry.handled' : 'enquiry.reopened',
+    targetType: 'enquiry',
+    targetId: id,
+    targetLabel: existing.email
+  });
+  res.json({ ok: true, enquiry: db.getEnquiryById(id) });
+});
 
 app.get('/api/health', (req, res) => {
   const diskFingerprint = currentDiskFingerprint();

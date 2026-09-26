@@ -100,6 +100,21 @@ db.exec(`
     target_label TEXT,
     created_at INTEGER NOT NULL
   );
+
+  -- Landing-page contact / trial-request form (enquiries.js). Not tied to a
+  -- client: these are prospects. handled_at is set when an admin marks one
+  -- dealt with; nothing is ever deleted.
+  CREATE TABLE IF NOT EXISTS enquiries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    email TEXT NOT NULL,
+    company TEXT,
+    interests TEXT NOT NULL DEFAULT '[]',
+    message TEXT,
+    email_status TEXT,
+    created_at INTEGER NOT NULL,
+    handled_at INTEGER
+  );
 `);
 
 // Migration: CREATE TABLE IF NOT EXISTS above doesn't retroactively add columns to
@@ -646,6 +661,46 @@ function recordAuditLog({ actorUserId, action, targetType, targetId = null, targ
   `).run(actorUserId, action, targetType, targetId, targetLabel, Date.now());
 }
 
+// ============================================
+// Enquiries (landing-page contact form)
+// ============================================
+
+function createEnquiry({ name, email, company, interests, message }) {
+  const info = db.prepare(`
+    INSERT INTO enquiries (name, email, company, interests, message, created_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(name, email, company || null, JSON.stringify(interests || []), message || null, Date.now());
+  return info.lastInsertRowid;
+}
+
+function setEnquiryEmailStatus(id, status) {
+  db.prepare('UPDATE enquiries SET email_status = ? WHERE id = ?').run(status, id);
+}
+
+function rowToEnquiry(row) {
+  let interests = [];
+  try { interests = JSON.parse(row.interests); } catch { /* keep [] */ }
+  return { ...row, interests };
+}
+
+// Unhandled first (newest first), then handled (newest first).
+function listEnquiries(limit = 200) {
+  return db.prepare(`
+    SELECT * FROM enquiries
+    ORDER BY (handled_at IS NOT NULL), created_at DESC
+    LIMIT ?
+  `).all(limit).map(rowToEnquiry);
+}
+
+function getEnquiryById(id) {
+  const row = db.prepare('SELECT * FROM enquiries WHERE id = ?').get(id);
+  return row ? rowToEnquiry(row) : null;
+}
+
+function setEnquiryHandled(id, handled) {
+  db.prepare('UPDATE enquiries SET handled_at = ? WHERE id = ?').run(handled ? Date.now() : null, id);
+}
+
 function getAuditLogForTarget(targetType, targetId, limit = 20) {
   return db.prepare(`
     SELECT audit_log.id, audit_log.action, audit_log.target_type, audit_log.target_id,
@@ -941,6 +996,12 @@ module.exports = {
   // audit log
   recordAuditLog,
   getAuditLogForTarget,
+  // enquiries
+  createEnquiry,
+  setEnquiryEmailStatus,
+  listEnquiries,
+  getEnquiryById,
+  setEnquiryHandled,
   // rooms
   createRoom,
   getRoomById,

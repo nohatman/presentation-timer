@@ -17,6 +17,16 @@ A web-based presentation timer with **multi-room support**, separate control and
 - **🎚️ Bitfocus Companion** integration via REST API (see [COMPANION.md](COMPANION.md))
 - **💾 Persistent**: rooms and timer state are stored in SQLite and survive server restarts
 
+## 📨 Landing page enquiries
+
+The landing page's contact / trial form posts to `/api/contact` (rate-limited, honeypot spam trap). Every enquiry is stored and listed on the Platform Admin **Clients** page, where it can be marked handled. Email notification is optional, via [Resend](https://resend.com) (Railway blocks outbound SMTP):
+
+| Env var | Default |
+|---|---|
+| `RESEND_API_KEY` | unset = store only, no email |
+| `CONTACT_EMAIL_TO` | `foxytimer@bizshows.co.uk` |
+| `CONTACT_EMAIL_FROM` | `Foxy Timer <foxytimer@bizshows.co.uk>` (domain must be verified in Resend) |
+
 ## 🚀 Quick Start
 
 ```bash

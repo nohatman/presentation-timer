@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Foxy Timer - stage timing for live event crews</title>
-    <meta name="description" content="Speaker countdowns, rundowns and Stream Deck control for live event crews. Hosted, or on your own show network so the clocks keep running when the venue internet doesn't.">
+    <meta name="description" content="Browser-based stage timing for live event crews: one show clock on every display, confidence monitor, LED clock, phone and Stream Deck. Hosted, or on your own show network with no internet needed.">
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <style>
         :root {
@@ -153,7 +153,6 @@
         .card.feature { grid-column: span 2; display: grid; grid-template-columns: 1fr 1fr; gap: 28px; align-items: center; }
         .card.feature .diagram { font-family: var(--mono); font-size: 0.8rem; color: var(--muted); background: #0d0d0f; border: 1px solid var(--line); border-radius: 10px; padding: 18px; line-height: 1.9; }
         .diagram .ok { color: var(--green); }
-        .diagram .x { color: var(--red); }
         .diagram .hub { color: var(--fox-2); font-weight: 700; }
 
         /* Details */
@@ -260,13 +259,13 @@
         <div class="wrap">
             <div>
                 <span class="eyebrow">Stage timing for live event crews</span>
-                <h1>The show timer that keeps running <span class="soft">when the venue Wi&#8209;Fi doesn't.</span></h1>
-                <p class="lede">Speaker countdowns, rundowns and Stream Deck control. Use it hosted, or run it from a laptop at FOH on your own show network.</p>
+                <h1>One show clock.<br><span class="soft">Every screen,<br>every room.</span></h1>
+                <p class="lede">Speaker countdowns, rundowns and messages that stay in sync on stage displays, confidence monitors, LED clocks and phones, all run from a browser or a Stream Deck. Use it hosted, or on a laptop on your own show network with no internet needed.</p>
                 <div class="cta-row">
                     <a class="btn btn-primary" href="#contact">Get a free trial</a>
                     <a class="btn btn-ghost" href="#why">What's different</a>
                 </div>
-                <p class="by">Built by BizShows, and used on our own live events.</p>
+                <p class="by">Built by Business Shows Limited, and used on our own live events.</p>
             </div>
 
             <div class="stage" aria-hidden="true">
@@ -310,12 +309,12 @@
                 <div class="card feature">
                     <div>
                         <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></div>
-                        <h3>Your network, your show</h3>
-                        <p>Run the show server on a Windows laptop at FOH, with nothing to install. Every display and control panel talks to it over the venue LAN. If the internet drops, the clocks don't notice. Prefer hosted? The same timer runs in the cloud with no setup.</p>
+                        <h3>Every screen is just a link</h3>
+                        <p>Displays, confidence monitors and operators' phones open a link in a browser, with no software to install on each machine. Run it hosted, or from a Windows laptop at FOH on your own show network, where it needs no internet at all.</p>
                     </div>
                     <div class="diagram">
-                        Internet &nbsp;&nbsp;&nbsp;&nbsp;<span class="x">&times; down</span><br>
-                        <span class="hub">FOH laptop</span> &nbsp;<span class="ok">&#9679; running</span><br>
+                        <span class="hub">FOH laptop</span> &nbsp;<span class="ok">&#9679; show server</span><br>
+                        Internet &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--faint)">not needed</span><br>
                         &nbsp;&#9500; Stage display&nbsp;&nbsp;&nbsp;<span class="ok tick">0:40</span><br>
                         &nbsp;&#9500; Confidence mon.&nbsp;<span class="ok tick">0:40</span><br>
                         &nbsp;&#9500; Stream Deck&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="ok tick">0:40</span><br>
@@ -403,11 +402,11 @@
                 <div class="mode">
                     <span class="tag">Local show server</span>
                     <h3>Your laptop, your LAN</h3>
-                    <p>For shows where the network is yours and the internet can't be trusted.</p>
+                    <p>For shows where you run the network, or where the internet can't be trusted.</p>
                     <ul>
                         <li>Double-click to start on Windows, no admin rights needed</li>
                         <li>Displays and phones join over the venue network</li>
-                        <li>Carries on through an internet outage</li>
+                        <li>Needs no internet connection at all</li>
                     </ul>
                 </div>
             </div>
@@ -455,7 +454,7 @@
 
 <footer>
     <div class="wrap">
-        <span>&copy; <span id="year">2026</span> BizShows &middot; Foxy Timer</span>
+        <span>&copy; <span id="year">2026</span> Business Shows Limited &middot; Foxy Timer</span>
         <nav>
             <a href="#why">Why Foxy</a>
             <a href="#contact">Contact</a>

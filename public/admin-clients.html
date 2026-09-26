@@ -135,6 +135,27 @@
             color: #999;
             text-transform: uppercase;
         }
+        /* Enquiries from the landing-page contact form */
+        .enquiries { margin-bottom: 2rem; }
+        .enquiries h2 { font-size: 1.2rem; color: #fafafa; margin-bottom: 0.9rem; display: flex; align-items: center; gap: 10px; }
+        .enq-count { background: #ff6a1a; color: #140800; font-size: 0.75rem; font-weight: 700; padding: 2px 9px; border-radius: 20px; }
+        .enq-list { display: grid; gap: 0.75rem; }
+        .enq {
+            background: #161618; border: 1px solid #333; border-left: 4px solid #ff6a1a;
+            border-radius: 10px; padding: 1rem 1.2rem;
+        }
+        .enq.handled { border-left-color: #444; opacity: 0.75; }
+        .enq-top { display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; align-items: baseline; }
+        .enq-who { font-weight: 600; color: #f5f5f5; }
+        .enq-who a { color: #90caf9; font-weight: 500; }
+        .enq-meta { color: #888; font-size: 0.8rem; }
+        .enq-tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 0.6rem 0; }
+        .enq-tags span { font-size: 0.75rem; border: 1px solid #444; border-radius: 20px; padding: 2px 9px; color: #ccc; }
+        .enq-msg { color: #ccc; white-space: pre-wrap; word-break: break-word; font-size: 0.92rem; }
+        .enq-actions { margin-top: 0.75rem; }
+        .enq-actions button { padding: 7px 14px; border-radius: 6px; border: 1px solid #444; background: #1f1f1f; color: #e5e5e5; cursor: pointer; font-size: 0.85rem; }
+        .enq-actions button:hover { border-color: #4caf50; }
+        .enquiries details summary { cursor: pointer; color: #999; margin: 0.9rem 0 0.6rem; }
         .empty-state, .loading {
             text-align: center;
             padding: 4rem 2rem;
@@ -172,6 +193,11 @@
             <button onclick="logout()" class="nav-link" style="cursor:pointer;">🚪 Logout</button>
         </div>
     </div>
+
+    <section class="enquiries" id="enquiriesSection" style="display:none;">
+        <h2>📨 Enquiries <span class="enq-count" id="enqCount"></span></h2>
+        <div id="enquiriesContainer"></div>
+    </section>
 
     <div id="clientsContainer">
         <div class="loading">Loading clients...</div>
@@ -482,6 +508,61 @@
             fetchClients();
         }
 
+        // Landing-page contact form enquiries. Hidden entirely until there is
+        // at least one, so the page looks as before on a fresh install.
+        const INTEREST_LABELS = { trial: 'Free trial', local: 'Local show server', companion: 'Companion / Stream Deck', call: 'Quick call' };
+        const EMAIL_STATUS_LABELS = { sent: 'emailed', not_configured: 'email not set up' };
+
+        function renderEnquiry(e) {
+            const when = new Date(e.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+            const emailNote = e.email_status ? ` · ${escapeHtml(EMAIL_STATUS_LABELS[e.email_status] || 'email failed')}` : '';
+            const tags = e.interests.map((i) => `<span>${escapeHtml(INTEREST_LABELS[i] || i)}</span>`).join('');
+            return `
+                <div class="enq ${e.handled_at ? 'handled' : ''}">
+                    <div class="enq-top">
+                        <div class="enq-who">${escapeHtml(e.name)}${e.company ? ' · ' + escapeHtml(e.company) : ''}
+                            &nbsp;<a href="mailto:${encodeURIComponent(e.email)}">${escapeHtml(e.email)}</a></div>
+                        <div class="enq-meta">${escapeHtml(when)}${emailNote}</div>
+                    </div>
+                    ${tags ? `<div class="enq-tags">${tags}</div>` : ''}
+                    ${e.message ? `<div class="enq-msg">${escapeHtml(e.message)}</div>` : ''}
+                    <div class="enq-actions">
+                        <button onclick="setEnquiryHandled(${e.id}, ${e.handled_at ? 'false' : 'true'})">${e.handled_at ? 'Reopen' : '✓ Mark handled'}</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        async function fetchEnquiries() {
+            try {
+                const response = await authFetch('/api/admin/enquiries');
+                if (!response.ok) return;
+                const data = await response.json();
+                if (!data.ok || data.enquiries.length === 0) return;
+                const open = data.enquiries.filter((e) => !e.handled_at);
+                const done = data.enquiries.filter((e) => e.handled_at);
+                document.getElementById('enquiriesSection').style.display = '';
+                const count = document.getElementById('enqCount');
+                count.textContent = open.length ? `${open.length} new` : '';
+                count.style.display = open.length ? '' : 'none';
+                document.getElementById('enquiriesContainer').innerHTML =
+                    (open.length ? `<div class="enq-list">${open.map(renderEnquiry).join('')}</div>` : '<div style="color:#777;">Nothing waiting.</div>') +
+                    (done.length ? `<details><summary>Handled (${done.length})</summary><div class="enq-list">${done.map(renderEnquiry).join('')}</div></details>` : '');
+            } catch (error) {
+                console.error('Error fetching enquiries:', error);
+            }
+        }
+
+        async function setEnquiryHandled(id, handled) {
+            const response = await authFetch(`/api/admin/enquiries/${id}/handled`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ handled })
+            });
+            if (response.ok) fetchEnquiries();
+        }
+
+        fetchEnquiries();
         fetchClients();
     </script>
 </body>
