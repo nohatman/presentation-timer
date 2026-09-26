@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Try Foxy Timer - your demo room</title>
+    <meta name="robots" content="noindex">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <style>
+        :root {
+            --bg: #0b0b0c;
+            --bg-2: #121214;
+            --card: #161618;
+            --line: #26262a;
+            --text: #ececee;
+            --muted: #9a9aa2;
+            --faint: #6b6b73;
+            --fox: #ff6a1a;
+            --fox-2: #ff8a3d;
+            --green: #4caf50;
+            --radius: 14px;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0; background: var(--bg); color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.55; -webkit-font-smoothing: antialiased;
+        }
+        a { color: inherit; }
+        .wrap { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
+
+        .nav { border-bottom: 1px solid var(--line); }
+        .nav .wrap { display: flex; align-items: center; gap: 20px; height: 64px; }
+        .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; font-weight: 700; }
+        .brand img { width: 28px; height: 28px; }
+        .nav-links { margin-left: auto; display: flex; align-items: center; gap: 18px; font-size: 0.95rem; }
+        .nav-links a { text-decoration: none; }
+
+        .btn {
+            display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+            padding: 11px 18px; border-radius: 10px; border: 1px solid transparent;
+            font: inherit; font-weight: 600; font-size: 0.95rem; text-decoration: none; cursor: pointer; white-space: nowrap;
+            transition: background 0.15s, border-color 0.15s;
+        }
+        .btn-primary { background: var(--fox); color: #140800; }
+        .btn-primary:hover { background: var(--fox-2); }
+        .btn-ghost { border-color: var(--line); color: var(--text); background: transparent; }
+        .btn-ghost:hover { border-color: #3a3a40; background: var(--bg-2); }
+        .nav-links .btn { padding: 8px 16px; }
+
+        .intro { padding: 52px 0 32px; }
+        .live-pill {
+            display: inline-flex; align-items: center; gap: 8px; font-size: 0.8rem; font-weight: 700;
+            letter-spacing: 0.08em; text-transform: uppercase; color: var(--green); margin-bottom: 14px;
+        }
+        .live-pill i { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 4px rgba(76,175,80,0.18); }
+        h1 { font-size: clamp(2rem, 4.4vw, 3rem); letter-spacing: -0.03em; line-height: 1.08; margin: 0 0 12px; }
+        .intro p { color: var(--muted); font-size: 1.08rem; margin: 0; max-width: 40em; }
+        .intro strong { color: var(--text); }
+
+        .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .link-card {
+            background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+            padding: 24px; display: grid; grid-template-columns: 1fr auto; gap: 20px; align-items: start;
+        }
+        .step { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fox-2); }
+        .link-card h2 { margin: 6px 0 6px; font-size: 1.25rem; letter-spacing: -0.015em; }
+        .link-card p { margin: 0 0 16px; color: var(--muted); font-size: 0.95rem; }
+        .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+        .qr { width: 132px; height: 132px; background: #fff; border-radius: 10px; padding: 6px; }
+        .qr svg { width: 100%; height: 100%; display: block; }
+        .qr-note { font-size: 0.75rem; color: var(--faint); text-align: center; margin-top: 6px; }
+        .copied { color: var(--green) !important; border-color: var(--green) !important; }
+
+        .try-list { margin-top: 40px; display: grid; grid-template-columns: 1.3fr 1fr; gap: 16px; }
+        .panel { background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 24px; }
+        .panel h3 { margin: 0 0 12px; font-size: 1.08rem; }
+        .panel ol { margin: 0; padding-left: 20px; color: var(--muted); }
+        .panel li { padding: 5px 0; }
+        .panel li strong { color: var(--text); font-weight: 600; }
+        .panel p { color: var(--muted); margin: 0 0 16px; }
+        .small { font-size: 0.85rem; color: var(--faint); margin-top: 14px; }
+        .small button { background: none; border: none; color: var(--muted); text-decoration: underline; cursor: pointer; font: inherit; padding: 0; }
+
+        .state { padding: 80px 0; text-align: center; color: var(--muted); }
+        .state h1 { color: var(--text); }
+        .state .btn { margin-top: 20px; }
+
+        footer { border-top: 1px solid var(--line); margin-top: 64px; padding: 28px 0 calc(28px + env(safe-area-inset-bottom)); color: var(--faint); font-size: 0.88rem; }
+
+        @media (max-width: 800px) {
+            .wrap { padding: 0 16px; }
+            .intro { padding: 32px 0 24px; }
+            .pair, .try-list { grid-template-columns: 1fr; }
+            /* On a phone, this phone is the control: put it first. */
+            .card-control { order: -1; }
+            .link-card { grid-template-columns: 1fr; }
+            .qr-box { display: flex; align-items: center; gap: 14px; }
+            .qr { width: 104px; height: 104px; }
+            .qr-note { text-align: left; margin: 0; }
+            .actions .btn { flex: 1 1 auto; }
+        }
+    </style>
+</head>
+<body>
+
+<header class="nav">
+    <div class="wrap">
+        <a class="brand" href="/"><img src="/favicon.svg" alt=""> Foxy Timer</a>
+        <nav class="nav-links">
+            <a href="/dashboard">Log in</a>
+            <a class="btn btn-primary" href="/#contact">Get a trial</a>
+        </nav>
+    </div>
+</header>
+
+<main class="wrap">
+    <div id="loading" class="state"><p>Setting up your demo room…</p></div>
+
+    <div id="error" class="state" hidden>
+        <h1>Couldn't start a demo</h1>
+        <p id="errorText"></p>
+        <a class="btn btn-primary" href="/#contact">Get in touch</a>
+    </div>
+
+    <div id="ready" hidden>
+        <section class="intro">
+            <div class="live-pill"><i></i> Demo room live</div>
+            <h1>Your demo room is ready.</h1>
+            <p>It's yours until <strong id="endsAt"></strong>, then it deletes itself. No sign-up needed. A sample programme is already loaded.</p>
+        </section>
+
+        <div class="pair">
+            <div class="link-card card-display">
+                <div>
+                    <span class="step">The screen</span>
+                    <h2>Display</h2>
+                    <p>Put this on a laptop, TV, projector or confidence monitor. Anything with a browser works.</p>
+                    <div class="actions">
+                        <a class="btn btn-primary" id="openDisplay" target="_blank" rel="noopener">Open display</a>
+                        <button class="btn btn-ghost" data-copy="display">Copy link</button>
+                    </div>
+                </div>
+                <div class="qr-box">
+                    <div class="qr" id="displayQr"></div>
+                    <div class="qr-note">Scan to open on<br>another device</div>
+                </div>
+            </div>
+
+            <div class="link-card card-control">
+                <div>
+                    <span class="step">The operator</span>
+                    <h2>Control</h2>
+                    <p>Run the clock from your phone, a tablet or a laptop. Scan the code, or open it here.</p>
+                    <div class="actions">
+                        <a class="btn btn-primary" id="openControl" target="_blank" rel="noopener">Open control</a>
+                        <button class="btn btn-ghost" data-copy="control">Copy link</button>
+                    </div>
+                </div>
+                <div class="qr-box">
+                    <div class="qr" id="controlQr"></div>
+                    <div class="qr-note">Scan with your<br>phone camera</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="try-list">
+            <div class="panel">
+                <h3>Things to try</h3>
+                <ol>
+                    <li><strong>Press Start</strong> and watch the display turn amber at 1:00 and red at 0:30.</li>
+                    <li><strong>Step through the programme</strong> with Next and Take. The speaker and "up next" lines change on the display.</li>
+                    <li><strong>Send a message</strong> to the stage, full screen or as a ticker, then clear it.</li>
+                    <li><strong>Open the control link on a second device.</strong> It starts in observer mode until you tap Take over.</li>
+                    <li><strong>Switch to End at</strong> and count down to a clock time instead.</li>
+                </ol>
+            </div>
+            <div class="panel">
+                <h3>Want to use it for real?</h3>
+                <p>A trial account gives you your own rooms and dashboard, with links that don't expire. The Local Show Server and the Companion module are available too.</p>
+                <a class="btn btn-primary" href="/#contact">Get a trial account</a>
+                <p class="small">Need a clean slate? <button id="freshRoom">Start a fresh demo room</button></p>
+            </div>
+        </div>
+    </div>
+</main>
+
+<footer>
+    <div class="wrap">&copy; <span id="year">2026</span> Business Shows Limited &middot; Foxy Timer</div>
+</footer>
+
+<script>
+    document.getElementById('year').textContent = new Date().getFullYear();
+
+    // One demo per browser tab session: a refresh shows the same room rather
+    // than creating another. Cleared when it expires or on "fresh room".
+    const STORE_KEY = 'foxyDemoRoom';
+    let demo = null;
+
+    function readStored() {
+        try {
+            const d = JSON.parse(sessionStorage.getItem(STORE_KEY) || 'null');
+            return d && d.expiresAt > Date.now() + 60 * 1000 ? d : null;
+        } catch { return null; }
+    }
+    function store(d) {
+        try { sessionStorage.setItem(STORE_KEY, JSON.stringify(d)); } catch { /* private mode: fine */ }
+    }
+
+    function show(id) {
+        for (const el of ['loading', 'error', 'ready']) document.getElementById(el).hidden = el !== id;
+    }
+
+    function render(d) {
+        demo = d;
+        document.getElementById('endsAt').textContent =
+            new Date(d.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        document.getElementById('openDisplay').href = d.displayUrl;
+        document.getElementById('openControl').href = d.controlUrl;
+        document.getElementById('displayQr').innerHTML = d.displayQr;
+        document.getElementById('controlQr').innerHTML = d.controlQr;
+        show('ready');
+    }
+
+    async function start() {
+        show('loading');
+        try {
+            const res = await fetch('/api/demo', { method: 'POST' });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data.ok) throw new Error(data.error || 'Something went wrong. Please try again in a moment.');
+            store(data);
+            render(data);
+        } catch (err) {
+            document.getElementById('errorText').textContent = err.message;
+            show('error');
+        }
+    }
+
+    document.querySelectorAll('[data-copy]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            const url = btn.dataset.copy === 'display' ? demo.displayUrl : demo.controlUrl;
+            try {
+                await navigator.clipboard.writeText(url);
+                btn.textContent = 'Copied';
+                btn.classList.add('copied');
+                setTimeout(() => { btn.textContent = 'Copy link'; btn.classList.remove('copied'); }, 1800);
+            } catch {
+                // No clipboard access (e.g. plain http on a LAN): show the link
+                // in a box, selected, for a manual copy.
+                let box = btn.parentElement.querySelector('input');
+                if (!box) {
+                    box = document.createElement('input');
+                    box.readOnly = true;
+                    box.style.cssText = 'flex:1 1 100%;font:inherit;font-size:0.85rem;padding:9px 11px;border-radius:9px;border:1px solid #2e2e33;background:#0d0d0f;color:#ececee;';
+                    btn.parentElement.appendChild(box);
+                }
+                box.value = url;
+                box.focus();
+                box.select();
+            }
+        });
+    });
+
+    document.getElementById('freshRoom').addEventListener('click', () => {
+        try { sessionStorage.removeItem(STORE_KEY); } catch { /* ignore */ }
+        start();
+    });
+
+    const stored = readStored();
+    if (stored) render(stored); else start();
+</script>
+</body>
+</html>

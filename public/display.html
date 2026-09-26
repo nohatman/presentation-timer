@@ -316,7 +316,15 @@
         // server-side from which token matched - never trust a client-declared type.
         const socket = io({ auth: { token: displayToken } });
 
-        socket.on('authError', ({ message }) => {
+        socket.on('authError', ({ message, reason }) => {
+            if (reason === 'demo_ended') {
+                document.body.innerHTML = `<div style="padding:40px 20px;text-align:center;font-family:sans-serif;color:#ccc;">
+                    <h2>Demo ended</h2>
+                    <p>${message}</p>
+                    <p style="margin-top:24px;"><a href="/try" style="color:#ff8a3d;">Start a new demo</a> &nbsp;·&nbsp; <a href="/#contact" style="color:#ff8a3d;">Get a trial account</a></p>
+                </div>`;
+                return;
+            }
             document.body.innerHTML = `<div style="padding:40px;text-align:center;font-family:sans-serif;color:#ccc;">
                 <h2>Access denied</h2>
                 <p>${message || 'This link is no longer valid.'}</p>

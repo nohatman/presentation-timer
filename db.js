@@ -136,6 +136,9 @@ ensureColumn('clients', 'is_platform_admin', 'INTEGER NOT NULL DEFAULT 0');
 // only on an actual rotation event and stays NULL until the first one happens.
 ensureColumn('clients', 'api_key_created_at', 'INTEGER');
 ensureColumn('clients', 'api_key_rotated_at', 'INTEGER');
+// Try-it-now demo rooms (demoRooms.js) expire; every other room has NULL here
+// and never expires.
+ensureColumn('rooms', 'expires_at', 'INTEGER');
 
 // ============================================
 // Tokens / API keys
@@ -810,7 +813,7 @@ importLegacyRoomsJsonIfNeeded();
 // used by this client. state_json starts as an empty placeholder - the caller
 // (server.js) is expected to immediately follow up with writeRoomState() using the
 // real default timer state, before the room is reachable by any request.
-function createRoom(clientId, slug) {
+function createRoom(clientId, slug, { expiresAt = null } = {}) {
   const eventId = getOrCreateDefaultEvent(clientId);
   const now = Date.now();
   const controlToken = generateToken();
@@ -818,9 +821,9 @@ function createRoom(clientId, slug) {
 
   try {
     const info = db.prepare(`
-      INSERT INTO rooms (event_id, slug, control_token, display_token, hidden, state_json, created_at, updated_at)
-      VALUES (?, ?, ?, ?, 0, '{}', ?, ?)
-    `).run(eventId, slug, controlToken, displayToken, now, now);
+      INSERT INTO rooms (event_id, slug, control_token, display_token, hidden, state_json, created_at, updated_at, expires_at)
+      VALUES (?, ?, ?, ?, 0, '{}', ?, ?, ?)
+    `).run(eventId, slug, controlToken, displayToken, now, now, expiresAt);
 
     return db.prepare('SELECT * FROM rooms WHERE id = ?').get(info.lastInsertRowid);
   } catch (err) {
@@ -959,6 +962,19 @@ function deleteRoom(id) {
   db.prepare('DELETE FROM rooms WHERE id = ?').run(id);
 }
 
+// Rooms whose expires_at has passed (only demo rooms ever have one).
+function getExpiredRooms(now = Date.now()) {
+  return db.prepare('SELECT id, slug FROM rooms WHERE expires_at IS NOT NULL AND expires_at <= ?').all(now);
+}
+
+function countUnexpiredRoomsForClient(clientId, now = Date.now()) {
+  return db.prepare(`
+    SELECT COUNT(*) AS n FROM rooms
+    JOIN events ON events.id = rooms.event_id
+    WHERE events.client_id = ? AND (rooms.expires_at IS NULL OR rooms.expires_at > ?)
+  `).get(clientId, now).n;
+}
+
 module.exports = {
   DATABASE_PATH,
   LEGACY_ROOMS_JSON_PATH,
@@ -1006,6 +1022,8 @@ module.exports = {
   createRoom,
   getRoomById,
   getRoomByToken,
+  getExpiredRooms,
+  countUnexpiredRoomsForClient,
   getRoomForClient,
   getRoomsForClient,
   getAllRoomsWithClientNames,

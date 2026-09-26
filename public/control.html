@@ -1324,6 +1324,10 @@
     </style>
 </head>
 <body>
+    <!-- Demo room strip (see demoInfo) - hidden for every real room. -->
+    <div id="demoBar" data-view-ok hidden style="background:#2a1608;border-bottom:1px solid #5a2e10;color:#ffcfae;font-size:0.85rem;padding:7px 12px;text-align:center;">
+        Demo room · ends at <strong id="demoEnds"></strong> · <a href="/#contact" target="_blank" rel="noopener" style="color:#ff8a3d;font-weight:600;" data-view-ok>Get a trial account</a>
+    </div>
     <!-- View-only strip: shown while this panel is an observer (see setViewOnly).
          Pinned to the bottom edge - always in reach, thumb-friendly on a phone -
          so taking control never means scrolling back to the room header. -->
@@ -2341,11 +2345,27 @@
         const socket = io({ auth: { token: controlToken, deviceName: myDeviceName, panelId: myPanelId, deviceId: myDeviceId } });
         socket.on('connect', checkServerBuild);
 
-        socket.on('authError', ({ message }) => {
+        socket.on('authError', ({ message, reason }) => {
+            if (reason === 'demo_ended') {
+                document.body.innerHTML = `<div style="padding:40px 20px;text-align:center;font-family:sans-serif;color:#ccc;">
+                    <h2>Demo ended</h2>
+                    <p>${message}</p>
+                    <p style="margin-top:24px;"><a href="/try" style="color:#ff8a3d;">Start a new demo</a> &nbsp;·&nbsp; <a href="/#contact" style="color:#ff8a3d;">Get a trial account</a></p>
+                </div>`;
+                return;
+            }
             document.body.innerHTML = `<div style="padding:40px;text-align:center;font-family:sans-serif;color:#ccc;">
                 <h2>Access denied</h2>
                 <p>${message || 'This link is no longer valid.'}</p>
             </div>`;
+        });
+
+        // "Try it now" demo room: a slim strip at the top saying when it ends.
+        socket.on('demoInfo', ({ expiresAt }) => {
+            const bar = document.getElementById('demoBar');
+            const ends = new Date(expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            document.getElementById('demoEnds').textContent = ends;
+            bar.hidden = false;
         });
 
         // Helper functions for MM:SS format

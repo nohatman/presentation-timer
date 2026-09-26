@@ -48,6 +48,8 @@ function resolveSocketAccess(token) {
   const access = db.getRoomByToken(token);
   if (!access) return null;
   if (access.room.client_status !== 'active') return null;
+  // An expired demo room is refused straight away, even before the sweep deletes it.
+  if (access.room.expires_at && access.room.expires_at <= Date.now()) return null;
   return { room: access.room, role: access.role, roomId: String(access.room.id) };
 }
 

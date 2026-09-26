@@ -27,6 +27,17 @@ The landing page's contact / trial form posts to `/api/contact` (rate-limited, h
 | `CONTACT_EMAIL_TO` | `foxytimer@bizshows.co.uk` |
 | `CONTACT_EMAIL_FROM` | `Foxy Timer <foxytimer@bizshowsapp.co.uk>` (must be on a domain verified in Resend) |
 
+## 🧪 Try it now (demo rooms)
+
+`/try` (the landing page's **Try it now**) creates a demo room with no sign-up: a sample programme loaded, Control and Display links with QR codes, and a slim "Demo room · ends at …" strip on the control page. Demo rooms belong to a client called *Demo rooms (auto-expiring)* that has no users, and are deleted when they expire; anyone still connected sees "Demo ended".
+
+| Env var | Default |
+|---|---|
+| `DEMO_TTL_MIN` | `120` minutes a demo room lives |
+| `DEMO_MAX_ACTIVE` | `100` unexpired demo rooms at once |
+| `DEMO_PER_IP_PER_HOUR` | `3` |
+| `DEMO_SWEEP_MS` | `60000` how often expired rooms are deleted |
+
 ## 🚀 Quick Start
 
 ```bash

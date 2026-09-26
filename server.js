@@ -10,6 +10,8 @@ const bridgeStatus = require('./bridgeStatus');
 const timerModes = require('./timerModes');
 const { sanitizeDeviceName, sanitizePanelId } = require('./deviceNames');
 const enquiries = require('./enquiries');
+const demoRooms = require('./demoRooms');
+const QRCode = require('qrcode');
 const crypto = require('crypto');
 const buildInfo = require('./buildInfo');
 
@@ -290,6 +292,7 @@ io.on('connection', (socket) => {
 
   const { roomId, role } = access; // role: 'control' | 'display', derived server-side
   socket.join(roomId);
+  if (access.room.expires_at) socket.emit('demoInfo', { expiresAt: access.room.expires_at });
   socket.clientType = role;
   socket.roomId = roomId;
   // Control panels introduce themselves with a device name (display sockets
@@ -1600,6 +1603,58 @@ app.post('/api/admin/enquiries/:id/handled', ...adminClientAuth, (req, res) => {
   res.json({ ok: true, enquiry: db.getEnquiryById(id) });
 });
 
+// ============================================
+// REST API - "Try it now" demo rooms (see demoRooms.js)
+// ============================================
+
+const demoConfig = demoRooms.getDemoConfig();
+const demoLimiter = demoRooms.createHourlyLimiter(demoConfig.perIpPerHour);
+
+function getDemoClientId() {
+  const existing = db.getClientByName(demoRooms.DEMO_CLIENT_NAME);
+  return existing ? existing.id : db.createClient(demoRooms.DEMO_CLIENT_NAME).id;
+}
+
+app.post('/api/demo', async (req, res) => {
+  const clientId = getDemoClientId();
+  if (db.countUnexpiredRoomsForClient(clientId) >= demoConfig.maxActive) {
+    return res.status(503).json({ ok: false, error: 'The demo is very busy right now. Please try again in a few minutes.' });
+  }
+  if (!demoLimiter.take(req.ip)) {
+    return res.status(429).json({ ok: false, error: "You've started a few demos already. Please try again later, or get in touch for a trial account." });
+  }
+
+  const expiresAt = Date.now() + demoConfig.ttlMs;
+  const room = db.createRoom(clientId, `demo-${crypto.randomBytes(4).toString('hex')}`, { expiresAt });
+  const state = demoRooms.seedDemoState(createDefaultTimerState(), timerModes.loadRundownItem);
+  timerRooms.set(String(room.id), state);
+  db.writeRoomState(room.id, state);
+
+  const links = buildRoomLinks(`${req.protocol}://${req.get('host')}`, room);
+  const qr = (text) => QRCode.toString(text, { type: 'svg', margin: 1, errorCorrectionLevel: 'M' });
+  const [controlQr, displayQr] = await Promise.all([qr(links.controlUrl), qr(links.displayUrl)]);
+  console.log(`🧪 Demo room ${room.slug} (id=${room.id}) created, expires ${new Date(expiresAt).toISOString()}`);
+  res.json({ ok: true, ...links, expiresAt, controlQr, displayQr });
+});
+
+// Deletes expired demo rooms. Anyone still connected is told the demo has
+// ended (control/display show that instead of a generic "invalid link").
+function sweepExpiredDemoRooms() {
+  for (const room of db.getExpiredRooms()) {
+    const roomId = String(room.id);
+    for (const socketId of io.sockets.adapter.rooms.get(roomId) || []) {
+      const socket = io.sockets.sockets.get(socketId);
+      if (!socket) continue;
+      socket.emit('authError', { reason: 'demo_ended', message: 'This demo room has ended. Thanks for trying Foxy Timer!' });
+      socket.disconnect(true);
+    }
+    timerRooms.delete(roomId);
+    forgetRoomController(roomId);
+    db.deleteRoom(room.id);
+    console.log(`🧪 Demo room ${room.slug} (id=${room.id}) expired and was deleted`);
+  }
+}
+
 app.get('/api/health', (req, res) => {
   const diskFingerprint = currentDiskFingerprint();
   const addr = server.address();
@@ -1652,6 +1707,10 @@ app.get('/dashboard', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
 });
 
+app.get('/try', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'try.html'));
+});
+
 app.get('/login', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
@@ -1692,6 +1751,8 @@ app.get('/admin/clients/:id', requirePlatformAdminPage, (req, res) => {
 
 // Load persisted rooms before starting
 loadRooms();
+sweepExpiredDemoRooms();
+setInterval(sweepExpiredDemoRooms, demoConfig.sweepMs).unref();
 
 // Start server
 const PORT = process.env.PORT || 3000;
