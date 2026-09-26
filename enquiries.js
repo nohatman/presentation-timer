@@ -10,8 +10,8 @@
 // outbound SMTP on non-Pro plans. Configure with env vars:
 //   RESEND_API_KEY      required to send at all (unset = store only)
 //   CONTACT_EMAIL_TO    default foxytimer@bizshows.co.uk
-//   CONTACT_EMAIL_FROM  default "Foxy Timer <foxytimer@bizshows.co.uk>" - the
-//                       domain must be verified in Resend
+//   CONTACT_EMAIL_FROM  default "Foxy Timer <foxytimer@bizshowsapp.co.uk>" -
+//                       must be on a domain verified in Resend
 
 const INTERESTS = {
   trial: 'A free trial',
@@ -23,7 +23,7 @@ const INTERESTS = {
 const LIMITS = { name: 100, email: 200, company: 150, message: 4000 };
 
 const DEFAULT_TO = 'foxytimer@bizshows.co.uk';
-const DEFAULT_FROM = 'Foxy Timer <foxytimer@bizshows.co.uk>';
+const DEFAULT_FROM = 'Foxy Timer <foxytimer@bizshowsapp.co.uk>';
 
 function clean(value) {
   return typeof value === 'string' ? value.trim() : '';

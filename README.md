@@ -25,7 +25,7 @@ The landing page's contact / trial form posts to `/api/contact` (rate-limited, h
 |---|---|
 | `RESEND_API_KEY` | unset = store only, no email |
 | `CONTACT_EMAIL_TO` | `foxytimer@bizshows.co.uk` |
-| `CONTACT_EMAIL_FROM` | `Foxy Timer <foxytimer@bizshows.co.uk>` (domain must be verified in Resend) |
+| `CONTACT_EMAIL_FROM` | `Foxy Timer <foxytimer@bizshowsapp.co.uk>` (must be on a domain verified in Resend) |
 
 ## 🚀 Quick Start
 
