@@ -937,18 +937,42 @@
                 order: 2;
                 margin-top: 6px;
             }
+            /* One row on phones: [room name ........ ● Calm Raven · 2 devices].
+               The CONTROLLER/OBSERVER word becomes the chip's dot (green = in
+               control, orange = observing) - observing is already unmistakable
+               from the orange frame + pinned strip. Anything else (the CDEther
+               pill) wraps onto a second row only when it's showing. */
             .room-status > #controllerStatusBadge {
+                display: none;
+            }
+            .room-status > #deviceNameBtn {
                 order: 0;
                 margin-top: 0;
             }
-            .room-header::after {
-                content: '';
-                order: 1;
-                flex-basis: 100%;
-                height: 0;
+            .room-name-block {
+                flex: 1 1 auto;
+                min-width: 35%;
             }
             .device-name-btn {
-                max-width: 210px;
+                max-width: 62%;
+            }
+            .device-name-btn .chip-icon {
+                display: none;
+            }
+            .device-name-btn::before {
+                content: '';
+                display: inline-block;
+                width: 9px;
+                height: 9px;
+                margin-right: 7px;
+                border-radius: 50%;
+                vertical-align: 1px;
+                background: #ff9800;
+                box-shadow: 0 0 0 2px rgba(255, 152, 0, 0.25);
+            }
+            .device-name-btn.is-controller::before {
+                background: #4caf50;
+                box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.25);
             }
 
             /* Preview: less card chrome so the display itself gets the width.
@@ -1198,7 +1222,7 @@
                 <!-- This device's name + how many devices are connected. Tap: the list
                      of connected control panels, with "Rename this device". See the
                      device-name block in the script. -->
-                <button type="button" id="deviceNameBtn" class="device-name-btn" onclick="showConnectedPanels()" title="This device and the other connected control panels" aria-haspopup="dialog">👤 <span id="deviceNameLabel"></span><span id="controllerStatusCount" class="panel-count"></span></button>
+                <button type="button" id="deviceNameBtn" class="device-name-btn" onclick="showConnectedPanels()" title="This device and the other connected control panels" aria-haspopup="dialog"><span class="chip-icon" aria-hidden="true">👤 </span><span id="deviceNameLabel"></span><span id="controllerStatusCount" class="panel-count"></span></button>
                 <button id="controllerTakeOverBtn" style="display: none; padding: 5px 14px; font-size: 0.8rem; border-radius: 5px; border: none; background: #1976d2; color: #fff; cursor: pointer; white-space: nowrap;" onclick="openTakeOverModal()">Take Over</button>
                 <!-- Physical Display Output (CDEther) compact status - P2.1. Hidden
                      until the room has ever reported bridge status this session (a
@@ -2109,10 +2133,28 @@
             } catch {}
             const fresh = `${pick(NAME_ADJECTIVES)} ${pick(NAME_ANIMALS)}`;
             try { localStorage.setItem(DEVICE_NAME_KEY, fresh); } catch {}
+            deviceNameIsNew = true;
             return fresh;
         }
 
+        let deviceNameIsNew = false; // first ever visit on this device: introduce the name once
         let myDeviceName = loadDeviceName();
+
+        // First visit only: tell the operator what this device is called, with
+        // Rename now / Later. Never shown again on this device (the name is saved).
+        // Short delay so the page (and this panel's controller/observer state)
+        // has settled first.
+        if (deviceNameIsNew) {
+            setTimeout(async () => {
+                const rename = await uiConfirm({
+                    title: `This device is "${myDeviceName}"`,
+                    body: `Other control panels in this room see this name - e.g. "${myDeviceName} is in control". You can change it any time by tapping your name at the top of the page.`,
+                    okLabel: 'Rename now',
+                    cancelLabel: 'Later',
+                });
+                if (rename) renameDevice();
+            }, 1200);
+        }
 
         // Two random ids the server uses to give control back to this panel when
         // its connection drops and returns (refresh, phone waking up, network
@@ -2438,6 +2480,9 @@
                 ? `- ${who} took control`
                 : `- ${who} is in control`);
             document.getElementById('deviceNameLabel').textContent = myDeviceName;
+            const chip = document.getElementById('deviceNameBtn');
+            chip.classList.toggle('is-controller', isActiveController); // the phone layout's role dot
+            chip.title = `${isActiveController ? 'In control' : 'Observing'} - this device and the other connected control panels`;
             wasActiveController = controllerStatusReceived ? isActiveController : null;
 
             if (isActiveController) {
@@ -3489,7 +3534,8 @@
             if (input.id === 'displayScaleSlider') return;
             if (input.id === 'rundownAutoStart') return;
             if (input.id === 'duration' || input.id === 'endAtTime') return; // own listeners (End at is a draft until Set)
-            
+            if (input.closest('#appDialogOverlay')) return; // the in-page dialog's own field (e.g. rename) is not a setting
+
             input.addEventListener('change', () => {
                 saveSettings();
                 emitSettings();
@@ -3504,7 +3550,20 @@
         document.getElementById('speedSlider').addEventListener('input', updateSpeedPreview);
 
         // Track when user is actively editing the duration field so server syncs don't overwrite it
-        durationEl.addEventListener('focus', () => durationInputFocused = true);
+        // Tapping into the Duration box selects the whole value, so typing replaces
+        // it - no deleting first. Re-selected on the click that follows the focus
+        // (a tap/click would otherwise drop the caret where it landed); a second
+        // tap while already focused places the caret normally, for small edits.
+        let durationJustFocused = false;
+        durationEl.addEventListener('focus', () => {
+            durationInputFocused = true;
+            durationJustFocused = true;
+            durationEl.select();
+        });
+        durationEl.addEventListener('click', () => {
+            if (durationJustFocused) durationEl.select();
+            durationJustFocused = false;
+        });
         durationEl.addEventListener('blur',  () => {
             durationInputFocused = false;
             // While running/paused the field is not editable state (use the nudge

@@ -94,3 +94,9 @@ test('the Duration Set button is disabled while dirty tracking is unconditional,
   assert.match(functionBody('applyDurationDraft'), /if \(currentState\.mode !== 'stopped' \|\| !durationDirty\) return;/);
   assert.match(html, /input\.id === 'duration' \|\| input\.id === 'endAtTime'\) return/);
 });
+
+test('the generic "input changed -> re-send settings" listener skips the in-page dialog\'s own field (typing a device name must send nothing)', () => {
+  const block = html.slice(html.indexOf("document.querySelectorAll('input').forEach(input => {"), html.indexOf("document.querySelectorAll('input').forEach(input => {") + 800);
+  assert.match(block, /input\.closest\('#appDialogOverlay'\)\) return;/);
+  assert.ok(html.indexOf('id="appDialogInput"') > html.indexOf('id="appDialogOverlay"'), 'the rename field lives inside the dialog overlay');
+});
