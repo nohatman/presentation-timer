@@ -629,6 +629,18 @@
             padding: 8px 12px;
             font-size: 0.9rem;
         }
+        .count-style-label { display: flex; padding: 0 !important; }
+        .count-style-label select {
+            width: 100%;
+            min-height: 40px;
+            padding: 8px 10px;
+            border-radius: 8px;
+            border: 1px solid #333;
+            background: #101010;
+            color: #e5e5e5;
+            font: inherit;
+            font-size: 0.9rem;
+        }
         .presets-save-hint {
             color: #444;
             font-size: 0.75rem;
@@ -1519,9 +1531,15 @@
                             <button class="button" id="modeTimerBtn" onclick="setOutputMode('timer')" style="flex:1;">⏱️ Timer</button>
                             <button class="button" id="modeClockBtn" onclick="setOutputMode('clock')" style="flex:1;">🕐 Clock</button>
                         </div>
-                        <label class="checkbox-label count-up-label">
-                            <input type="checkbox" id="countUp">
-                            <span>Count up<span class="count-up-extra"> after zero</span></span>
+                        <!-- One choice for how the timer counts: down (stops at 0:00),
+                             down then carrying on up into overrun, or up from 0:00
+                             (stopwatch). Maps to countUp + countDirection. -->
+                        <label class="count-up-label count-style-label">
+                            <select id="countStyle" aria-label="How the timer counts">
+                                <option value="down">Count down</option>
+                                <option value="downUp">Down, then up</option>
+                                <option value="up">Count up</option>
+                            </select>
                         </label>
                     </div>
                 </div>
@@ -1637,6 +1655,10 @@
                     <input type="text" id="redThreshold" class="time-text" placeholder="0:00" pattern="\d{1,3}:\d{2}" title="Format: MM:SS" maxlength="6" inputmode="numeric">
                 </div>
             </div>
+            <label class="checkbox-label" style="margin:12px 0 0;">
+                <input type="checkbox" id="upWarnings">
+                <span>Use these colours when counting up too</span>
+            </label>
         </div>
 
         <!-- Display Appearance - Full Width, collapsed by default. Colors,
@@ -1695,9 +1717,17 @@
                         <input type="checkbox" id="showSpeakerName" checked>
                         <span>Speaker / session name</span>
                     </label>
-                    <label class="checkbox-label" style="margin-bottom:0;">
+                    <label class="checkbox-label" style="margin-bottom:8px;">
                         <input type="checkbox" id="showUpNext" checked>
                         <span>"Up next" line</span>
+                    </label>
+                    <label class="checkbox-label" style="margin-bottom:8px;">
+                        <input type="checkbox" id="showTimeOfDay">
+                        <span>Time of day ("Now 14:32")</span>
+                    </label>
+                    <label class="checkbox-label" style="margin-bottom:0;">
+                        <input type="checkbox" id="showFinishTime">
+                        <span>Finish time ("Finish 14:55")</span>
                     </label>
                 </div>
             </div>
@@ -2531,9 +2561,10 @@
                         Math.floor((state.redThresholdMs % 60000) / 1000)
                     );
                 }
-                if (state.countUp !== undefined) {
-                    document.getElementById('countUp').checked = !!state.countUp;
-                }
+                setCountStyle(state);
+                document.getElementById('upWarnings').checked = !!state.upWarnings;
+                document.getElementById('showTimeOfDay').checked = !!state.showTimeOfDay;
+                document.getElementById('showFinishTime').checked = !!state.showFinishTime;
                 if (state.timerColorNormal) document.getElementById('timerColorNormal').value = state.timerColorNormal;
                 if (state.timerColorAmber) document.getElementById('timerColorAmber').value = state.timerColorAmber;
                 if (state.timerColorRed) document.getElementById('timerColorRed').value = state.timerColorRed;
@@ -2944,7 +2975,7 @@
                 speed: parseFloat(document.getElementById('speed').value) || 1.0,
                 amberThresholdMs: getAmberThresholdMs(),
                 redThresholdMs: getRedThresholdMs(),
-                countUp: document.getElementById('countUp').checked
+                ...getCountFields()
             };
 
             // What is on screen is what runs. End at is resolved by the server
@@ -3562,14 +3593,27 @@
                 speed: speedValue || 1.0,
                 amberThresholdMs: getAmberThresholdMs(),
                 redThresholdMs: getRedThresholdMs(),
-                countUp: document.getElementById('countUp').checked,
+                ...getCountFields(),
+                upWarnings: document.getElementById('upWarnings').checked,
                 timerColorNormal: document.getElementById('timerColorNormal').value,
                 timerColorAmber: document.getElementById('timerColorAmber').value,
                 timerColorRed: document.getElementById('timerColorRed').value,
                 displayBgColor: document.getElementById('displayBgColor').value,
                 showSpeakerName: document.getElementById('showSpeakerName').checked,
-                showUpNext: document.getElementById('showUpNext').checked
+                showUpNext: document.getElementById('showUpNext').checked,
+                showTimeOfDay: document.getElementById('showTimeOfDay').checked,
+                showFinishTime: document.getElementById('showFinishTime').checked
             });
+        }
+
+        // The "how it counts" dropdown <-> the two server fields.
+        function getCountFields() {
+            const v = document.getElementById('countStyle').value;
+            return { countUp: v === 'downUp', countDirection: v === 'up' ? 'up' : 'down' };
+        }
+        function setCountStyle(s) {
+            document.getElementById('countStyle').value =
+                s.countDirection === 'up' ? 'up' : (s.countUp ? 'downUp' : 'down');
         }
 
         // Display Appearance section: reset the three timer-color pickers to the
@@ -3643,7 +3687,10 @@
                         document.getElementById('speed').value = speedValue;
                     }
                     updateSpeedPreview();
-                    document.getElementById('countUp').checked = settings.countUp || false;
+                    setCountStyle(settings);
+                    document.getElementById('upWarnings').checked = !!settings.upWarnings;
+                    document.getElementById('showTimeOfDay').checked = !!settings.showTimeOfDay;
+                    document.getElementById('showFinishTime').checked = !!settings.showFinishTime;
                     if (settings.timerColorNormal) document.getElementById('timerColorNormal').value = settings.timerColorNormal;
                     if (settings.timerColorAmber) document.getElementById('timerColorAmber').value = settings.timerColorAmber;
                     if (settings.timerColorRed) document.getElementById('timerColorRed').value = settings.timerColorRed;
@@ -3688,13 +3735,16 @@
                 amberThreshold: document.getElementById('amberThreshold').value,
                 redThreshold: document.getElementById('redThreshold').value,
                 speed: document.getElementById('speedSlider').value,
-                countUp: document.getElementById('countUp').checked,
+                ...getCountFields(),
+                upWarnings: document.getElementById('upWarnings').checked,
                 timerColorNormal: document.getElementById('timerColorNormal').value,
                 timerColorAmber: document.getElementById('timerColorAmber').value,
                 timerColorRed: document.getElementById('timerColorRed').value,
                 displayBgColor: document.getElementById('displayBgColor').value,
                 showSpeakerName: document.getElementById('showSpeakerName').checked,
-                showUpNext: document.getElementById('showUpNext').checked
+                showUpNext: document.getElementById('showUpNext').checked,
+                showTimeOfDay: document.getElementById('showTimeOfDay').checked,
+                showFinishTime: document.getElementById('showFinishTime').checked
             };
             localStorage.setItem('timerSettings', JSON.stringify(settings));
         }
@@ -3717,6 +3767,11 @@
                 saveSettings();
                 emitSettings();
             });
+        });
+
+        document.getElementById('countStyle').addEventListener('change', () => {
+            saveSettings();
+            emitSettings();
         });
 
         // Speed slider only updates preview, doesn't auto-apply

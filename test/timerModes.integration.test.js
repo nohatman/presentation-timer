@@ -626,3 +626,30 @@ test('Reset with nothing staged is unaffected (the common case: no extra commit,
     assert.equal(s.durationMs, 12 * MIN, 'reset to the configured duration, the nudge is not treated as a pending commit');
   } finally { c.socket.close(); }
 });
+
+test('count up (stopwatch) and the display info-line settings: stored, broadcast, and Companion shows elapsed', async () => {
+  const { room, c } = await newControl();
+  try {
+    let s = await c.send('updateSettings', { countDirection: 'up', upWarnings: true, showTimeOfDay: true, showFinishTime: true });
+    assert.equal(s.countDirection, 'up');
+    assert.equal(s.upWarnings, true);
+    assert.equal(s.showTimeOfDay, true);
+    assert.equal(s.showFinishTime, true);
+    s = await c.send('updateSettings', { countDirection: 'sideways', upWarnings: 0 });
+    assert.equal(s.countDirection, 'up', 'an unknown direction is ignored');
+    assert.equal(s.upWarnings, false);
+
+    // A 1-minute run counted up: Companion shows elapsed (00:0x), not 00:5x
+    await c.send('startTimer', { timerMode: 'duration', durationMs: MIN, countDirection: 'up' });
+    await sleep(1100);
+    let g = await rest(room, 'GET', 'companion');
+    assert.equal(g.countDirection, 'up');
+    assert.match(g.timeDisplay, /^00:0[1-2]$/);
+    assert.equal(g.color, 'green', 'no warning colours when counting up without upWarnings');
+
+    // Back to counting down: Companion shows remaining again
+    await c.send('updateSettings', { countDirection: 'down' });
+    g = await rest(room, 'GET', 'companion');
+    assert.match(g.timeDisplay, /^00:5\d$/);
+  } finally { c.socket.close(); }
+});

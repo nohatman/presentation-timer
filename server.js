@@ -245,7 +245,9 @@ function createDefaultTimerState() {
     configDurationMs: 30 * 60 * 1000, // operator's Duration-mode value (survives End at)
     endAtTzOffsetMin: null, // operator's Date#getTimezoneOffset() for endAtTarget
     runEndAtMs: null, // absolute finish of a running End-at run (see timerModes.js)
-    countUp: false,
+    countUp: false,    // 'Count down, then up': keep counting the overrun past zero
+    countDirection: 'down', // 'down' | 'up' - 'up' is a stopwatch: elapsed from 0:00
+    upWarnings: false, // counting up: use amber/red/overrun colours against the set length
     showClock: false,
     outputMode: 'timer', // 'timer' | 'clock'
     displayScale: 1.5, // Display size multiplier (0.5 - 2.0)
@@ -258,12 +260,27 @@ function createDefaultTimerState() {
     displayBgColor: '#000000',
     showSpeakerName: true,
     showUpNext: true,
+    showTimeOfDay: false,  // display: "Now 14:32" line under the timer
+    showFinishTime: false, // display: "Finish 14:55" line under the timer
     rundown: [],       // [{name, durationMs}] programme list
     rundownIndex: -1,  // -1 = not in rundown mode
     message: '',
     messageMode: 'none', // 'none' | 'overlay' | 'ticker'
     messageTickerSpeed: 1.0 // multiplier: 0.5=slow, 1.0=normal, 2.0=fast
   };
+}
+
+// Count direction (stopwatch) settings from startTimer / updateSettings.
+function applyCountSettings(timerState, data) {
+  if (data.countDirection === 'down' || data.countDirection === 'up') timerState.countDirection = data.countDirection;
+  if (data.upWarnings !== undefined) timerState.upWarnings = !!data.upWarnings;
+}
+
+// Timer-ms elapsed in the current run (0 when stopped).
+function elapsedTimerMs(s, nowMs) {
+  if (!s.startTime) return 0;
+  const end = s.pauseTime || nowMs;
+  return Math.max(0, (end - s.startTime - (s.accumulatedPauseMs || 0)) * (s.speed || 1));
 }
 
 // Rooms are never created implicitly anymore - only via POST /api/rooms (authenticated)
@@ -419,6 +436,7 @@ io.on('connection', (socket) => {
     if (data.amberThresholdMs !== undefined) timerState.amberThresholdMs = data.amberThresholdMs;
     if (data.redThresholdMs !== undefined) timerState.redThresholdMs = data.redThresholdMs;
     if (data.countUp !== undefined) timerState.countUp = data.countUp;
+    applyCountSettings(timerState, data);
     if (data.showClock !== undefined) timerState.showClock = data.showClock;
 
     emitState(roomId, timerState);
@@ -492,6 +510,7 @@ io.on('connection', (socket) => {
     if (data.amberThresholdMs !== undefined) timerState.amberThresholdMs = data.amberThresholdMs;
     if (data.redThresholdMs !== undefined) timerState.redThresholdMs = data.redThresholdMs;
     if (data.countUp !== undefined) timerState.countUp = data.countUp;
+    applyCountSettings(timerState, data);
     if (data.showClock !== undefined) timerState.showClock = data.showClock;
     if (data.displayScale !== undefined) timerState.displayScale = data.displayScale;
     if (isHexColor(data.timerColorNormal)) timerState.timerColorNormal = data.timerColorNormal;
@@ -500,6 +519,8 @@ io.on('connection', (socket) => {
     if (isHexColor(data.displayBgColor)) timerState.displayBgColor = data.displayBgColor;
     if (data.showSpeakerName !== undefined) timerState.showSpeakerName = !!data.showSpeakerName;
     if (data.showUpNext !== undefined) timerState.showUpNext = !!data.showUpNext;
+    if (data.showTimeOfDay !== undefined) timerState.showTimeOfDay = !!data.showTimeOfDay;
+    if (data.showFinishTime !== undefined) timerState.showFinishTime = !!data.showFinishTime;
 
     emitState(roomId, timerState);
     scheduleSave();
@@ -824,6 +845,8 @@ function summarizeRoom(row, req) {
     overMs: Math.floor(overMs),
     outputMode: state.outputMode,
     countUp: state.countUp || false,
+    countDirection: state.countDirection || 'down',
+    elapsedMs: Math.floor(elapsedTimerMs(state, Date.now())),
     amberThresholdMs: state.amberThresholdMs,
     redThresholdMs: state.redThresholdMs,
     controlUrl: links.controlUrl,
@@ -1297,16 +1320,20 @@ app.get('/api/rooms/:roomId/companion', ...roomAuth, (req, res) => {
     }
   }
 
-  const totalSec = Math.floor(Math.max(0, remainingMs) / 1000);
+  // Counting up (stopwatch): the buttons show elapsed time, like the display.
+  const countingUp = s.countDirection === 'up';
+  const shownMs = countingUp ? elapsedTimerMs(s, Date.now()) : remainingMs;
+  const totalSec = Math.floor(Math.max(0, shownMs) / 1000);
   const min = Math.floor(totalSec / 60);
   const sec = totalSec % 60;
-  const sign = isOvertime && s.countUp ? '-' : '';
+  const sign = isOvertime && s.countUp && !countingUp ? '-' : '';
   const timeDisplay = `${sign}${String(min).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
 
   // Colour: matches display screen thresholds
   let color = 'green';
   if (s.mode === 'stopped')                          color = 'stopped';
   else if (s.mode === 'paused')                      color = 'paused';
+  else if (countingUp && !s.upWarnings)              color = 'green';
   else if (isOvertime)                               color = 'overtime';
   else if (remainingMs <= s.redThresholdMs)          color = 'red';
   else if (remainingMs <= s.amberThresholdMs)        color = 'amber';
@@ -1324,6 +1351,7 @@ app.get('/api/rooms/:roomId/companion', ...roomAuth, (req, res) => {
   const rundownPos  = (idx >= 0 && rundown.length > 0) ? `${idx+1}/${rundown.length}` : '';
 
   res.json({
+    countDirection: s.countDirection || 'down',
     ok: true,
     roomId,
     // Timer

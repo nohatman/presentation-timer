@@ -884,6 +884,12 @@
                     timerClass = 'clock';
                     modeIcon = '🕐';
                     modeText = 'Clock Mode';
+                } else if (room.countDirection === 'up') {
+                    // Stopwatch: elapsed time from 0:00
+                    displayTime = formatCountdownDisplay(room.elapsedMs || 0);
+                    timerClass = '';
+                    modeIcon = '⏱️';
+                    modeText = 'Counting up';
                 } else if (room.countUp && room.overMs > 0) {
                     // Overtime: timer has passed zero, showing elapsed over time
                     displayTime = formatCountdownDisplay(room.overMs, '-');

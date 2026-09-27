@@ -83,6 +83,14 @@
             opacity: 0.8;
             max-width: 100%;
         }
+        /* Optional "Now 14:32 · Finish 14:55" line (Display Appearance). */
+        .info-line {
+            font-size: 5vmin;
+            margin: -1rem 0 1.5rem;
+            opacity: 0.85;
+            font-variant-numeric: tabular-nums;
+            letter-spacing: 0.04em;
+        }
         .status {
             font-size: 5vmin;
             margin-bottom: 2rem;
@@ -274,6 +282,7 @@
         <div id="timerDisplay" class="timer-display color-normal"><span id="timerDisplayText">00:00</span></div>
         <div id="clockDisplay" class="clock-display" style="display: none;"><span id="clockDisplayText">00:00:00</span></div>
         <div id="status" class="status">Ready</div>
+        <div id="infoLine" class="info-line" style="display:none;"></div>
         <div id="upNext" class="up-next" style="display:none;"></div>
 
         <div class="controls">
@@ -557,14 +566,18 @@
         function updateTimerDisplay(forceImmediate = false) {
             const timerEl = document.getElementById('timerDisplay');
             const { mode, durationMs, startTime, pauseTime, accumulatedPauseMs = 0, speed = 1.0, amberThresholdMs, redThresholdMs, countUp } = currentState;
+            // Counting up (stopwatch) shows elapsed time from 0:00 and never stops;
+            // the set length only matters for its optional warning colours.
+            const countingUp = currentState.countDirection === 'up';
 
             let remainingMs = durationMs || 0;
+            let elapsedMs = 0;
             let isFinished = false;
 
             if (startTime) {
                 const now = Date.now() + clockOffset; // corrected to match server clock
                 const pausedOffset = pauseTime ? (pauseTime - startTime) - accumulatedPauseMs : (now - startTime) - accumulatedPauseMs;
-                const elapsedMs = Math.max(0, pausedOffset) * speed;
+                elapsedMs = Math.max(0, pausedOffset) * speed;
                 remainingMs = durationMs - elapsedMs;
 
                 if (remainingMs <= 0) {
@@ -577,11 +590,20 @@
                 }
             }
 
-            // Update color based on remaining time
-            updateTimerColor(timerEl, remainingMs, durationMs, amberThresholdMs, redThresholdMs, isFinished);
+            if (countingUp) {
+                if (currentState.upWarnings) {
+                    updateTimerColor(timerEl, isFinished ? 0 : remainingMs, durationMs, amberThresholdMs, redThresholdMs, isFinished);
+                } else {
+                    updateTimerColor(timerEl, Infinity, durationMs, amberThresholdMs, redThresholdMs, false);
+                }
+            } else {
+                // Update color based on remaining time
+                updateTimerColor(timerEl, remainingMs, durationMs, amberThresholdMs, redThresholdMs, isFinished);
+            }
+            updateInfoLine();
 
             // Format time
-            const targetSeconds = Math.floor(remainingMs / 1000);
+            const targetSeconds = Math.floor((countingUp ? elapsedMs : remainingMs) / 1000);
 
             // Initialize or update smoothed displaySeconds. The +/-1-per-call step
             // below only exists to stop the *last* second-tick before a change
@@ -601,7 +623,7 @@
             }
 
             const showSeconds = displaySeconds;
-            const sign = (isFinished && countUp) ? '-' : '';
+            const sign = (isFinished && countUp && !countingUp) ? '-' : '';
             // Past an hour, "822:08" forces the viewer to do minutes-to-hours math
             // at a glance - switch to H:MM:SS instead (same convention as video
             // players: hours unpadded, minutes/seconds always 2 digits), same as
@@ -617,8 +639,8 @@
             document.getElementById('timerDisplayText').textContent = timeStr;
             fitToWidth('timer', timerEl, document.getElementById('timerDisplayText'), baseTimerFontSize);
 
-            // Handle blinking for finished state
-            if (isFinished && !countUp) {
+            // Handle blinking for finished state (a stopwatch never "finishes")
+            if (isFinished && !countUp && !countingUp) {
                 if (!blinkInterval) {
                     blinkInterval = setInterval(() => {
                         timerEl.classList.toggle('blinking');
@@ -631,6 +653,39 @@
                 }
                 timerEl.classList.remove('blinking');
             }
+        }
+
+        // "Now 14:32 · Finish 14:55" under the timer, each part optional. Both
+        // times are on the server clock (like the countdown), shown in this
+        // screen's local time. Finish mirrors the control page's "Ends at".
+        let lastInfoText = null;
+        function finishTimeMs(s, nowMs) {
+            const speed = s.speed || 1.0;
+            if (s.countDirection === 'up' && !s.upWarnings) return null; // a plain stopwatch has no finish
+            if (Number.isFinite(s.runEndAtMs) && s.mode !== 'stopped') return s.runEndAtMs;
+            if (s.mode === 'running') return (s.startTime || 0) + (s.accumulatedPauseMs || 0) + (s.durationMs || 0) / speed;
+            if (s.mode === 'paused') {
+                const remaining = (s.durationMs || 0) - ((s.pauseTime || nowMs) - (s.startTime || 0) - (s.accumulatedPauseMs || 0)) * speed;
+                return remaining > 0 ? nowMs + remaining / speed : null;
+            }
+            return (s.durationMs || 0) > 0 ? nowMs + s.durationMs / speed : null;
+        }
+        function updateInfoLine() {
+            const el = document.getElementById('infoLine');
+            const s = currentState;
+            const hhmm = (serverMs) => new Date(serverMs - clockOffset).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+            const nowMs = Date.now() + clockOffset;
+            const parts = [];
+            if (s.showTimeOfDay) parts.push(`Now ${hhmm(nowMs)}`);
+            if (s.showFinishTime) {
+                const finish = finishTimeMs(s, nowMs);
+                if (finish !== null) parts.push(`Finish ${hhmm(finish)}`);
+            }
+            const text = parts.join('  ·  ');
+            if (text === lastInfoText) return;
+            lastInfoText = text;
+            el.textContent = text;
+            el.style.display = text ? 'block' : 'none';
         }
 
         function updateClockDisplay() {
