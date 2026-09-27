@@ -658,6 +658,9 @@
             box-shadow: 0 12px 32px rgba(0,0,0,0.55);
             display: grid; gap: 2px;
         }
+        /* display:grid above would otherwise beat the [hidden] attribute and
+           leave the menu on screen after it's closed. */
+        .count-style-menu[hidden] { display: none; }
         .count-style-menu [role="option"] {
             display: grid; gap: 1px; text-align: left;
             padding: 9px 12px 9px 34px;
@@ -3927,6 +3930,10 @@
                 emitSettings();
             });
             box.addEventListener('blur', syncHexFields);
+            // Select the whole value on entry so a paste replaces it. Deferred:
+            // the click/tap that focused the box would otherwise collapse the
+            // selection straight back to a caret.
+            box.addEventListener('focus', () => setTimeout(() => box.select(), 0));
             box.addEventListener('keydown', (e) => { if (e.key === 'Enter') box.blur(); });
         });
         syncHexFields();
