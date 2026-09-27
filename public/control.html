@@ -2344,7 +2344,7 @@
                 document.getElementById('serverBuildLabel').textContent = `Server build: ${label}` + (h.mode ? ` (${h.mode})` : '');
                 if (serverFingerprintAtLoad === null) serverFingerprintAtLoad = h.build.fingerprint;
                 if (h.stale) {
-                    banner.textContent = '⚠ STALE SERVER: the timer server is running OLDER CODE than the files on disk. Some controls may silently do nothing. Restart the Local Show Server (build ' + label + ').';
+                    banner.textContent = '⚠ STALE SERVER: the timer server is running OLDER CODE than the files on disk. Some controls may silently do nothing. Restart Foxy Timer from its launcher (build ' + label + ').';
                     banner.hidden = false;
                 } else if (serverFingerprintAtLoad !== h.build.fingerprint) {
                     banner.textContent = '⚠ The server was restarted with a different build since this page loaded (' + label + '). Reload this page.';
@@ -2355,7 +2355,7 @@
             } catch (e) {
                 // No /api/health at all: a server that predates it - exactly the case to flag.
                 if (e && String(e.message).startsWith('HTTP 404')) {
-                    banner.textContent = '⚠ STALE SERVER: this server does not report its build (it predates build reporting). Restart the Local Show Server.';
+                    banner.textContent = '⚠ STALE SERVER: this server does not report its build (it predates build reporting). Restart Foxy Timer from its launcher.';
                     banner.hidden = false;
                 }
                 // Network errors are the socket layer's business (it shows connection state).

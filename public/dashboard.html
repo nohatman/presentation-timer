@@ -392,7 +392,7 @@
             <h1>🎯 Master Dashboard
                 <span id="platformAdminBadge" style="display:none;font-size:0.8rem;font-weight:700;background:#6a1b9a;color:white;padding:3px 10px;border-radius:5px;vertical-align:middle;margin-left:8px;">PLATFORM ADMIN — ALL CLIENTS</span>
             </h1>
-            <p style="color: #999; margin-top: 0.5rem;">Monitor all active presentation timers</p>
+            <p id="dashboardSubtitle" style="color: #999; margin-top: 0.5rem;">Monitor all active presentation timers</p>
         </div>
         <div class="header-info">
             <div class="stat">
@@ -508,6 +508,8 @@
                         document.getElementById('logoutBtn').style.display = 'none';
                         document.getElementById('homeLink').style.display = 'none';
                         document.getElementById('companionBtn').style.display = 'inline-block';
+                        document.getElementById('dashboardSubtitle').textContent = 'Foxy Timer for Windows · running on this laptop';
+                        document.title = 'Foxy Timer for Windows - Dashboard';
                     }
                 }
             } catch (error) {

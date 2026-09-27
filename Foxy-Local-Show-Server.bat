@@ -3,7 +3,7 @@ rem Foxy Local Show Server - double-click to manage the local server (start, sto
 rem restart, open Control/Display, see the LAN address). All logic lives in
 rem tools\local-server\foxy-local.js; this is only the entry point.
 rem Extra arguments are passed through, e.g.:  Foxy-Local-Show-Server.bat status
-title Foxy Local Show Server
+title Foxy Timer for Windows
 cd /d "%~dp0"
 where node >nul 2>nul
 if errorlevel 1 (

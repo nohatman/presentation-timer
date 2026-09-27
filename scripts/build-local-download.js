@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 'use strict';
 
-// Builds the free Local Show Server download: a zip a crew member unzips on a
+// Builds the free Foxy Timer for Windows download: a zip a crew member unzips on a
 // Windows laptop and double-clicks. Nothing to install - Node is bundled.
 //
 //   node scripts/build-local-download.js      (run on Windows x64)
 //
-// Output: dist/FoxyTimer-Local-<commit>.zip containing
+// Output: dist/FoxyTimer-Windows-<commit>.zip containing
 //   FoxyTimer/
 //     Start Foxy Timer.bat   start + open the dashboard + launcher menu
 //     README.txt
@@ -45,7 +45,7 @@ try {
   }
 } catch { /* not a git checkout */ }
 
-console.log(`Building Foxy Timer local download (${commit}, Node ${process.version})`);
+console.log(`Building Foxy Timer for Windows (${commit}, Node ${process.version})`);
 fs.rmSync(OUT, { recursive: true, force: true });
 fs.mkdirSync(APP, { recursive: true });
 
@@ -70,9 +70,9 @@ fs.copyFileSync(process.execPath, path.join(OUT, 'node', 'node.exe'));
 
 fs.writeFileSync(path.join(OUT, 'Start Foxy Timer.bat'), [
   '@echo off',
-  'rem Foxy Timer - Local Show Server. Double-click to start the timer server on this',
+  'rem Foxy Timer for Windows. Double-click to start the timer server on this',
   'rem laptop and open the dashboard. Uses the bundled Node; nothing to install.',
-  'title Foxy Timer - Local Show Server',
+  'title Foxy Timer for Windows',
   'cd /d "%~dp0"',
   'set "DATABASE_PATH=%~dp0data\\foxy-timer.sqlite"',
   'set "FOXY_LOCAL_DATA_DIR=%~dp0data\\local-server"',
@@ -86,10 +86,10 @@ fs.writeFileSync(path.join(OUT, 'Start Foxy Timer.bat'), [
 ].join('\r\n'));
 
 fs.writeFileSync(path.join(OUT, 'README.txt'), [
-  'FOXY TIMER - LOCAL SHOW SERVER',
-  '==============================',
+  'FOXY TIMER FOR WINDOWS',
+  '======================',
   '',
-  'Runs the Foxy Timer on this Windows laptop for a show. No account, no',
+  'Runs Foxy Timer on this Windows laptop for a show. No account, no',
   'internet connection and nothing to install.',
   '',
   'START',
@@ -103,6 +103,11 @@ fs.writeFileSync(path.join(OUT, 'README.txt'), [
   '  Put them on the same network as this laptop. In the dashboard, open a',
   '  room\'s links: send the Display link to the screen and the Control link',
   '  to the operator, or tap QR and scan it.',
+  '',
+  'STREAM DECK (COMPANION)',
+  '  In the dashboard, press "Companion / Stream Deck". Copy the Server URL,',
+  '  key and room names it shows into Companion's Foxy Presentation Timer',
+  '  connection. The Stream Deck PC must be on the same network.',
   '',
   'STOP',
   '  Closing the window leaves the timer running (on purpose, so a show',
@@ -121,7 +126,7 @@ fs.writeFileSync(path.join(OUT, 'README.txt'), [
 // Zip with Windows' own bsdtar (-a picks zip from the extension). Called by full
 // path: a GNU tar earlier on PATH (e.g. Git Bash's) silently writes a tar file
 // with a .zip name instead.
-const zipName = `FoxyTimer-Local-${commit}.zip`;
+const zipName = `FoxyTimer-Windows-${commit}.zip`;
 fs.rmSync(path.join(DIST, zipName), { force: true });
 const bsdtar = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe');
 run(bsdtar, ['-a', '-c', '-f', zipName, 'FoxyTimer'], { cwd: DIST });

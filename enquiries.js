@@ -15,7 +15,7 @@
 
 const INTERESTS = {
   trial: 'A free trial',
-  local: 'Local show server',
+  local: 'Foxy Timer for Windows',
   companion: 'Companion / Stream Deck',
   call: 'A quick call'
 };

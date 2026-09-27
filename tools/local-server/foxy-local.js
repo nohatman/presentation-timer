@@ -129,7 +129,7 @@ async function doRestart() { const r = await sup.restart(cfg); console.log(r.mes
 async function menu() {
   const rl = makePrompter();
   for (;;) {
-    console.log('\n' + color(1, '=== FOXY LOCAL SHOW SERVER ==='));
+    console.log('\n' + color(1, '=== FOXY TIMER FOR WINDOWS ==='));
     let st = await sup.gatherStatus(cfg, { full: true });
     printStatus(st);
     const running = st.state !== 'STOPPED' && st.state !== 'PORT_CONFLICT';

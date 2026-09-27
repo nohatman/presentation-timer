@@ -122,7 +122,7 @@ async function start(cfg, opts = {}) {
   fs.mkdirSync(cfg.dataDir, { recursive: true });
   rotateLog(cfg);
   const logFd = fs.openSync(cfg.logFile, 'a');
-  fs.writeSync(logFd, `\n=== Foxy Local Show Server start ${new Date().toISOString()} (port ${cfg.port}) ===\n`);
+  fs.writeSync(logFd, `\n=== Foxy Timer for Windows: server start ${new Date().toISOString()} (port ${cfg.port}) ===\n`);
   const token = crypto.randomBytes(18).toString('hex');
   const child = spawn(process.execPath, [cfg.entry], {
     cwd: cfg.rootDir,

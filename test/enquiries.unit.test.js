@@ -23,7 +23,7 @@ test('a filled honeypot is flagged as spam, not an error', () => {
 test('email text carries the details and readable interests', () => {
   const { subject, text } = buildEmail({ name: 'Sam', email: 'sam@x.co', company: 'Acme', interests: ['local', 'call'], message: '3 rooms' });
   assert.match(subject, /Sam \(Acme\)/);
-  assert.match(text, /Local show server, A quick call/);
+  assert.match(text, /Foxy Timer for Windows, A quick call/);
   assert.match(text, /3 rooms/);
 });
 
