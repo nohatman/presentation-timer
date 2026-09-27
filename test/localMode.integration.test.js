@@ -99,6 +99,41 @@ test('first run: starter room, no-login dashboard on the laptop, LAN links', asy
   assert.equal(home.headers.location, '/dashboard');
 });
 
+test('Companion on a show laptop: details on the dashboard, and the key drives the REST API', async () => {
+  const details = await request('GET', '/api/local/companion');
+  assert.equal(details.status, 200);
+  const { serverUrl, apiKey, rooms } = details.json;
+  assert.match(apiKey, /^key_/);
+  assert.ok(rooms.includes('Main stage'));
+  const lan = selectLanAddresses().primary;
+  assert.equal(serverUrl, lan ? `http://${lan.address}:${PORT}` : `http://localhost:${PORT}`);
+
+  // Same key on every visit
+  assert.equal((await request('GET', '/api/local/companion')).json.apiKey, apiKey);
+
+  // What Companion does from the Stream Deck PC: Bearer key + room name (with
+  // its space) in the URL, arriving over the LAN - a non-loopback Host, so the
+  // laptop's own no-login access doesn't apply and the key has to do the work.
+  const auth = { Authorization: `Bearer ${apiKey}` };
+  const viaLan = (method, path, headers) => request(method, path, { headers, host: `192.168.1.50:${PORT}` });
+  const poll = await viaLan('GET', `/api/rooms/${encodeURIComponent('Main stage')}/companion`, auth);
+  assert.equal(poll.status, 200);
+  assert.equal(poll.json.mode, 'stopped');
+  assert.equal((await viaLan('POST', `/api/rooms/${encodeURIComponent('Main stage')}/start`, auth)).status, 200);
+  assert.equal((await viaLan('GET', `/api/rooms/${encodeURIComponent('Main stage')}/companion`, auth)).json.mode, 'running');
+  await viaLan('POST', `/api/rooms/${encodeURIComponent('Main stage')}/reset`, auth);
+
+  // A new key replaces the old one
+  const renewed = await request('POST', '/api/local/companion/new-key', { headers: { Origin: `http://localhost:${PORT}` } });
+  assert.notEqual(renewed.json.apiKey, apiKey);
+  assert.equal((await viaLan('GET', `/api/rooms/${encodeURIComponent('Main stage')}/companion`, auth)).status, 401, 'old key stops working');
+  assert.equal((await viaLan('GET', `/api/rooms/${encodeURIComponent('Main stage')}/companion`, { Authorization: `Bearer ${renewed.json.apiKey}` })).status, 200);
+
+  // Not from another device, nor from another site in the laptop's browser
+  assert.equal((await request('GET', '/api/local/companion', { host: `192.168.1.50:${PORT}` })).status, 401);
+  assert.equal((await request('GET', '/api/local/companion', { headers: { Origin: 'http://evil.example' } })).status, 401);
+});
+
 test('nobody else gets the no-login dashboard', async () => {
   const cases = [
     ['a non-loopback Host (DNS rebinding)', { host: `evil.example:${PORT}` }],

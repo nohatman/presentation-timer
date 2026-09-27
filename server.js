@@ -257,6 +257,7 @@ function createDefaultTimerState() {
     timerColorNormal: '#4caf50',
     timerColorAmber: '#ffb300',
     timerColorRed: '#f44336',
+    timerColorOver: '#9c27b0', // overrun: past zero, or past the set length when counting up
     displayBgColor: '#000000',
     showSpeakerName: true,
     showUpNext: true,
@@ -516,6 +517,7 @@ io.on('connection', (socket) => {
     if (isHexColor(data.timerColorNormal)) timerState.timerColorNormal = data.timerColorNormal;
     if (isHexColor(data.timerColorAmber)) timerState.timerColorAmber = data.timerColorAmber;
     if (isHexColor(data.timerColorRed)) timerState.timerColorRed = data.timerColorRed;
+    if (isHexColor(data.timerColorOver)) timerState.timerColorOver = data.timerColorOver;
     if (isHexColor(data.displayBgColor)) timerState.displayBgColor = data.displayBgColor;
     if (data.showSpeakerName !== undefined) timerState.showSpeakerName = !!data.showSpeakerName;
     if (data.showUpNext !== undefined) timerState.showUpNext = !!data.showUpNext;
@@ -1644,6 +1646,36 @@ app.post('/api/admin/enquiries/:id/handled', ...adminClientAuth, (req, res) => {
     targetLabel: existing.email
   });
   res.json({ ok: true, enquiry: db.getEnquiryById(id) });
+});
+
+// ============================================
+// Local Show Server: Companion (Stream Deck) setup details for the laptop's
+// dashboard - the server address other machines use, the local API key, and
+// the room names Companion's "Room IDs" field wants. Only for the operator at
+// the show laptop itself (see auth.isLocalOperatorRequest).
+// ============================================
+function requireLocalOperator(req, res, next) {
+  if (req.authMethod !== 'localOperator') {
+    return res.status(403).json({ ok: false, error: 'Only available on the show laptop itself' });
+  }
+  next();
+}
+
+function localCompanionDetails(req, apiKey) {
+  return {
+    ok: true,
+    serverUrl: shareBaseUrl(req.protocol, req.get('host')),
+    apiKey,
+    rooms: db.getRoomsForClient(req.client.id).map((r) => r.slug)
+  };
+}
+
+app.get('/api/local/companion', auth.requireDashboardAuth, requireLocalOperator, (req, res) => {
+  res.json(localCompanionDetails(req, db.getOrCreateLocalCompanionKey()));
+});
+
+app.post('/api/local/companion/new-key', auth.requireDashboardAuth, requireLocalOperator, (req, res) => {
+  res.json(localCompanionDetails(req, db.newLocalCompanionKey()));
 });
 
 // QR code (SVG) for a room link, for the dashboard. Authenticated so it isn't

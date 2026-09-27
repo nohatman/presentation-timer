@@ -629,18 +629,71 @@
             padding: 8px 12px;
             font-size: 0.9rem;
         }
-        .count-style-label { display: flex; padding: 0 !important; }
-        .count-style-label select {
+        /* "How it counts" - app-styled dropdown (not the OS's native picker). */
+        .count-style { position: relative; }
+        .count-style-btn {
             width: 100%;
             min-height: 40px;
-            padding: 8px 10px;
+            display: flex; align-items: center; justify-content: space-between; gap: 8px;
+            padding: 8px 12px;
             border-radius: 8px;
+            border: 1px solid #333;
+            background: #1a1a1a;
+            color: #e5e5e5;
+            font: inherit; font-size: 0.9rem; font-weight: 600;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .count-style-btn:hover, .count-style-btn[aria-expanded="true"] { border-color: #4caf50; }
+        .count-style-btn:focus-visible { outline: 2px solid #90caf9; outline-offset: 2px; }
+        .count-style-btn svg { flex-shrink: 0; color: #999; transition: transform 0.15s; }
+        .count-style-btn[aria-expanded="true"] svg { transform: rotate(180deg); }
+        .count-style-menu {
+            position: absolute; right: 0; top: calc(100% + 6px); z-index: 50;
+            min-width: 230px;
+            padding: 6px;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 10px;
+            box-shadow: 0 12px 32px rgba(0,0,0,0.55);
+            display: grid; gap: 2px;
+        }
+        .count-style-menu [role="option"] {
+            display: grid; gap: 1px; text-align: left;
+            padding: 9px 12px 9px 34px;
+            position: relative;
+            border: 0; border-radius: 7px;
+            background: transparent; color: #e5e5e5;
+            font: inherit; cursor: pointer;
+        }
+        .count-style-menu [role="option"] b { font-size: 0.92rem; font-weight: 600; }
+        .count-style-menu [role="option"] small { font-size: 0.78rem; color: #999; }
+        .count-style-menu [role="option"]:hover,
+        .count-style-menu [role="option"]:focus-visible { background: #252525; outline: none; }
+        .count-style-menu [role="option"][aria-selected="true"]::before {
+            content: ''; position: absolute; left: 13px; top: 15px;
+            width: 9px; height: 5px;
+            border-left: 2px solid #4caf50; border-bottom: 2px solid #4caf50;
+            transform: rotate(-45deg);
+        }
+        /* Hex entry beside each colour swatch */
+        input[type="text"].hex-input {
+            width: 86px;
+            height: 30px;
+            min-height: 0;
+            margin: 0;
+            box-sizing: border-box;
+            padding: 4px 8px;
+            border-radius: 6px;
             border: 1px solid #333;
             background: #101010;
             color: #e5e5e5;
-            font: inherit;
-            font-size: 0.9rem;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            text-transform: uppercase;
         }
+        input[type="text"].hex-input:focus { outline: none; border-color: #90caf9; }
+        input[type="text"].hex-input.invalid { border-color: #f44336; }
         .presets-save-hint {
             color: #444;
             font-size: 0.75rem;
@@ -1319,6 +1372,8 @@
                 margin-right: 6px;
                 flex-shrink: 0;
             }
+            .output-controls .count-style { flex: 1 1 0; min-width: 0; }
+            .count-style-btn { min-height: 44px; padding: 8px 10px; }
             .count-up-extra,
             .presets-save-hint {
                 display: none; /* no Ctrl+Click on a phone */
@@ -1534,13 +1589,18 @@
                         <!-- One choice for how the timer counts: down (stops at 0:00),
                              down then carrying on up into overrun, or up from 0:00
                              (stopwatch). Maps to countUp + countDirection. -->
-                        <label class="count-up-label count-style-label">
-                            <select id="countStyle" aria-label="How the timer counts">
-                                <option value="down">Count down</option>
-                                <option value="downUp">Down, then up</option>
-                                <option value="up">Count up</option>
-                            </select>
-                        </label>
+                        <div class="count-style" id="countStyleWrap">
+                            <input type="hidden" id="countStyle" value="down">
+                            <button type="button" class="count-style-btn" id="countStyleBtn" aria-haspopup="listbox" aria-expanded="false" aria-label="How the timer counts">
+                                <span id="countStyleText">Count down</span>
+                                <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            </button>
+                            <div class="count-style-menu" id="countStyleMenu" role="listbox" aria-label="How the timer counts" hidden>
+                                <button type="button" role="option" data-value="down"><b>Count down</b><small>Stops at 0:00</small></button>
+                                <button type="button" role="option" data-value="downUp"><b>Down, then up</b><small>Carries on counting the overrun</small></button>
+                                <button type="button" role="option" data-value="up"><b>Count up</b><small>Stopwatch from 0:00</small></button>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div>
@@ -1657,7 +1717,7 @@
             </div>
             <label class="checkbox-label" style="margin:12px 0 0;">
                 <input type="checkbox" id="upWarnings">
-                <span>Use these colours when counting up too</span>
+                <span>Also use in count up mode</span>
             </label>
         </div>
 
@@ -1686,15 +1746,23 @@
                     <div style="display:flex;flex-direction:column;gap:8px;">
                         <label style="display:flex;align-items:center;gap:8px;font-weight:400;color:#cfcfcf;">
                             <input type="color" id="timerColorNormal" value="#4caf50" style="width:36px;height:28px;padding:0;border:1px solid #333;border-radius:4px;background:#101010;cursor:pointer;">
+                            <input type="text" class="hex-input" id="timerColorNormalHex" data-color-for="timerColorNormal" maxlength="7" spellcheck="false" autocomplete="off" aria-label="Hex colour">
                             Normal
                         </label>
                         <label style="display:flex;align-items:center;gap:8px;font-weight:400;color:#cfcfcf;">
                             <input type="color" id="timerColorAmber" value="#ffb300" style="width:36px;height:28px;padding:0;border:1px solid #333;border-radius:4px;background:#101010;cursor:pointer;">
+                            <input type="text" class="hex-input" id="timerColorAmberHex" data-color-for="timerColorAmber" maxlength="7" spellcheck="false" autocomplete="off" aria-label="Hex colour">
                             Amber
                         </label>
                         <label style="display:flex;align-items:center;gap:8px;font-weight:400;color:#cfcfcf;">
                             <input type="color" id="timerColorRed" value="#f44336" style="width:36px;height:28px;padding:0;border:1px solid #333;border-radius:4px;background:#101010;cursor:pointer;">
+                            <input type="text" class="hex-input" id="timerColorRedHex" data-color-for="timerColorRed" maxlength="7" spellcheck="false" autocomplete="off" aria-label="Hex colour">
                             Red
+                        </label>
+                        <label style="display:flex;align-items:center;gap:8px;font-weight:400;color:#cfcfcf;">
+                            <input type="color" id="timerColorOver" value="#9c27b0" style="width:36px;height:28px;padding:0;border:1px solid #333;border-radius:4px;background:#101010;cursor:pointer;">
+                            <input type="text" class="hex-input" id="timerColorOverHex" data-color-for="timerColorOver" maxlength="7" spellcheck="false" autocomplete="off" aria-label="Hex colour">
+                            Overrun
                         </label>
                         <button type="button" class="button secondary" onclick="resetAppearanceColors()" style="padding:6px 10px;font-size:0.8rem;align-self:flex-start;">Reset colors to default</button>
                     </div>
@@ -1703,6 +1771,7 @@
                     <div style="font-size:0.8rem;color:#999;margin-bottom:8px;font-weight:500;text-transform:uppercase;letter-spacing:0.05em;">Display background</div>
                     <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
                         <input type="color" id="displayBgColor" value="#000000" style="width:36px;height:28px;padding:0;border:1px solid #333;border-radius:4px;background:#101010;cursor:pointer;">
+                        <input type="text" class="hex-input" id="displayBgColorHex" data-color-for="displayBgColor" maxlength="7" spellcheck="false" autocomplete="off" aria-label="Hex colour">
                         <span style="font-size:0.85rem;color:#cfcfcf;">Background color</span>
                     </div>
                     <div style="display:flex;gap:6px;flex-wrap:wrap;">
@@ -2568,9 +2637,11 @@
                 if (state.timerColorNormal) document.getElementById('timerColorNormal').value = state.timerColorNormal;
                 if (state.timerColorAmber) document.getElementById('timerColorAmber').value = state.timerColorAmber;
                 if (state.timerColorRed) document.getElementById('timerColorRed').value = state.timerColorRed;
+                if (state.timerColorOver) document.getElementById('timerColorOver').value = state.timerColorOver;
                 if (state.displayBgColor) document.getElementById('displayBgColor').value = state.displayBgColor;
                 document.getElementById('showSpeakerName').checked = state.showSpeakerName !== false;
                 document.getElementById('showUpNext').checked = state.showUpNext !== false;
+                syncHexFields();
                 slidersInitialised = true;
             }
 
@@ -3598,6 +3669,7 @@
                 timerColorNormal: document.getElementById('timerColorNormal').value,
                 timerColorAmber: document.getElementById('timerColorAmber').value,
                 timerColorRed: document.getElementById('timerColorRed').value,
+                timerColorOver: document.getElementById('timerColorOver').value,
                 displayBgColor: document.getElementById('displayBgColor').value,
                 showSpeakerName: document.getElementById('showSpeakerName').checked,
                 showUpNext: document.getElementById('showUpNext').checked,
@@ -3614,6 +3686,7 @@
         function setCountStyle(s) {
             document.getElementById('countStyle').value =
                 s.countDirection === 'up' ? 'up' : (s.countUp ? 'downUp' : 'down');
+            if (typeof renderCountStyle === 'function') renderCountStyle();
         }
 
         // Display Appearance section: reset the three timer-color pickers to the
@@ -3622,6 +3695,8 @@
             document.getElementById('timerColorNormal').value = '#4caf50';
             document.getElementById('timerColorAmber').value = '#ffb300';
             document.getElementById('timerColorRed').value = '#f44336';
+            document.getElementById('timerColorOver').value = '#9c27b0';
+            syncHexFields();
             saveSettings();
             emitSettings();
         }
@@ -3629,6 +3704,7 @@
         // Background color preset buttons (Black / Chromakey Green / Chromakey Blue).
         function setDisplayBgColor(hex) {
             document.getElementById('displayBgColor').value = hex;
+            syncHexFields();
             saveSettings();
             emitSettings();
         }
@@ -3691,9 +3767,11 @@
                     document.getElementById('upWarnings').checked = !!settings.upWarnings;
                     document.getElementById('showTimeOfDay').checked = !!settings.showTimeOfDay;
                     document.getElementById('showFinishTime').checked = !!settings.showFinishTime;
+                    syncHexFields();
                     if (settings.timerColorNormal) document.getElementById('timerColorNormal').value = settings.timerColorNormal;
                     if (settings.timerColorAmber) document.getElementById('timerColorAmber').value = settings.timerColorAmber;
                     if (settings.timerColorRed) document.getElementById('timerColorRed').value = settings.timerColorRed;
+                    if (settings.timerColorOver) document.getElementById('timerColorOver').value = settings.timerColorOver;
                     if (settings.displayBgColor) document.getElementById('displayBgColor').value = settings.displayBgColor;
                     document.getElementById('showSpeakerName').checked = settings.showSpeakerName !== false;
                     document.getElementById('showUpNext').checked = settings.showUpNext !== false;
@@ -3740,6 +3818,7 @@
                 timerColorNormal: document.getElementById('timerColorNormal').value,
                 timerColorAmber: document.getElementById('timerColorAmber').value,
                 timerColorRed: document.getElementById('timerColorRed').value,
+                timerColorOver: document.getElementById('timerColorOver').value,
                 displayBgColor: document.getElementById('displayBgColor').value,
                 showSpeakerName: document.getElementById('showSpeakerName').checked,
                 showUpNext: document.getElementById('showUpNext').checked,
@@ -3758,6 +3837,7 @@
             if (input.id === 'duration' || input.id === 'endAtTime') return; // own listeners (End at is a draft until Set)
             if (input.closest('#appDialogOverlay')) return; // the in-page dialog's own field (e.g. rename) is not a setting
             if (input.id === 'messageInput') return; // message text isn't a setting either - it's sent by Full Screen / Ticker
+            if (input.classList.contains('hex-input')) return; // own handler: only a valid hex updates the colour
 
             input.addEventListener('change', () => {
                 saveSettings();
@@ -3769,10 +3849,87 @@
             });
         });
 
-        document.getElementById('countStyle').addEventListener('change', () => {
+        // ---- "How it counts" dropdown (app-styled listbox over a hidden input) ----
+        const countStyleBtn = document.getElementById('countStyleBtn');
+        const countStyleMenu = document.getElementById('countStyleMenu');
+        const countStyleOptions = [...countStyleMenu.querySelectorAll('[role="option"]')];
+
+        function renderCountStyle() {
+            const value = document.getElementById('countStyle').value;
+            countStyleOptions.forEach((o) => o.setAttribute('aria-selected', String(o.dataset.value === value)));
+            const current = countStyleOptions.find((o) => o.dataset.value === value) || countStyleOptions[0];
+            document.getElementById('countStyleText').textContent = current.querySelector('b').textContent;
+        }
+        function openCountStyleMenu() {
+            countStyleMenu.hidden = false;
+            countStyleBtn.setAttribute('aria-expanded', 'true');
+            (countStyleOptions.find((o) => o.getAttribute('aria-selected') === 'true') || countStyleOptions[0]).focus();
+        }
+        function closeCountStyleMenu(refocus) {
+            if (countStyleMenu.hidden) return;
+            countStyleMenu.hidden = true;
+            countStyleBtn.setAttribute('aria-expanded', 'false');
+            if (refocus) countStyleBtn.focus();
+        }
+        function chooseCountStyle(value) {
+            document.getElementById('countStyle').value = value;
+            renderCountStyle();
+            closeCountStyleMenu(true);
             saveSettings();
             emitSettings();
+        }
+        countStyleBtn.addEventListener('click', () => (countStyleMenu.hidden ? openCountStyleMenu() : closeCountStyleMenu(false)));
+        countStyleOptions.forEach((o) => o.addEventListener('click', () => chooseCountStyle(o.dataset.value)));
+        // Own keys only: Space/Enter/arrows here must never reach the page's
+        // shortcuts (Space = start/pause).
+        countStyleBtn.addEventListener('keydown', (e) => {
+            if (['ArrowDown', 'ArrowUp', ' ', 'Enter'].includes(e.key)) { e.preventDefault(); e.stopPropagation(); openCountStyleMenu(); }
         });
+        countStyleMenu.addEventListener('keydown', (e) => {
+            const i = countStyleOptions.indexOf(document.activeElement);
+            if (e.key === 'ArrowDown') countStyleOptions[Math.min(i + 1, countStyleOptions.length - 1)].focus();
+            else if (e.key === 'ArrowUp') countStyleOptions[Math.max(i - 1, 0)].focus();
+            else if (e.key === 'Escape' || e.key === 'Tab') closeCountStyleMenu(e.key === 'Escape');
+            else if ((e.key === 'Enter' || e.key === ' ') && i >= 0) chooseCountStyle(countStyleOptions[i].dataset.value);
+            else return;
+            if (e.key !== 'Tab') e.preventDefault();
+            e.stopPropagation();
+        });
+        document.addEventListener('pointerdown', (e) => {
+            if (!countStyleMenu.hidden && !document.getElementById('countStyleWrap').contains(e.target)) closeCountStyleMenu(false);
+        });
+        renderCountStyle();
+
+        // ---- Hex entry beside each colour swatch ----
+        // Swatch -> hex box always; hex box -> swatch (and the display) only once
+        // it's a complete, valid colour, so typing half a value changes nothing.
+        function normaliseHex(text) {
+            let t = String(text || '').trim().replace(/^#/, '');
+            if (/^[0-9a-f]{3}$/i.test(t)) t = t.split('').map((c) => c + c).join('');
+            return /^[0-9a-f]{6}$/i.test(t) ? '#' + t.toLowerCase() : null;
+        }
+        function syncHexFields() {
+            document.querySelectorAll('.hex-input').forEach((box) => {
+                if (document.activeElement === box) return;
+                box.value = document.getElementById(box.dataset.colorFor).value.toUpperCase();
+                box.classList.remove('invalid');
+            });
+        }
+        document.querySelectorAll('.hex-input').forEach((box) => {
+            const swatch = document.getElementById(box.dataset.colorFor);
+            swatch.addEventListener('input', () => { box.value = swatch.value.toUpperCase(); box.classList.remove('invalid'); });
+            box.addEventListener('input', () => {
+                const hex = normaliseHex(box.value);
+                box.classList.toggle('invalid', !hex && box.value.trim().length >= 4);
+                if (!hex || hex === swatch.value) return;
+                swatch.value = hex;
+                saveSettings();
+                emitSettings();
+            });
+            box.addEventListener('blur', syncHexFields);
+            box.addEventListener('keydown', (e) => { if (e.key === 'Enter') box.blur(); });
+        });
+        syncHexFields();
 
         // Speed slider only updates preview, doesn't auto-apply
         document.getElementById('speedSlider').addEventListener('input', updateSpeedPreview);

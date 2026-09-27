@@ -734,7 +734,8 @@
             const customHex = {
                 'color-normal': currentState.timerColorNormal || '#4caf50',
                 'color-amber': currentState.timerColorAmber || '#ffb300',
-                'color-red': currentState.timerColorRed || '#f44336'
+                'color-red': currentState.timerColorRed || '#f44336',
+                'color-finished': currentState.timerColorOver || '#9c27b0'
             }[stateClass];
             if (customHex) {
                 element.style.color = customHex;

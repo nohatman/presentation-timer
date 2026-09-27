@@ -341,6 +341,30 @@ function getOrCreateLocalClient() {
   return getClientByName(LOCAL_CLIENT_NAME) || getClientById(createClient(LOCAL_CLIENT_NAME).id);
 }
 
+// Companion (Stream Deck) authenticates with a client API key. On a show
+// laptop the built-in local client's key is kept readable in `meta`, so the
+// laptop's dashboard can always show it for copying into Companion - whoever
+// sits at the laptop already has full control of it anyway. Hosted clients'
+// keys are never stored readable. Re-minted if the stored one no longer
+// matches (e.g. rotated some other way).
+const LOCAL_COMPANION_KEY_META = 'local_companion_api_key';
+
+function getOrCreateLocalCompanionKey() {
+  const client = getOrCreateLocalClient();
+  const stored = getMeta(LOCAL_COMPANION_KEY_META);
+  if (stored) {
+    const owner = getClientByApiKey(stored);
+    if (owner && owner.id === client.id) return stored;
+  }
+  return newLocalCompanionKey();
+}
+
+function newLocalCompanionKey() {
+  const { apiKey } = rotateClientApiKeyById(getOrCreateLocalClient().id);
+  setMeta(LOCAL_COMPANION_KEY_META, apiKey);
+  return apiKey;
+}
+
 function getClientByName(name) {
   return db.prepare('SELECT * FROM clients WHERE name = ?').get(name) || null;
 }
@@ -996,6 +1020,8 @@ module.exports = {
   getClientByApiKey,
   getClientByName,
   getOrCreateLocalClient,
+  getOrCreateLocalCompanionKey,
+  newLocalCompanionKey,
   getClientById,
   listClients,
   getClientsWithCounts,
