@@ -88,10 +88,15 @@ See [TIMER-MODES.md](TIMER-MODES.md) for the exact Duration / End at behaviour a
 ## 📦 Foxy Timer for Windows (free download)
 
 ```bash
-npm run build:local     # on Windows x64 -> dist/FoxyTimer-Windows-<commit>.zip (~36 MB)
+npm run build:local     # on Windows x64 -> dist/FoxyTimerSetup-<commit>.exe + dist/FoxyTimer-Windows-<commit>.zip
 ```
 
-A zip a crew member unzips on a Windows laptop and double-clicks **Start Foxy Timer**. Node is bundled (the same `node.exe` that ran the build, so the `better-sqlite3` binary matches), so nothing is installed and no internet is needed. On first run a **Main stage** room is created and the dashboard opens. On the laptop itself (`localhost`) the dashboard needs no login; every other device still needs a link or a login. Links shown there use the laptop's LAN address, with **Share links & QR** on each room card. **Companion / Stream Deck** (dashboard header, laptop only) shows the Server URL, the laptop's API key and the room names to paste into Companion's Foxy connection; *Make a new key* replaces the key. Rooms live in the download's `data` folder, which survives replacing the rest with a newer download.
+- **Installer** (`FoxyTimerSetup-*.exe`, built with Inno Setup if it's installed: `winget install JRSoftware.InnoSetup`): installs to Program Files with a Start-menu (and optional desktop) **Foxy Timer** icon, adds a Windows Firewall rule for its bundled Node on every network type (venue Wi-Fi is often "Public"), stops a running copy before upgrading, and removes the rule on uninstall. Unsigned for now, so Windows SmartScreen shows "More info → Run anyway" until it's code-signed.
+- **Portable zip**: the same files.
+- **Foxy Timer.exe** (`tools/windows/FoxyTimerLauncher.cs`, compiled with Windows' own `csc.exe`) has no console window: it starts the server in the background (launcher `open` command) and opens the dashboard; errors appear as a Windows message box. Rooms live in `%LOCALAPPDATA%\Foxy Timer\data`.
+- Node is bundled (the `node.exe` that ran the build, so the `better-sqlite3` binary matches); nothing needs the internet.
+- On the laptop itself (`localhost`) the dashboard needs no login and shows a **This laptop** panel: status, the address other devices use, a Windows Firewall check with an **Allow through firewall** fix (one Windows permission prompt), Restart and Stop. Links use the LAN address, with **Share links & QR** on each room card; **Companion / Stream Deck** shows the Server URL, API key and room names for Companion.
+- In-app help: `/help` (linked from the dashboard, the control page and the Companion window). `support/Foxy Timer text menu.bat` keeps the text menu for troubleshooting.
 
 ## 💻 Portable Version (Windows)
 

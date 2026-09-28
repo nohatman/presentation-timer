@@ -1,23 +1,28 @@
 #!/usr/bin/env node
 'use strict';
 
-// Builds the free Foxy Timer for Windows download: a zip a crew member unzips on a
-// Windows laptop and double-clicks. Nothing to install - Node is bundled.
+// Builds Foxy Timer for Windows: an installer and a portable zip that turn a
+// Windows laptop into the timer server for a show. Nothing else to install -
+// Node is bundled - and no window or text menu for the operator.
 //
 //   node scripts/build-local-download.js      (run on Windows x64)
 //
-// Output: dist/FoxyTimer-Windows-<commit>.zip containing
-//   FoxyTimer/
-//     Start Foxy Timer.bat   start + open the dashboard + launcher menu
-//     README.txt
-//     node/node.exe          the same Node that ran this build, so the
-//                            better-sqlite3 prebuilt binary matches it
-//     app/                   server, pages, launcher, production node_modules
-//     data/                  created on first run; kept when the app is
-//                            replaced by a newer download
+// Output (dist/):
+//   FoxyTimerSetup-<commit>.exe    the installer (Inno Setup, if installed):
+//                                  Program Files, Start menu / desktop icon,
+//                                  Windows Firewall rule, uninstaller
+//   FoxyTimer-Windows-<commit>.zip the same files, portable
+// Both contain FoxyTimer/:
+//   Foxy Timer.exe   windowless launcher (tools/windows): start + open the dashboard
+//   README.txt, build.txt
+//   node/node.exe    the same Node that ran this build, so the better-sqlite3
+//                    prebuilt binary matches it
+//   app/             server, pages, launcher, production node_modules
+//   support/         text-menu .bat, for troubleshooting only
+// Rooms are kept per Windows user in %LOCALAPPDATA%\Foxy Timer\data.
 //
 // Needs network access at build time (npm installs the production
-// dependencies). The finished download never needs the internet.
+// dependencies). What it builds never needs the internet.
 
 const fs = require('fs');
 const path = require('path');
@@ -28,6 +33,7 @@ const ROOT = path.resolve(__dirname, '..');
 const DIST = path.join(ROOT, 'dist');
 const OUT = path.join(DIST, 'FoxyTimer');
 const APP = path.join(OUT, 'app');
+const ICON = path.join(ROOT, 'tools', 'windows', 'foxy-timer.ico');
 
 if (process.platform !== 'win32' || process.arch !== 'x64') {
   console.error('Build this on Windows x64: it bundles the running node.exe and Windows native modules.');
@@ -36,12 +42,13 @@ if (process.platform !== 'win32' || process.arch !== 'x64') {
 
 const run = (cmd, args, opts = {}) => execFileSync(cmd, args, { stdio: 'inherit', windowsHide: true, ...opts });
 const git = (args) => execFileSync('git', args, { cwd: ROOT, windowsHide: true }).toString().trim();
+const winDir = process.env.SystemRoot || process.env.WINDIR || 'C:\\Windows';
 
 let commit = 'dev';
 try {
   commit = git(['rev-parse', '--short', 'HEAD']);
   if (git(['status', '--porcelain', '--untracked-files=no'])) {
-    console.warn('⚠️  Uncommitted changes: the download will contain them but be labelled ' + commit);
+    console.warn('⚠️  Uncommitted changes: the build will contain them but be labelled ' + commit);
   }
 } catch { /* not a git checkout */ }
 
@@ -68,19 +75,31 @@ for (const dir of ['deps', 'src']) fs.rmSync(path.join(APP, 'node_modules', 'bet
 fs.mkdirSync(path.join(OUT, 'node'));
 fs.copyFileSync(process.execPath, path.join(OUT, 'node', 'node.exe'));
 
-fs.writeFileSync(path.join(OUT, 'Start Foxy Timer.bat'), [
+// "Foxy Timer.exe": the windowless launcher (tools/windows/FoxyTimerLauncher.cs),
+// compiled with the C# compiler that ships with Windows, with the fox icon.
+const csc = path.join(winDir, 'Microsoft.NET', 'Framework64', 'v4.0.30319', 'csc.exe');
+run(csc, ['/nologo', '/target:winexe', '/optimize+',
+  `/out:${path.join(OUT, 'Foxy Timer.exe')}`,
+  `/win32icon:${ICON}`,
+  '/reference:System.Windows.Forms.dll',
+  path.join(ROOT, 'tools', 'windows', 'FoxyTimerLauncher.cs')]);
+fs.writeFileSync(path.join(OUT, 'build.txt'), commit + '\r\n');
+
+// Troubleshooting only: the text menu, same data folder as the icon.
+fs.mkdirSync(path.join(OUT, 'support'));
+fs.writeFileSync(path.join(OUT, 'support', 'Foxy Timer text menu.bat'), [
   '@echo off',
-  'rem Foxy Timer for Windows. Double-click to start the timer server on this',
-  'rem laptop and open the dashboard. Uses the bundled Node; nothing to install.',
-  'title Foxy Timer for Windows',
-  'cd /d "%~dp0"',
-  'set "DATABASE_PATH=%~dp0data\\foxy-timer.sqlite"',
-  'set "FOXY_LOCAL_DATA_DIR=%~dp0data\\local-server"',
-  'set "LEGACY_ROOMS_JSON_PATH=%~dp0data\\none.json"',
-  `set "FOXY_BUILD_ID=${commit}"`,
-  'set "ARGS=%*"',
-  'if "%ARGS%"=="" set "ARGS=go"',
-  '"%~dp0node\\node.exe" "%~dp0app\\tools\\local-server\\foxy-local.js" %ARGS%',
+  'rem Troubleshooting only: the text menu (status, start/stop, links).',
+  'rem Everyday use is the Foxy Timer icon.',
+  'title Foxy Timer - text menu',
+  'set "BASE=%~dp0.."',
+  'set "DATA=%LOCALAPPDATA%\\Foxy Timer\\data"',
+  'if not exist "%DATA%" mkdir "%DATA%"',
+  'set "DATABASE_PATH=%DATA%\\foxy-timer.sqlite"',
+  'set "FOXY_LOCAL_DATA_DIR=%DATA%\\local-server"',
+  'set "LEGACY_ROOMS_JSON_PATH=%DATA%\\none.json"',
+  'set /p FOXY_BUILD_ID=<"%BASE%\\build.txt"',
+  '"%BASE%\\node\\node.exe" "%BASE%\\app\\tools\\local-server\\foxy-local.js" %*',
   'if errorlevel 1 pause',
   ''
 ].join('\r\n'));
@@ -89,46 +108,128 @@ fs.writeFileSync(path.join(OUT, 'README.txt'), [
   'FOXY TIMER FOR WINDOWS',
   '======================',
   '',
-  'Runs Foxy Timer on this Windows laptop for a show. No account, no',
-  'internet connection and nothing to install.',
+  'Runs Foxy Timer on this Windows laptop for a show. No account and no',
+  'internet connection needed.',
   '',
   'START',
-  '  1. Double-click "Start Foxy Timer".',
-  '  2. If Windows asks whether to allow Node.js on networks, choose Allow',
-  '     for private networks. Without that, phones and displays can\'t connect.',
-  '  3. The dashboard opens in your browser, with a "Main stage" room ready.',
-  '     Add more rooms there, one per stage or breakout.',
+  '  Click the Foxy Timer icon. It starts in the background and opens the',
+  '  dashboard in your browser, with a "Main stage" room ready. Add more rooms',
+  '  there, one per stage or breakout.',
   '',
   'CONNECT SCREENS AND PHONES',
-  '  Put them on the same network as this laptop. In the dashboard, open a',
-  '  room\'s links: send the Display link to the screen and the Control link',
-  '  to the operator, or tap QR and scan it.',
+  '  Put them on the same network as this laptop. On a room, press',
+  '  "Share links & QR" and scan the QR code, or send the links.',
+  '  If the dashboard says Windows Firewall is blocking other devices, press',
+  '  "Allow through firewall" and answer Yes. (The installer does this for you.)',
   '',
   'STREAM DECK (COMPANION)',
-  '  In the dashboard, press "Companion / Stream Deck". Copy the Server URL,',
-  '  key and room names it shows into the Foxy Presentation Timer connection',
-  '  in Companion. The Stream Deck PC must be on the same network.',
+  '  On the dashboard, press "Companion / Stream Deck" and copy the three',
+  '  settings it shows into the Foxy Presentation Timer connection in',
+  '  Companion.',
   '',
   'STOP',
-  '  Closing the window leaves the timer running (on purpose, so a show',
-  '  never stops by accident). Double-click "Start Foxy Timer" again and',
-  '  choose [4] Stop server.',
+  '  "Stop Foxy Timer" in the dashboard\'s "This laptop" panel. Closing the',
+  '  browser leaves the timer running, on purpose.',
   '',
-  'UPDATING',
-  '  Your rooms are kept in the "data" folder. To update, replace the other',
-  '  files with a newer download and keep "data".',
+  'HELP',
+  '  The dashboard\'s Help button: connecting devices, Companion, show-day tips.',
+  '',
+  'Your rooms are kept in %LOCALAPPDATA%\\Foxy Timer\\data and survive updates.',
   '',
   'Foxy Timer is made by Business Shows Limited - https://foxytimer.com',
   `Build ${commit}`,
   ''
 ].join('\r\n'));
 
-// Zip with Windows' own bsdtar (-a picks zip from the extension). Called by full
-// path: a GNU tar earlier on PATH (e.g. Git Bash's) silently writes a tar file
-// with a .zip name instead.
+const mb = (name) => (fs.statSync(path.join(DIST, name)).size / 1024 / 1024).toFixed(1);
+
+// Portable zip, with Windows' own bsdtar (-a picks zip from the extension).
+// Called by full path: a GNU tar earlier on PATH (e.g. Git Bash's) silently
+// writes a tar file with a .zip name instead.
 const zipName = `FoxyTimer-Windows-${commit}.zip`;
 fs.rmSync(path.join(DIST, zipName), { force: true });
-const bsdtar = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe');
-run(bsdtar, ['-a', '-c', '-f', zipName, 'FoxyTimer'], { cwd: DIST });
-const mb = (fs.statSync(path.join(DIST, zipName)).size / 1024 / 1024).toFixed(1);
-console.log(`\n✅ dist/${zipName} (${mb} MB)`);
+run(path.join(winDir, 'System32', 'tar.exe'), ['-a', '-c', '-f', zipName, 'FoxyTimer'], { cwd: DIST });
+console.log(`\n✅ dist/${zipName} (${mb(zipName)} MB)`);
+
+// Installer, with Inno Setup (free; https://jrsoftware.org). Skipped with a
+// note if it isn't on the build machine.
+const iscc = [
+  process.env.ISCC,
+  path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Inno Setup 6', 'ISCC.exe'),
+  path.join(process.env['ProgramFiles(x86)'] || '', 'Inno Setup 6', 'ISCC.exe'),
+  path.join(process.env.ProgramFiles || '', 'Inno Setup 6', 'ISCC.exe'),
+].filter(Boolean).find((p) => fs.existsSync(p));
+
+if (!iscc) {
+  console.log('ℹ️  Inno Setup not found - installer skipped (winget install JRSoftware.InnoSetup).');
+} else {
+  const setupName = `FoxyTimerSetup-${commit}`;
+  const iss = path.join(DIST, 'FoxyTimer.iss');
+  const nodeInApp = '{app}\\node\\node.exe';
+  const deleteRule = `advfirewall firewall delete rule name=""Foxy Timer"" program=""${nodeInApp}""`;
+  const addRule = `advfirewall firewall add rule name=""Foxy Timer"" dir=in action=allow program=""${nodeInApp}"" enable=yes profile=any`;
+  fs.writeFileSync(iss, [
+    '; Generated by scripts/build-local-download.js - edit that, not this.',
+    '[Setup]',
+    'AppId={{8C3F6A52-4F0B-4B8E-9E0D-6A1F2C7D9B11}',
+    'AppName=Foxy Timer',
+    `AppVersion=${pkg.version}+${commit}`,
+    `AppVerName=Foxy Timer for Windows (${commit})`,
+    'AppPublisher=Business Shows Limited',
+    'AppPublisherURL=https://foxytimer.com',
+    'DefaultDirName={autopf}\\Foxy Timer',
+    'DefaultGroupName=Foxy Timer',
+    'DisableProgramGroupPage=yes',
+    'PrivilegesRequired=admin',
+    'ArchitecturesAllowed=x64compatible',
+    'ArchitecturesInstallIn64BitMode=x64compatible',
+    `OutputDir=${DIST}`,
+    `OutputBaseFilename=${setupName}`,
+    `SetupIconFile=${ICON}`,
+    'UninstallDisplayIcon={app}\\Foxy Timer.exe',
+    'UninstallDisplayName=Foxy Timer for Windows',
+    'Compression=lzma2/max',
+    'SolidCompression=yes',
+    'WizardStyle=modern',
+    'CloseApplications=no',
+    '',
+    '[Tasks]',
+    'Name: "desktopicon"; Description: "Put a Foxy Timer icon on the desktop"; GroupDescription: "Shortcuts:"',
+    '',
+    '[InstallDelete]',
+    '; old program files only - rooms live in %LOCALAPPDATA%\\Foxy Timer and are kept',
+    'Type: filesandordirs; Name: "{app}\\app"',
+    '',
+    '[Files]',
+    `Source: "${OUT}\\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion`,
+    '',
+    '[Icons]',
+    'Name: "{autoprograms}\\Foxy Timer"; Filename: "{app}\\Foxy Timer.exe"',
+    'Name: "{autodesktop}\\Foxy Timer"; Filename: "{app}\\Foxy Timer.exe"; Tasks: desktopicon',
+    '',
+    '[Run]',
+    '; Let phones, screens and Stream Decks reach the laptop on any network type',
+    '; (venue Wi-Fi is often a "Public" network in Windows).',
+    `Filename: "{sys}\\netsh.exe"; Parameters: "${deleteRule}"; Flags: runhidden`,
+    `Filename: "{sys}\\netsh.exe"; Parameters: "${addRule}"; Flags: runhidden; StatusMsg: "Letting phones and screens connect (Windows Firewall)..."`,
+    'Filename: "{app}\\Foxy Timer.exe"; Description: "Start Foxy Timer now"; Flags: postinstall nowait skipifsilent runasoriginaluser',
+    '',
+    '[UninstallRun]',
+    'Filename: "{app}\\Foxy Timer.exe"; Parameters: "stop"; Flags: runhidden waituntilterminated; RunOnceId: "StopFoxyTimer"',
+    `Filename: "{sys}\\netsh.exe"; Parameters: "${deleteRule}"; Flags: runhidden; RunOnceId: "RemoveFirewallRule"`,
+    '',
+    '[Code]',
+    '// Updating: stop a running Foxy Timer first so its files can be replaced.',
+    'function PrepareToInstall(var NeedsRestart: Boolean): String;',
+    'var',
+    '  ResultCode: Integer;',
+    'begin',
+    "  if FileExists(ExpandConstant('{app}\\Foxy Timer.exe')) then",
+    "    Exec(ExpandConstant('{app}\\Foxy Timer.exe'), 'stop', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);",
+    "  Result := '';",
+    'end;',
+    ''
+  ].join('\r\n'));
+  run(iscc, ['/Q', iss]);
+  console.log(`✅ dist/${setupName}.exe (${mb(setupName + '.exe')} MB)`);
+}

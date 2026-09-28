@@ -384,6 +384,22 @@
                 max-width: 100%;
             }
         }
+        .laptop-panel { background: #141816; border: 1px solid #2c3a30; border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 1.5rem; }
+        .laptop-head { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; }
+        .laptop-head h2 { font-size: 1.05rem; color: #fafafa; margin: 0; display: flex; align-items: center; gap: 10px; }
+        .laptop-dot { width: 10px; height: 10px; border-radius: 50%; background: #4caf50; box-shadow: 0 0 0 4px rgba(76,175,80,0.18); }
+        .laptop-dot.warn { background: #ffb300; box-shadow: 0 0 0 4px rgba(255,179,0,0.18); }
+        .laptop-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+        .laptop-btn { padding: 7px 12px; border-radius: 7px; border: 1px solid #3a3a3a; background: #1a1a1a; color: #ddd; font-size: 0.85rem; cursor: pointer; text-decoration: none; }
+        .laptop-btn:hover { border-color: #4caf50; }
+        .laptop-btn.danger:hover { border-color: #f44336; }
+        .laptop-btn.primary { background: #ff6a1a; border-color: #ff6a1a; color: #140800; font-weight: 700; }
+        .laptop-body { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.75rem 1.5rem; margin-top: 0.85rem; font-size: 0.92rem; }
+        .laptop-label { display: block; font-size: 0.72rem; color: #8a8a8a; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px; }
+        #laptopAddress { font-family: 'Courier New', monospace; color: #90caf9; overflow-wrap: anywhere; }
+        .laptop-warning { margin-top: 0.9rem; background: #2a2010; border: 1px solid #5a4410; border-radius: 9px; padding: 0.8rem 1rem; color: #f3dfb5; font-size: 0.9rem; line-height: 1.5; }
+        .laptop-warning b { color: #ffb300; }
+        .laptop-warning .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 0.6rem; }
     </style>
 </head>
 <body>
@@ -407,6 +423,7 @@
                 <div class="nav-links">
                     <a href="/" id="homeLink" class="nav-link">🏠 Home</a>
                     <a href="/admin/clients" id="manageClientsLink" class="nav-link" style="display:none;">🏢 Manage Clients</a>
+                    <a href="/help" id="helpLink" class="nav-link" target="foxy-help">❓ Help</a>
                     <button id="companionBtn" onclick="openCompanionSetup(this)" class="nav-link" style="display:none;cursor:pointer;">🎛️ Companion / Stream Deck</button>
                     <button onclick="logout()" id="logoutBtn" class="nav-link" style="cursor:pointer;">🚪 Logout</button>
                 </div>
@@ -423,6 +440,26 @@
             <button onclick="createRoom(this)" class="nav-link" style="background:#2e7d32;border-color:#2e7d32;color:white;cursor:pointer;">➕ Create Room</button>
         </div>
     </div>
+
+    <!-- "This laptop" (Foxy Timer for Windows only, opened on the laptop itself):
+         is it running, the address other devices use, whether Windows Firewall
+         lets them in (with a one-click fix), Stop / Restart, help. -->
+    <section id="laptopPanel" class="laptop-panel" hidden aria-labelledby="laptopPanelTitle">
+        <div class="laptop-head">
+            <h2 id="laptopPanelTitle"><span class="laptop-dot" id="laptopDot"></span>This laptop</h2>
+            <div class="laptop-actions">
+                <a href="/help#connect" target="foxy-help" class="laptop-btn">❓ Connecting devices</a>
+                <button type="button" class="laptop-btn" onclick="restartLaptopServer(this)">🔄 Restart</button>
+                <button type="button" class="laptop-btn danger" onclick="stopLaptopServer(this)">⏹ Stop Foxy Timer</button>
+            </div>
+        </div>
+        <div class="laptop-body">
+            <div><span class="laptop-label">Status</span><span id="laptopStatusText">Running</span></div>
+            <div><span class="laptop-label">Address for other devices</span><span id="laptopAddress">…</span></div>
+            <div><span class="laptop-label">Firewall</span><span id="laptopFirewall">Checking…</span></div>
+        </div>
+        <div id="laptopWarning" class="laptop-warning" hidden></div>
+    </section>
 
     <div id="roomsContainer" class="rooms-grid">
         <div class="loading">Loading rooms...</div>
@@ -509,6 +546,9 @@
                         document.getElementById('homeLink').style.display = 'none';
                         document.getElementById('companionBtn').style.display = 'inline-block';
                         document.getElementById('dashboardSubtitle').textContent = 'Foxy Timer for Windows · running on this laptop';
+                        document.getElementById('laptopPanel').hidden = false;
+                        refreshLaptopPanel();
+                        setInterval(refreshLaptopPanel, 30000);
                         document.title = 'Foxy Timer for Windows - Dashboard';
                     }
                 }
@@ -808,7 +848,7 @@
             if (!data.ok) { uiNotice('Companion setup', data.error || 'Could not load the Companion details.'); return; }
             openModal(`
                 <h2 id="modalTitle" style="margin:0 0 6px 0;font-size:1.2rem;color:#fafafa;">Companion / Stream Deck</h2>
-                <p style="margin:0 0 18px 0;color:#999;font-size:0.85rem;line-height:1.5;">In Companion, add a <b>Foxy Presentation Timer</b> connection and copy these three into its settings. The Stream Deck PC must be on the same network as this laptop.</p>
+                <p style="margin:0 0 18px 0;color:#999;font-size:0.85rem;line-height:1.5;">In Companion, add a <b>Foxy Presentation Timer</b> connection and copy these three into its settings. The Stream Deck PC must be on the same network as this laptop. <a href="/help#companion" target="foxy-help" style="color:#90caf9;">Step-by-step guide</a></p>
                 ${companionField('Server URL', 'companionServerUrl', data.serverUrl)}
                 ${companionField('Client API key', 'companionApiKey', data.apiKey)}
                 ${companionField('Room IDs to monitor', 'companionRooms', data.rooms.join(','))}
@@ -827,6 +867,95 @@
                 danger: true
             }, triggerEl);
             if (ok) openCompanionSetup(document.getElementById('companionBtn'), true);
+        }
+
+        // ---- "This laptop" panel (Foxy Timer for Windows) ----
+        const FIREWALL_WORDS = {
+            ok: 'Other devices can connect',
+            blocked: 'Blocking other devices',
+            unknown: 'Couldn\u2019t check'
+        };
+
+        function renderLaptopPanel(s) {
+            const addr = s.addresses[0];
+            document.getElementById('laptopAddress').textContent = addr ? addr.url : 'Not on a network';
+            if (s.addresses.length > 1) {
+                document.getElementById('laptopAddress').title = 'Other addresses: ' + s.addresses.slice(1).map(a => `${a.url} (${a.name})`).join(', ');
+            }
+            document.getElementById('laptopStatusText').textContent = `Running since ${new Date(s.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+            const fw = s.firewall || { state: 'unknown' };
+            const net = fw.networkName ? ` on "${fw.networkName}"${fw.category ? ` (${fw.category} network)` : ''}` : '';
+            document.getElementById('laptopFirewall').textContent = (FIREWALL_WORDS[fw.state] || FIREWALL_WORDS.unknown) + (fw.state === 'unknown' ? '' : net);
+            const warn = document.getElementById('laptopWarning');
+            const problem = !addr || fw.state === 'blocked';
+            document.getElementById('laptopDot').classList.toggle('warn', problem);
+            if (!addr) {
+                warn.innerHTML = `<b>This laptop isn't on a network.</b> Connect it to the show Wi-Fi or switch so phones and screens can reach it.`;
+                warn.hidden = false;
+            } else if (fw.state === 'blocked') {
+                warn.innerHTML = `<b>Windows Firewall is blocking phones and screens.</b> This laptop can use Foxy Timer, but other devices${escapeHtml(net)} can't reach it. Allow it once and they can.
+                    <div class="row"><button type="button" class="laptop-btn primary" onclick="allowThroughFirewall(this)">Allow through firewall</button>
+                    <a class="laptop-btn" href="/help#firewall" target="foxy-help">Why?</a></div>`;
+                warn.hidden = false;
+            } else {
+                warn.hidden = true;
+            }
+        }
+
+        async function refreshLaptopPanel(force) {
+            try {
+                const response = await authFetch('/api/local/status' + (force ? '?refresh=1' : ''));
+                const data = await response.json();
+                if (data.ok) renderLaptopPanel(data);
+            } catch (err) { /* keep the last reading */ }
+        }
+
+        async function allowThroughFirewall(btn) {
+            btn.disabled = true;
+            btn.textContent = 'Answer Yes on the Windows prompt…';
+            try {
+                const response = await authFetch('/api/local/firewall/allow', { method: 'POST' });
+                const data = await response.json();
+                if (data.ok) renderLaptopPanel(data);
+                if (data.fix && data.fix.ok && data.firewall && data.firewall.state === 'ok') uiToast('Phones and screens can now connect');
+                else if (data.fix && data.fix.cancelled) uiNotice('Firewall not changed', 'Windows asked for permission and it was cancelled. Press "Allow through firewall" again and choose Yes.');
+                else if (data.fix && !data.fix.ok) uiNotice('Firewall not changed', data.fix.error || 'Windows did not accept the change.');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Allow through firewall';
+            }
+        }
+
+        async function stopLaptopServer(triggerEl) {
+            const ok = await uiConfirm({
+                title: 'Stop Foxy Timer?',
+                body: 'Every display, control page and Stream Deck connected to this laptop disconnects. Timers are saved and carry on where they were when you start again (from the Foxy Timer icon).',
+                okLabel: 'Stop Foxy Timer',
+                danger: true
+            }, triggerEl);
+            if (!ok) return;
+            await authFetch('/api/local/stop', { method: 'POST' }).catch(() => {});
+            document.body.innerHTML = `<div style="padding:60px 20px;text-align:center;color:#ccc;font-family:inherit;">
+                <h2 style="color:#fafafa;">Foxy Timer has stopped</h2>
+                <p>Start it again from the <b>Foxy Timer</b> icon on the desktop or Start menu.</p></div>`;
+        }
+
+        async function restartLaptopServer(triggerEl) {
+            const ok = await uiConfirm({
+                title: 'Restart Foxy Timer?',
+                body: 'Connected screens and control pages drop for a few seconds and reconnect by themselves. Running timers carry on at the right time.',
+                okLabel: 'Restart'
+            }, triggerEl);
+            if (!ok) return;
+            const before = await fetch('/api/health').then(r => r.json()).catch(() => ({}));
+            await authFetch('/api/local/restart', { method: 'POST' }).catch(() => {});
+            uiToast('Restarting…');
+            for (let i = 0; i < 40; i++) {
+                await new Promise(r => setTimeout(r, 750));
+                const now = await fetch('/api/health').then(r => r.json()).catch(() => null);
+                if (now && now.pid && now.pid !== before.pid) { location.reload(); return; }
+            }
+            uiNotice('Restart is taking a while', 'Foxy Timer hasn\u2019t come back yet. If it doesn\u2019t, start it again from the Foxy Timer icon.');
         }
 
         // Links for an existing room: to send to the operator and the screen,

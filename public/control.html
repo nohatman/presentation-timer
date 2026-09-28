@@ -1418,7 +1418,7 @@
                 <span style="color: #666; margin: 0 8px;">|</span>
                 <a href="/dashboard" target="foxy-dashboard"><span class="link-long">Master Dashboard</span><span class="link-short">Dashboard</span></a>
                 <span style="color: #666; margin: 0 8px;">|</span>
-                <a href="/"><span class="link-long">Home / New Room</span><span class="link-short">Home</span></a>
+                <a href="/help" target="foxy-help" title="Help: connecting devices, Companion, show-day tips">Help</a>
                 <span style="color: #666; margin: 0 8px;">|</span>
                 <a href="#" id="shareLinksLink" onclick="copyRoomLinks(event); return false;" title="Share or copy this room's control and display links">Share links</a>
             </div>
@@ -1706,32 +1706,71 @@
         </div>
 
 
-        <div class="section">
-            <h3>Warning Thresholds</h3>
-            <div class="threshold-row">
-                <div>
-                    <label for="amberThreshold" style="font-size: 0.9rem;">Amber</label>
-                    <input type="text" id="amberThreshold" class="time-text" placeholder="0:00" pattern="\d{1,3}:\d{2}" title="Format: MM:SS" maxlength="6" inputmode="numeric">
-                </div>
-                <div>
-                    <label for="redThreshold" style="font-size: 0.9rem;">Red</label>
-                    <input type="text" id="redThreshold" class="time-text" placeholder="0:00" pattern="\d{1,3}:\d{2}" title="Format: MM:SS" maxlength="6" inputmode="numeric">
-                </div>
-            </div>
-            <label class="checkbox-label" style="margin:12px 0 0;">
-                <input type="checkbox" id="upWarnings">
-                <span>Also use in count up mode</span>
-            </label>
-        </div>
 
-        <!-- Display Appearance - Full Width, collapsed by default. Colors,
-             chromakey, element visibility, and (moved in here to keep the main
-             timer controls above focused on what's used live) size/speed - none
-             of these are look-once-per-show settings, not something reached for
-             repeatedly while running a room. -->
+
+        <!-- Message Display - Full Width. Collapsible (open by default - it's used
+             live); each browser remembers if it was closed. The "message active"
+             bar under the preview still shows a live message and its Clear. The
+             summary is data-view-ok: an observer may open/close it to look. -->
+        <details class="section" id="messageSection" style="grid-column: 1 / -1;" open>
+            <summary data-view-ok style="cursor:pointer;font-size:1.1rem;color:#f5f5f5;font-weight:600;margin-bottom:12px;">Message to Display Screen</summary>
+            <div style="display:flex;gap:8px;margin-bottom:10px;">
+                <input type="text" id="messageInput" maxlength="500"
+                       placeholder="Type a message for the output screen…"
+                       style="flex:1;padding:12px;font-size:1rem;"
+                       oninput="renderMessageControls()"
+                       onkeydown="if(event.key==='Enter'&&this.value.trim())sendMessage(lastMessageMode);">
+            </div>
+            <div style="display:flex;gap:8px;margin-bottom:10px;">
+                <!-- Each button says what pressing it does (see renderMessageControls):
+                     SHOW / ● LIVE / UPDATE (amber: edited, not on screen yet) / SWITCH. -->
+                <button class="button msg-send-btn" id="msgBtnOverlay" onclick="sendMessage('overlay')"
+                        style="flex:2;" title="Replaces the timer with the message"><span>Full Screen</span><span class="msg-btn-state"></span></button>
+                <button class="button msg-send-btn" id="msgBtnTicker" onclick="sendMessage('ticker')"
+                        style="flex:2;" title="Scrolls above the timer"><span>Ticker</span><span class="msg-btn-state"></span></button>
+                <button class="button danger" id="msgClearBtn" onclick="clearMessage()" style="flex:1;" title="Take the message off the display">Clear</button>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+                <span style="font-size:0.85rem;color:#999;white-space:nowrap;">Ticker speed:</span>
+                <button class="button msg-speed-btn" data-speed="0.25" onclick="setTickerSpeed(0.25)"
+                        style="flex:1;font-size:0.8rem;padding:6px;">Slow</button>
+                <button class="button msg-speed-btn active" data-speed="0.5" onclick="setTickerSpeed(0.5)"
+                        style="flex:1;font-size:0.8rem;padding:6px;background:#1565c0;color:#fff;">Normal</button>
+                <button class="button msg-speed-btn" data-speed="1.0" onclick="setTickerSpeed(1.0)"
+                        style="flex:1;font-size:0.8rem;padding:6px;">Fast</button>
+                <button class="button msg-speed-btn" data-speed="2.0" onclick="setTickerSpeed(2.0)"
+                        style="flex:1;font-size:0.8rem;padding:6px;">Very Fast</button>
+            </div>
+            <div id="messageStatus" class="message-status"></div>
+            <div id="messageHistory" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+            <small style="color:#666;display:block;margin-top:6px;">Full Screen hides timer · Ticker scrolls above it · Enter resends in last mode · Click history to reload</small>
+        </details>
+
+        <!-- Display Settings (was "Display Appearance") - Full Width, collapsed by
+             default, at the bottom under Message: warning thresholds, size/speed,
+             colors, chromakey, element visibility. Set-once-per-show things, not
+             reached for repeatedly while running a room. id kept as
+             appearanceSection. -->
         <details class="section" id="appearanceSection" style="grid-column: 1 / -1;">
-            <summary style="cursor:pointer;font-size:1.1rem;color:#f5f5f5;font-weight:600;">Display Appearance</summary>
+            <summary data-view-ok style="cursor:pointer;font-size:1.1rem;color:#f5f5f5;font-weight:600;">Display Settings</summary>
             <div style="margin-top:12px;display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:16px;">
+                <div>
+                    <div style="font-size:0.8rem;color:#999;margin-bottom:8px;font-weight:500;text-transform:uppercase;letter-spacing:0.05em;">Warning thresholds</div>
+                    <div class="threshold-row">
+                        <div>
+                            <label for="amberThreshold" style="font-size: 0.9rem;">Amber</label>
+                            <input type="text" id="amberThreshold" class="time-text" placeholder="0:00" pattern="\d{1,3}:\d{2}" title="Format: MM:SS" maxlength="6" inputmode="numeric">
+                        </div>
+                        <div>
+                            <label for="redThreshold" style="font-size: 0.9rem;">Red</label>
+                            <input type="text" id="redThreshold" class="time-text" placeholder="0:00" pattern="\d{1,3}:\d{2}" title="Format: MM:SS" maxlength="6" inputmode="numeric">
+                        </div>
+                    </div>
+                    <label class="checkbox-label" style="margin:12px 0 0;">
+                        <input type="checkbox" id="upWarnings">
+                        <span>Also use in count up mode</span>
+                    </label>
+                </div>
                 <div>
                     <div style="font-size:0.8rem;color:#999;margin-bottom:8px;font-weight:500;text-transform:uppercase;letter-spacing:0.05em;">Display size &amp; speed</div>
                     <div style="font-size:0.8rem;color:#999;margin-bottom:4px;">Display size: <span id="displayScaleValue" style="color:#90caf9;font-weight:bold;">1.5×</span></div>
@@ -1804,41 +1843,6 @@
                 </div>
             </div>
         </details>
-
-        <!-- Message Display - Full Width -->
-        <div class="section" style="grid-column: 1 / -1;">
-            <h3>Message to Display Screen</h3>
-            <div style="display:flex;gap:8px;margin-bottom:10px;">
-                <input type="text" id="messageInput" maxlength="500"
-                       placeholder="Type a message for the output screen…"
-                       style="flex:1;padding:12px;font-size:1rem;"
-                       oninput="renderMessageControls()"
-                       onkeydown="if(event.key==='Enter'&&this.value.trim())sendMessage(lastMessageMode);">
-            </div>
-            <div style="display:flex;gap:8px;margin-bottom:10px;">
-                <!-- Each button says what pressing it does (see renderMessageControls):
-                     SHOW / ● LIVE / UPDATE (amber: edited, not on screen yet) / SWITCH. -->
-                <button class="button msg-send-btn" id="msgBtnOverlay" onclick="sendMessage('overlay')"
-                        style="flex:2;" title="Replaces the timer with the message"><span>Full Screen</span><span class="msg-btn-state"></span></button>
-                <button class="button msg-send-btn" id="msgBtnTicker" onclick="sendMessage('ticker')"
-                        style="flex:2;" title="Scrolls above the timer"><span>Ticker</span><span class="msg-btn-state"></span></button>
-                <button class="button danger" id="msgClearBtn" onclick="clearMessage()" style="flex:1;" title="Take the message off the display">Clear</button>
-            </div>
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-                <span style="font-size:0.85rem;color:#999;white-space:nowrap;">Ticker speed:</span>
-                <button class="button msg-speed-btn" data-speed="0.25" onclick="setTickerSpeed(0.25)"
-                        style="flex:1;font-size:0.8rem;padding:6px;">Slow</button>
-                <button class="button msg-speed-btn active" data-speed="0.5" onclick="setTickerSpeed(0.5)"
-                        style="flex:1;font-size:0.8rem;padding:6px;background:#1565c0;color:#fff;">Normal</button>
-                <button class="button msg-speed-btn" data-speed="1.0" onclick="setTickerSpeed(1.0)"
-                        style="flex:1;font-size:0.8rem;padding:6px;">Fast</button>
-                <button class="button msg-speed-btn" data-speed="2.0" onclick="setTickerSpeed(2.0)"
-                        style="flex:1;font-size:0.8rem;padding:6px;">Very Fast</button>
-            </div>
-            <div id="messageStatus" class="message-status"></div>
-            <div id="messageHistory" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
-            <small style="color:#666;display:block;margin-top:6px;">Full Screen hides timer · Ticker scrolls above it · Enter resends in last mode · Click history to reload</small>
-        </div>
 
 
 
@@ -3851,6 +3855,15 @@
                 emitSettings();
             });
         });
+
+        // Message card: remember open/closed per browser (open unless closed here).
+        (function () {
+            const section = document.getElementById('messageSection');
+            try { if (localStorage.getItem('messageSectionOpen') === '0') section.open = false; } catch (e) { /* storage blocked */ }
+            section.addEventListener('toggle', () => {
+                try { localStorage.setItem('messageSectionOpen', section.open ? '1' : '0'); } catch (e) { /* ignore */ }
+            });
+        })();
 
         // ---- "How it counts" dropdown (app-styled listbox over a hidden input) ----
         const countStyleBtn = document.getElementById('countStyleBtn');

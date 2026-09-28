@@ -13,6 +13,7 @@ const enquiries = require('./enquiries');
 const demoRooms = require('./demoRooms');
 const QRCode = require('qrcode');
 const { selectLanAddresses } = require('./tools/local-server/lib/lan');
+const firewall = require('./tools/local-server/lib/firewall');
 
 // Base URL for links meant for OTHER devices. On the Local Show Server, a page
 // opened on the laptop itself is on localhost, which a phone or display can't
@@ -26,6 +27,7 @@ function shareBaseUrl(proto, host) {
   return `${proto}://${host}`;
 }
 const crypto = require('crypto');
+const { spawn } = require('child_process');
 const buildInfo = require('./buildInfo');
 
 const app = express();
@@ -1678,6 +1680,70 @@ app.post('/api/local/companion/new-key', auth.requireDashboardAuth, requireLocal
   res.json(localCompanionDetails(req, db.newLocalCompanionKey()));
 });
 
+// "This laptop" panel on the dashboard: status, network addresses, whether
+// Windows Firewall lets other devices in (checked in the background and cached
+// - it takes a couple of seconds - so it never holds up anything else), and
+// Stop / Restart. Laptop-only, like the Companion details.
+let firewallCache = { at: 0, alias: null, result: null, pending: null };
+const FIREWALL_CACHE_MS = 20000;
+
+function firewallStatus(alias, { refresh = false } = {}) {
+  const fresh = firewallCache.result && firewallCache.alias === alias && Date.now() - firewallCache.at < FIREWALL_CACHE_MS;
+  if (fresh && !refresh) return Promise.resolve(firewallCache.result);
+  if (firewallCache.pending) return firewallCache.pending;
+  firewallCache.pending = firewall.checkFirewall(process.execPath, alias)
+    .catch(() => ({ state: 'unknown', reason: 'check-failed' }))
+    .then((result) => {
+      firewallCache = { at: Date.now(), alias, result, pending: null };
+      return result;
+    });
+  return firewallCache.pending;
+}
+
+async function laptopStatus(req, opts) {
+  const lan = selectLanAddresses();
+  const port = Number(process.env.PORT || 3000);
+  return {
+    ok: true,
+    pid: process.pid,
+    startedAt: new Date(STARTED_AT).toISOString(),
+    build: STARTED_BUILD.label,
+    port,
+    addresses: lan.candidates.map((c) => ({ name: c.name, address: c.address, url: `http://${c.address}:${port}`, virtual: c.virtual })),
+    firewall: lan.primary ? await firewallStatus(lan.primary.name, opts) : { state: 'unknown', reason: 'no-network' }
+  };
+}
+
+app.get('/api/local/status', auth.requireDashboardAuth, requireLocalOperator, async (req, res) => {
+  res.json(await laptopStatus(req, { refresh: req.query.refresh === '1' }));
+});
+
+app.post('/api/local/firewall/allow', auth.requireDashboardAuth, requireLocalOperator, async (req, res) => {
+  const result = await firewall.allowThroughFirewall(process.execPath);
+  const status = await laptopStatus(req, { refresh: true });
+  res.json({ ...status, fix: result });
+});
+
+// Stop: save and exit (the launcher's PID file then reads as stale, which it
+// already handles). Restart: hand over to the launcher's own restart, run as a
+// separate process, so the old server is stopped and the new one started by
+// the same code path as the launcher menu.
+app.post('/api/local/stop', auth.requireDashboardAuth, requireLocalOperator, (req, res) => {
+  res.json({ ok: true });
+  console.log('👋 Stop requested from the dashboard - saving state and exiting.');
+  setTimeout(() => { clearTimeout(saveTimeout); persistRooms(); process.exit(0); }, 200);
+});
+
+app.post('/api/local/restart', auth.requireDashboardAuth, requireLocalOperator, (req, res) => {
+  const launcher = path.join(__dirname, 'tools', 'local-server', 'foxy-local.js');
+  const child = spawn(process.execPath, [launcher, 'restart'], {
+    detached: true, windowsHide: true, stdio: 'ignore',
+    env: { ...process.env, FOXY_PORT: String(process.env.PORT || 3000) }
+  });
+  child.unref();
+  res.json({ ok: true, oldPid: process.pid });
+});
+
 // QR code (SVG) for a room link, for the dashboard. Authenticated so it isn't
 // an open QR service; POST so the token in the link stays out of URLs/logs.
 app.post('/api/qr', auth.requireDashboardAuth, async (req, res) => {
@@ -1805,6 +1871,10 @@ app.get('/display', (req, res) => {
 
 app.get('/dashboard', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
+});
+
+app.get('/help', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'help.html'));
 });
 
 app.get('/try', (req, res) => {

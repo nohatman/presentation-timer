@@ -134,6 +134,20 @@ test('Companion on a show laptop: details on the dashboard, and the key drives t
   assert.equal((await request('GET', '/api/local/companion', { headers: { Origin: 'http://evil.example' } })).status, 401);
 });
 
+test('This laptop panel: status with addresses and a firewall reading; laptop-only', async () => {
+  const st = await request('GET', '/api/local/status');
+  assert.equal(st.status, 200);
+  assert.equal(st.json.ok, true);
+  assert.equal(st.json.port, PORT);
+  assert.ok(Array.isArray(st.json.addresses));
+  assert.ok(['ok', 'blocked', 'unknown'].includes(st.json.firewall.state));
+  // Stop / restart / firewall change / status: never from another device or another site
+  for (const [method, route] of [['GET', '/api/local/status'], ['POST', '/api/local/stop'], ['POST', '/api/local/restart'], ['POST', '/api/local/firewall/allow']]) {
+    assert.equal((await request(method, route, { host: `192.168.1.50:${PORT}` })).status, 401, `${route} from the LAN`);
+    assert.equal((await request(method, route, { headers: { Origin: 'http://evil.example' } })).status, 401, `${route} cross-site`);
+  }
+});
+
 test('nobody else gets the no-login dashboard', async () => {
   const cases = [
     ['a non-loopback Host (DNS rebinding)', { host: `evil.example:${PORT}` }],

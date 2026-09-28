@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Foxy Timer Help</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <!-- Deliberately self-contained (no web fonts or scripts from elsewhere):
+         it has to work on a show laptop with no internet. -->
+    <style>
+        :root {
+            --bg: #0b0b0c; --bg-2: #121214; --card: #161618; --line: #26262a;
+            --text: #ececee; --muted: #a2a2aa; --faint: #6f6f77;
+            --fox: #ff6a1a; --fox-2: #ff8a3d; --green: #4caf50; --amber: #ffb300;
+            --mono: ui-monospace, 'Cascadia Mono', Consolas, Menlo, monospace;
+        }
+        * { box-sizing: border-box; }
+        html { scroll-behavior: smooth; }
+        body { margin: 0; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; line-height: 1.6; }
+        .top { position: sticky; top: 0; z-index: 5; background: rgba(11,11,12,0.92); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+        .top .in { max-width: 860px; margin: 0 auto; padding: 12px 16px; display: flex; align-items: center; gap: 14px; }
+        .top img { width: 26px; height: 26px; }
+        .top b { font-size: 1.05rem; }
+        .top a.back { margin-left: auto; color: var(--muted); text-decoration: none; font-size: 0.9rem; border: 1px solid var(--line); padding: 6px 12px; border-radius: 8px; }
+        .top a.back:hover { color: var(--text); border-color: #3a3a40; }
+        main { max-width: 860px; margin: 0 auto; padding: 28px 16px 80px; }
+        h1 { font-size: 1.9rem; margin: 0 0 6px; letter-spacing: -0.02em; }
+        .lede { color: var(--muted); margin: 0 0 22px; }
+        nav.toc { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+        nav.toc a { color: var(--text); text-decoration: none; background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 6px 12px; font-size: 0.88rem; }
+        nav.toc a:hover, nav.toc a:focus-visible { border-color: var(--fox); outline: none; }
+        section { border-top: 1px solid var(--line); margin-top: 34px; padding-top: 26px; scroll-margin-top: 70px; }
+        h2 { font-size: 1.35rem; margin: 0 0 10px; }
+        h3 { font-size: 1.02rem; margin: 20px 0 6px; scroll-margin-top: 70px; }
+        p, li { max-width: 70ch; }
+        p { margin: 0 0 10px; }
+        ul, ol { padding-left: 22px; margin: 6px 0 12px; }
+        li { margin: 3px 0; }
+        a { color: var(--fox-2); }
+        code { font-family: var(--mono); font-size: 0.88em; background: #1d1d20; border: 1px solid var(--line); padding: 1px 6px; border-radius: 5px; overflow-wrap: anywhere; }
+        .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; margin: 12px 0; }
+        .tip { border-left: 3px solid var(--amber); background: #1e1a12; border-radius: 8px; padding: 12px 14px; margin: 12px 0; }
+        .tip b:first-child { color: var(--amber); }
+        .fields { display: grid; grid-template-columns: max-content 1fr; gap: 8px 16px; margin: 10px 0; }
+        .fields dt { font-weight: 600; }
+        .fields dd { margin: 0; color: var(--muted); }
+        table { border-collapse: collapse; width: 100%; font-size: 0.93rem; }
+        .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; margin: 10px 0; }
+        th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+        th { color: var(--muted); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; background: var(--bg-2); }
+        tr:last-child td { border-bottom: 0; }
+        kbd { font-family: var(--mono); font-size: 0.85em; border: 1px solid #3a3a40; border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; background: #1d1d20; }
+        @media (max-width: 560px) { .fields { grid-template-columns: 1fr; gap: 2px; } .fields dd { margin-bottom: 8px; } }
+    </style>
+</head>
+<body>
+<div class="top"><div class="in">
+    <img src="/favicon.svg" alt=""><b>Foxy Timer Help</b>
+    <a class="back" href="/dashboard" id="backLink">← Back</a>
+</div></div>
+
+<main>
+    <h1>Help</h1>
+    <p class="lede">Short answers for show day. Works without an internet connection.</p>
+    <nav class="toc" aria-label="Help topics">
+        <a href="#start">Getting started</a>
+        <a href="#connect">Connecting phones &amp; screens</a>
+        <a href="#not-connecting">Phone won't connect</a>
+        <a href="#companion">Companion / Stream Deck</a>
+        <a href="#windows">Foxy Timer for Windows</a>
+        <a href="#control">Control page tips</a>
+    </nav>
+
+    <section id="start">
+        <h2>Getting started</h2>
+        <p>Each <b>room</b> is one timer, usually one per stage or breakout. Every room has two secret links:</p>
+        <ul>
+            <li><b>Control link</b>: for the operator. Starts, pauses and sets the timer, and sends messages.</li>
+            <li><b>Display link</b>: for the screen the speaker sees. It only shows the timer and can't change anything.</li>
+        </ul>
+        <p>On the dashboard, press <b>Share links &amp; QR</b> on a room to copy the links or show QR codes to scan. Treat the control link like a password: anyone who has it can run that room.</p>
+        <p>Two versions of the same timer exist:</p>
+        <ul>
+            <li><b>Foxy Timer Online</b> (foxytimer.com): runs on the internet; every device needs an internet connection.</li>
+            <li><b>Foxy Timer for Windows</b>: runs on your show laptop; devices only need to be on the same network as the laptop, with no internet needed.</li>
+        </ul>
+        <p>They're separate: a room made on one doesn't exist on the other.</p>
+    </section>
+
+    <section id="connect">
+        <h2>Connecting phones &amp; screens</h2>
+        <p><b>With Foxy Timer Online</b>, any device with internet can open the links.</p>
+        <p><b>With Foxy Timer for Windows</b>, the laptop is the server. Phones, screens and the Stream Deck PC connect <em>to the laptop</em> across the venue network:</p>
+        <ol>
+            <li>Put every device on the <b>same network</b> as the laptop: same Wi-Fi, or the same switch.</li>
+            <li>On the dashboard, press <b>Share links &amp; QR</b>, then <b>QR</b>, and scan with the phone's camera.</li>
+            <li>Open the Display link on the screen's computer, full screen.</li>
+        </ol>
+        <p>The links look like <code>http://192.168.1.13:3000/control?token=…</code>. <b>192.168.1.13</b> is the laptop's address on that network; <b>3000</b> is the door Foxy Timer listens on. The <b>This laptop</b> panel on the dashboard shows the current address.</p>
+        <div class="tip"><b>"localhost" only works on the laptop itself.</b> It means "this computer", so a phone can't use it. The dashboard always gives links with the network address instead.</div>
+    </section>
+
+    <section id="not-connecting">
+        <h2>A phone or screen won't connect</h2>
+        <p>The page usually just keeps loading and then gives up. Work through these in order:</p>
+        <h3 id="firewall">1. Windows Firewall is blocking it (the most common cause)</h3>
+        <p>Windows blocks other devices from reaching the laptop unless Foxy Timer is allowed through its firewall. It's especially likely when Windows has marked the Wi-Fi as a <b>Public network</b>, which is common at venues and even at home.</p>
+        <ul>
+            <li>The dashboard's <b>This laptop</b> panel checks this and shows a warning. Press <b>Allow through firewall</b> and answer <b>Yes</b> to the Windows prompt.</li>
+            <li>The Foxy Timer installer sets this up for you. It's only needed with a hand-copied or older version.</li>
+        </ul>
+        <h3>2. A VPN is switched on</h3>
+        <p>VPN apps (NordVPN, company VPNs) often cut the laptop off from other devices on the same Wi-Fi. Disconnect the VPN, or turn on its "allow local network" / "Invisibility on LAN" option.</p>
+        <h3>3. The Wi-Fi keeps devices apart</h3>
+        <p>Guest and venue Wi-Fi often uses <b>client isolation</b>: devices can reach the internet but not each other. No software can get round that. Use your own router or switch for the show network, or ask the venue for a network without isolation.</p>
+        <h3>4. They're not really on the same network</h3>
+        <p>Check the phone isn't on mobile data or a different Wi-Fi (e.g. a 2.4 GHz and a 5 GHz network with different names can be separate). If the laptop has several connections (Wi-Fi and cable), the <b>This laptop</b> panel lists every address; try the one on the same network as the phone.</p>
+        <h3>5. The laptop's address changed</h3>
+        <p>The router hands out addresses and can change them, e.g. after a restart. The old links then stop working. Open <b>Share links &amp; QR</b> again for the new ones. On your own rig, giving the show laptop a fixed address avoids this.</p>
+    </section>
+
+    <section id="companion">
+        <h2>Companion / Stream Deck</h2>
+        <p>Foxy Timer works with <b>Bitfocus Companion</b>, so Stream Deck buttons can start, pause, nudge and step through the programme, and show live time and colour.</p>
+        <h3>1. Install the module</h3>
+        <p>In Companion, add a connection and search for <b>Foxy Presentation Timer</b>. If it isn't listed, import the module file you were given (Companion: <i>Modules → Import module package</i>).</p>
+        <h3>2. Fill in the connection settings</h3>
+        <dl class="fields">
+            <dt>Server URL</dt>
+            <dd><b>Foxy Timer for Windows:</b> copy it from the dashboard's <b>Companion / Stream Deck</b> window, e.g. <code>http://192.168.1.13:3000</code>. <b>Foxy Timer Online:</b> <code>https://foxytimer.com</code>.</dd>
+            <dt>Client API key</dt>
+            <dd><b>Windows:</b> copy it from the same window. <b>Online:</b> Business Shows gives you your account's key.</dd>
+            <dt>Room IDs to monitor</dt>
+            <dd>The room names, exactly as on the dashboard, separated by commas, e.g. <code>Main stage,Breakout 1</code>. The Windows window lists them ready to copy.</dd>
+            <dt>Poll interval</dt>
+            <dd>Leave at 1000 ms (once a second).</dd>
+        </dl>
+        <p>The connection turns green when it can reach Foxy Timer. The Stream Deck PC must be on the same network as the laptop (Windows) or online (Online).</p>
+        <h3>3. Build buttons</h3>
+        <p>Use the ready-made <b>presets</b>, or add these yourself. Each action asks which room.</p>
+        <div class="table-wrap"><table>
+            <thead><tr><th>Actions</th><th>Feedbacks &amp; text</th></tr></thead>
+            <tbody>
+                <tr><td>Start / Pause / Resume (smart toggle), Start, Pause, Resume, Reset</td><td>Timer colour (green / amber / red / overrun)</td></tr>
+                <tr><td>Nudge (±10 s, ±30 s, ±1 min, ±5 min)</td><td>Timer is running / paused / stopped</td></tr>
+                <tr><td>Set duration (5–60 min)</td><td>Status: time + speaker</td></tr>
+                <tr><td>Programme: Previous, Next, Take, Go to slot</td><td>Up next: next speaker · Rundown position · Item is live</td></tr>
+            </tbody>
+        </table></div>
+        <div class="tip"><b>Key changed?</b> If someone presses <b>Make a new key</b> on the laptop, paste the new key into Companion; the old one stops working at once.</div>
+    </section>
+
+    <section id="windows">
+        <h2>Foxy Timer for Windows</h2>
+        <h3>Start and stop</h3>
+        <ul>
+            <li><b>Start:</b> the <b>Foxy Timer</b> icon on the desktop or Start menu. It starts quietly in the background and opens the dashboard in your browser.</li>
+            <li><b>Stop or restart:</b> the <b>This laptop</b> panel on the dashboard. Closing the browser does <em>not</em> stop the timer, on purpose, so a show can't stop by accident.</li>
+            <li>Opening the icon again while it's running just reopens the dashboard.</li>
+        </ul>
+        <h3>On the laptop, no login</h3>
+        <p>The dashboard opens without a login <em>on the laptop itself</em>. Other devices can only use the links you give them.</p>
+        <h3>Where your rooms are kept</h3>
+        <p>In your Windows user folder (<code>%LOCALAPPDATA%\Foxy Timer\data</code>). Updating or reinstalling Foxy Timer keeps them. A running timer carries on at the right time after a restart.</p>
+        <h3>No internet needed</h3>
+        <p>Nothing Foxy Timer for Windows does goes over the internet: the pages, the timer, the QR codes and Companion all work on the show network alone.</p>
+    </section>
+
+    <section id="control">
+        <h2>Control page tips</h2>
+        <ul>
+            <li><b>Duration or End at:</b> count down a length of time, or to a clock time. Type a value and press <b>Apply</b>; nothing changes on screen until you do.</li>
+            <li><b>How it counts</b> (next to Timer / Clock): <b>Count down</b>; <b>Down, then up</b> (carries on counting the overrun); or <b>Count up</b> (a stopwatch from 0:00).</li>
+            <li><b>Display Settings</b> (bottom of the page): warning thresholds, colours (type a hex code or pick), background and chromakey, size, and what the screen shows, including time of day and finish time.</li>
+            <li><b>Several control panels:</b> one is in control and the others watch (orange frame). Tap <b>Take over</b> to take control. A panel that drops out keeps its place for 30 minutes.</li>
+            <li><b>Keyboard:</b> <kbd>Space</kbd> start/pause · <kbd>R</kbd> reset · <kbd>+</kbd> / <kbd>-</kbd> ±1 min (hold Shift for ±5).</li>
+        </ul>
+    </section>
+</main>
+<script>
+    // "Back" returns to wherever Help was opened from (control page or dashboard).
+    if (document.referrer && new URL(document.referrer).origin === location.origin) {
+        document.getElementById('backLink').href = document.referrer;
+    }
+</script>
+</body>
+</html>

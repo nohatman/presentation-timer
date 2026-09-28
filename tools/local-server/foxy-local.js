@@ -9,8 +9,10 @@
 //   node tools/local-server/foxy-local.js status [--json]
 //   ... start | stop [--force-unmanaged] | restart
 //   ... open-control [--room slug] | open-display [--room slug] | links
-//   ... go    start if needed, open the dashboard, then the menu (the download's
-//             'Start Foxy Timer' uses this)
+//   ... go    start if needed, open the dashboard, then the menu
+//   ... open  start if needed, open the dashboard, exit (no menu, no input) -
+//             what the 'Foxy Timer' icon runs, with no window. If it can't,
+//             the reason is written to FOXY_RESULT_FILE (shown in a message box)
 //   options: --port N (default 3000, or FOXY_PORT)
 //
 // This runs the server as an explicit LOCAL show-day process (FOXY_MODE=local).
@@ -122,6 +124,24 @@ async function go() {
   return menu();
 }
 
+// For the windowless 'Foxy Timer' icon: never waits for input.
+async function openQuietly() {
+  const fail = (message) => {
+    console.log(message);
+    if (process.env.FOXY_RESULT_FILE) { try { fs.writeFileSync(process.env.FOXY_RESULT_FILE, message); } catch { /* nothing to report to */ } }
+    return 1;
+  };
+  const st = await sup.gatherStatus(cfg);
+  if (st.state === 'STOPPED') {
+    const r = await sup.start(cfg);
+    if (!r.ok) return fail(`Foxy Timer could not start.\n\n${r.message}`);
+  } else if (!(st.managed && ['RUNNING', 'STALE_BUILD', 'UNHEALTHY'].includes(st.state))) {
+    return fail(`Foxy Timer could not start.\n\n${st.headline}.${st.action ? ' ' + st.action : ''}`);
+  }
+  openDashboard();
+  return 0;
+}
+
 async function doStart() { const r = await sup.start(cfg); console.log(r.message); return r.ok ? 0 : 1; }
 async function doStop(force) { const r = await sup.stop(cfg, { forceUnmanaged: force }); console.log(r.message); return r.ok ? 0 : 1; }
 async function doRestart() { const r = await sup.restart(cfg); console.log(r.message); return r.ok ? 0 : 1; }
@@ -181,8 +201,9 @@ async function menu() {
     case 'links': code = await showLinks(null, opt('room')); break;
     case 'menu': code = await menu(); break;
     case 'go': code = await go(); break;
+    case 'open': code = await openQuietly(); break;
     default:
-      console.log('Usage: foxy-local.js [go|status|start|stop|restart|open-control|open-display|links] [--port N] [--room name] [--json]');
+      console.log('Usage: foxy-local.js [go|open|status|start|stop|restart|open-control|open-display|links] [--port N] [--room name] [--json]');
       code = 1;
   }
   process.exit(code);
