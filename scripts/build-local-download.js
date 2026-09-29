@@ -13,7 +13,7 @@
 //                                  Windows Firewall rule, uninstaller
 //   FoxyTimer-Windows-<commit>.zip the same files, portable
 // Both contain FoxyTimer/:
-//   Foxy Timer.exe   windowless launcher (tools/windows): start + open the dashboard
+//   Foxy Timer.exe   the desktop app (desktop/, Electron): dashboard window + second-screen output
 //   README.txt, build.txt
 //   node/node.exe    the same Node that ran this build, so the better-sqlite3
 //                    prebuilt binary matches it
@@ -75,14 +75,43 @@ for (const dir of ['deps', 'src']) fs.rmSync(path.join(APP, 'node_modules', 'bet
 fs.mkdirSync(path.join(OUT, 'node'));
 fs.copyFileSync(process.execPath, path.join(OUT, 'node', 'node.exe'));
 
-// "Foxy Timer.exe": the windowless launcher (tools/windows/FoxyTimerLauncher.cs),
-// compiled with the C# compiler that ships with Windows, with the fox icon.
-const csc = path.join(winDir, 'Microsoft.NET', 'Framework64', 'v4.0.30319', 'csc.exe');
-run(csc, ['/nologo', '/target:winexe', '/optimize+',
-  `/out:${path.join(OUT, 'Foxy Timer.exe')}`,
-  `/win32icon:${ICON}`,
-  '/reference:System.Windows.Forms.dll',
-  path.join(ROOT, 'tools', 'windows', 'FoxyTimerLauncher.cs')]);
+// "Foxy Timer.exe": the desktop app (desktop/, Electron) - its own window for
+// the dashboard, the display full screen on the second monitor. Packaged with
+// @electron/packager into OUT alongside node/ and app/. Needs `npm install` in
+// desktop/ once (Electron is a dev dependency there, not of the server).
+const DESKTOP = path.join(ROOT, 'desktop');
+if (!fs.existsSync(path.join(DESKTOP, 'node_modules', '@electron', 'packager'))) {
+  console.error('desktop/ has no node_modules - run: cd desktop && npm install');
+  process.exit(1);
+}
+const stage = path.join(DIST, 'desktop-stage');
+fs.rmSync(stage, { recursive: true, force: true });
+fs.mkdirSync(stage, { recursive: true });
+fs.copyFileSync(path.join(DESKTOP, 'main.js'), path.join(stage, 'main.js'));
+fs.copyFileSync(ICON, path.join(stage, 'foxy-timer.ico'));
+const desktopPkg = JSON.parse(fs.readFileSync(path.join(DESKTOP, 'package.json'), 'utf8'));
+fs.writeFileSync(path.join(stage, 'package.json'), JSON.stringify({
+  name: 'foxy-timer', productName: 'Foxy Timer', version: pkg.version, main: 'main.js', private: true,
+  description: desktopPkg.description,
+}, null, 2));
+const electronVersion = require(path.join(DESKTOP, 'node_modules', 'electron', 'package.json')).version;
+const packagerScript = `
+  const { packager } = await import('@electron/packager'); // ESM-only; resolved from desktop/
+  await packager({
+    dir: ${JSON.stringify(stage)}, out: ${JSON.stringify(path.join(DIST, 'desktop-out'))}, overwrite: true,
+    name: 'Foxy Timer', executableName: 'Foxy Timer', platform: 'win32', arch: 'x64',
+    electronVersion: ${JSON.stringify(electronVersion)}, icon: ${JSON.stringify(ICON)}, asar: true, prune: false,
+    appCopyright: 'Business Shows Limited',
+    win32metadata: { CompanyName: 'Business Shows Limited', ProductName: 'Foxy Timer', FileDescription: 'Foxy Timer for Windows' },
+  }).then((dirs) => console.log(dirs[0]));`;
+const packaged = execFileSync(process.execPath, ['--input-type=module', '-e', packagerScript], { cwd: DESKTOP, windowsHide: true }).toString().trim().split(/\r?\n/).pop();
+fs.cpSync(packaged, OUT, { recursive: true });
+// Chromium's own UI languages: English only (the pages are English anyway) - saves ~40 MB.
+for (const f of fs.readdirSync(path.join(OUT, 'locales'))) {
+  if (!/^en-(GB|US)\.pak$/.test(f)) fs.rmSync(path.join(OUT, 'locales', f));
+}
+fs.rmSync(path.join(DIST, 'desktop-out'), { recursive: true, force: true });
+fs.rmSync(stage, { recursive: true, force: true });
 fs.writeFileSync(path.join(OUT, 'build.txt'), commit + '\r\n');
 
 // Troubleshooting only: the text menu, same data folder as the icon.
@@ -112,9 +141,10 @@ fs.writeFileSync(path.join(OUT, 'README.txt'), [
   'internet connection needed.',
   '',
   'START',
-  '  Click the Foxy Timer icon. It starts in the background and opens the',
-  '  dashboard in your browser, with a "Main stage" room ready. Add more rooms',
-  '  there, one per stage or breakout.',
+  '  Click the Foxy Timer icon. The Foxy Timer window opens with the dashboard',
+  '  and a "Main stage" room ready; add more rooms there, one per stage or',
+  '  breakout. If a second screen is connected, the timer appears on it full',
+  '  screen automatically - choose the room and screen from the Output menu.',
   '',
   'CONNECT SCREENS AND PHONES',
   '  Put them on the same network as this laptop. On a room, press',
@@ -128,8 +158,8 @@ fs.writeFileSync(path.join(OUT, 'README.txt'), [
   '  Companion.',
   '',
   'STOP',
-  '  "Stop Foxy Timer" in the dashboard\'s "This laptop" panel. Closing the',
-  '  browser leaves the timer running, on purpose.',
+  '  Close the Foxy Timer window and choose "Stop Foxy Timer and close", or',
+  '  "Close, keep the timer running" to leave phones and screens working.',
   '',
   'HELP',
   '  The dashboard\'s Help button: connecting devices, Companion, show-day tips.',
@@ -191,7 +221,7 @@ if (!iscc) {
     'Compression=lzma2/max',
     'SolidCompression=yes',
     'WizardStyle=modern',
-    'CloseApplications=no',
+    'CloseApplications=yes', // the app window is closed (with the user's OK) before files are replaced
     '',
     '[Tasks]',
     'Name: "desktopicon"; Description: "Put a Foxy Timer icon on the desktop"; GroupDescription: "Shortcuts:"',
@@ -215,7 +245,7 @@ if (!iscc) {
     'Filename: "{app}\\Foxy Timer.exe"; Description: "Start Foxy Timer now"; Flags: postinstall nowait skipifsilent runasoriginaluser',
     '',
     '[UninstallRun]',
-    'Filename: "{app}\\Foxy Timer.exe"; Parameters: "stop"; Flags: runhidden waituntilterminated; RunOnceId: "StopFoxyTimer"',
+    'Filename: "{app}\\Foxy Timer.exe"; Parameters: "--stop"; Flags: runhidden waituntilterminated; RunOnceId: "StopFoxyTimer"',
     `Filename: "{sys}\\netsh.exe"; Parameters: "${deleteRule}"; Flags: runhidden; RunOnceId: "RemoveFirewallRule"`,
     '',
     '[Code]',
@@ -225,7 +255,7 @@ if (!iscc) {
     '  ResultCode: Integer;',
     'begin',
     "  if FileExists(ExpandConstant('{app}\\Foxy Timer.exe')) then",
-    "    Exec(ExpandConstant('{app}\\Foxy Timer.exe'), 'stop', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);",
+    "    Exec(ExpandConstant('{app}\\Foxy Timer.exe'), '--stop', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);",
     "  Result := '';",
     'end;',
     ''

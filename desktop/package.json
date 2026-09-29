@@ -1,0 +1,13 @@
+{
+  "name": "foxy-timer-desktop",
+  "private": true,
+  "description": "Foxy Timer for Windows - desktop app shell (Electron) around the local engine",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "@electron/packager": "^20.3.0",
+    "electron": "^44.5.0"
+  }
+}
