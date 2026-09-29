@@ -653,3 +653,28 @@ test('count up (stopwatch) and the display info-line settings: stored, broadcast
     assert.match(g.timeDisplay, /^00:5\d$/);
   } finally { c.socket.close(); }
 });
+
+test('Companion (REST) nudges go the same way as the control page: + adds time, - takes it off, running or paused', async () => {
+  const { room, c } = await newControl();
+  try {
+    await c.send('startTimer', { timerMode: 'duration', durationMs: 30 * MIN });
+    const remaining = async () => {
+      const g = await rest(room, 'GET', 'companion');
+      const [m, s] = g.timeDisplay.split(':').map(Number);
+      return m * 60 + s;
+    };
+    const before = await remaining();
+    await rest(room, 'POST', 'nudge', { ms: MIN });
+    const plus = await remaining();
+    assert.ok(plus >= before + 58 && plus <= before + 61, `+1 min while running: ${before}s -> ${plus}s`);
+    await rest(room, 'POST', 'nudge', { ms: -5 * MIN });
+    const minus = await remaining();
+    assert.ok(minus >= plus - 302 && minus <= plus - 298, `-5 min while running: ${plus}s -> ${minus}s`);
+    await rest(room, 'POST', 'pause');
+    const paused = await remaining();
+    await rest(room, 'POST', 'nudge', { ms: MIN });
+    assert.equal(await remaining(), paused + 60, '+1 min while paused');
+    const s = await rest(room, 'GET', 'state');
+    assert.equal(s.ok, true);
+  } finally { c.socket.close(); }
+});

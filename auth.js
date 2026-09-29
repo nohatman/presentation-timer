@@ -4,6 +4,7 @@
 // etc.) - every check resolves identity from a server-issued secret (API key or
 // room token) looked up against the database.
 
+const os = require('os');
 const db = require('./db');
 
 // Express middleware - requires `Authorization: Bearer <apiKey>`, attaches req.client.
@@ -191,11 +192,39 @@ function isSameOrigin(req) {
 const LOOPBACK_PEERS = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 const LOOPBACK_HOST = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i;
 
+// This machine's own IPv4 addresses. The laptop reaching itself on its LAN
+// address (e.g. via a Control page opened from a LAN link) arrives FROM that
+// address - another device can't use it as its source and complete a TCP
+// connection, so it identifies the laptop as reliably as loopback does.
+function ownAddresses() {
+  const out = new Set();
+  for (const list of Object.values(os.networkInterfaces())) {
+    for (const a of list || []) if (a.family === 'IPv4' || a.family === 4) out.add(a.address);
+  }
+  return out;
+}
+
+function isThisMachine(req) {
+  const peer = String((req.socket && req.socket.remoteAddress) || '').replace(/^::ffff:/, '');
+  if (LOOPBACK_PEERS.has(peer) || peer === '127.0.0.1') return { ok: true, own: null };
+  const own = ownAddresses();
+  return { ok: own.has(peer), own };
+}
+
+// The Host must name this machine too (loopback, or one of its own addresses)
+// - that is what stops a DNS-rebinding page (Host = attacker's domain).
+function hostIsThisMachine(host, own) {
+  if (LOOPBACK_HOST.test(host)) return true;
+  const m = /^(\d{1,3}(?:\.\d{1,3}){3})(:\d+)?$/.exec(host);
+  return !!m && (own || ownAddresses()).has(m[1]);
+}
+
 function isLocalOperatorRequest(req) {
+  if (process.env.FOXY_MODE !== 'local') return false;
   const fetchSite = req.headers['sec-fetch-site'];
-  return process.env.FOXY_MODE === 'local'
-    && LOOPBACK_PEERS.has(req.socket && req.socket.remoteAddress)
-    && LOOPBACK_HOST.test(req.headers.host || '')
+  const machine = isThisMachine(req);
+  return machine.ok
+    && hostIsThisMachine(req.headers.host || '', machine.own)
     && isSameOrigin(req)
     && (!fetchSite || fetchSite === 'same-origin' || fetchSite === 'none');
 }

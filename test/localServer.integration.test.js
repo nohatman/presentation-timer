@@ -42,6 +42,22 @@ function spawnDecoy(code, args = []) {
 }
 const alive = (pid) => osproc.isPidAlive(pid);
 
+// One request on its own connection. The global fetch keeps connections open
+// and reuses them; across a restart that means talking to a socket the old
+// (now exited) server owned -> ECONNRESET. Real launcher runs are separate
+// processes, so they never hit this.
+function request(method, url, headers = {}) {
+  return new Promise((resolve, reject) => {
+    const req = require('node:http').request(url, { method, headers, agent: false }, (res) => {
+      let body = '';
+      res.on('data', (c) => { body += c; });
+      res.on('end', () => resolve({ status: res.statusCode, json: () => JSON.parse(body) }));
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
 let cfg; let port;
 let n = 0;
 async function freshCfg() {
@@ -87,7 +103,7 @@ test('lifecycle: stopped -> start -> healthy -> no second copy -> restart change
 
   // the shutdown door is closed to anything but the launcher's token
   for (const headers of [{}, { 'x-foxy-shutdown-token': 'wrong' }]) {
-    const r = await fetch(`http://127.0.0.1:${port}/api/local/shutdown`, { method: 'POST', headers });
+    const r = await request('POST', `http://127.0.0.1:${port}/api/local/shutdown`, headers);
     assert.equal(r.status, 403);
   }
   assert.equal(alive(pid1), true);
@@ -108,7 +124,7 @@ test('lifecycle: stopped -> start -> healthy -> no second copy -> restart change
   assert.match(stale.action, /Restart/);
 
   // the server itself reports its own staleness through /api/health
-  const health = await (await fetch(`http://127.0.0.1:${port}/api/health`)).json();
+  const health = (await request('GET', `http://127.0.0.1:${port}/api/health`)).json();
   assert.equal(health.app, 'foxy-presentation-timer');
   assert.equal(health.pid, pid2);
   assert.equal(health.stale, false);

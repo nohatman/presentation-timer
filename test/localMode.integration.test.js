@@ -35,11 +35,11 @@ http.createServer = originalCreateServer;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Raw request so the Host header can be set (fetch forbids it).
-function request(method, pathname, { headers = {}, body, host = `localhost:${PORT}` } = {}) {
+function request(method, pathname, { headers = {}, body, host = `localhost:${PORT}`, via } = {}) {
   return new Promise((resolve, reject) => {
     const data = body === undefined ? null : JSON.stringify(body);
     const req = http.request({
-      host: '127.0.0.1', port: PORT, method, path: pathname,
+      host: via || '127.0.0.1', port: PORT, method, path: pathname, ...(via ? { localAddress: via } : {}),
       headers: { Host: host, ...(data ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } : {}), ...headers }
     }, (res) => {
       let text = '';
@@ -82,6 +82,11 @@ test('first run: starter room, no-login dashboard on the laptop, LAN links', asy
   const lan = selectLanAddresses().primary;
   const linkHost = new URL(rooms.json[0].controlUrl).host;
   assert.equal(linkHost, lan ? `${lan.address}:${PORT}` : `localhost:${PORT}`);
+
+  // The laptop reaching itself on its own LAN address counts too (e.g. the
+  // Dashboard link on a Control page opened from a LAN link)
+  if (lan) assert.equal((await request('GET', '/api/rooms', { host: `${lan.address}:${PORT}` })).status, 200, 'own LAN address as Host');
+  if (lan) assert.equal((await request('GET', '/api/rooms', { host: `${lan.address}:${PORT}`, via: lan.address })).status, 200, 'connecting from the laptop own LAN address');
 
   // 127.0.0.1 counts as the laptop too
   assert.equal((await request('GET', '/api/rooms', { host: `127.0.0.1:${PORT}` })).status, 200);

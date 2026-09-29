@@ -11,6 +11,7 @@
 // hand, or something else holding the port, is reported, never silently killed.
 
 const fs = require('fs');
+const http = require('http');
 const path = require('path');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
@@ -49,12 +50,32 @@ function writeRecord(cfg, rec) {
 }
 function removeRecord(cfg) { try { fs.unlinkSync(cfg.pidFile); } catch { /* already gone */ } }
 
+// One HTTP request on its OWN connection, never a kept-alive one. The global
+// fetch reuses idle connections; the server closes idle ones after ~5 s, and a
+// request that reuses one at that moment fails - which read as a healthy server
+// being "not answering" (UNHEALTHY), especially from the long-lived menu and on
+// a busy laptop. Also never reuses a socket owned by a server that has since
+// been restarted. -> { status, json() } or throws (timeout: TimeoutError).
+function localRequest(method, url, { headers = {}, timeoutMs = 4000 } = {}) {
+  return new Promise((resolve, reject) => {
+    const req = http.request(url, { method, headers, agent: false }, (res) => {
+      let body = '';
+      res.setEncoding('utf8');
+      res.on('data', (c) => { body += c; });
+      res.on('end', () => resolve({ status: res.statusCode, ok: res.statusCode >= 200 && res.statusCode < 300, json: () => JSON.parse(body) }));
+    });
+    req.setTimeout(timeoutMs, () => { const e = new Error('timeout'); e.name = 'TimeoutError'; req.destroy(e); });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
 // -> parsed /api/health when a Foxy server answers, else null. `reason` explains why not.
-async function fetchHealth(port, timeoutMs = 2000) {
+async function fetchHealth(port, timeoutMs = 4000) { // generous: a busy show laptop can be slow to answer
   try {
-    const res = await fetch(`http://127.0.0.1:${port}/api/health`, { signal: AbortSignal.timeout(timeoutMs), cache: 'no-store' });
+    const res = await localRequest('GET', `http://127.0.0.1:${port}/api/health`, { timeoutMs });
     if (!res.ok) return { health: null, reason: `HTTP ${res.status} from /api/health (server predates health reporting, or is not Foxy)` };
-    const h = await res.json();
+    const h = res.json();
     if (!h || h.app !== 'foxy-presentation-timer') return { health: null, reason: 'a web server answered, but it is not Foxy' };
     return { health: h, reason: null };
   } catch (e) {
@@ -172,8 +193,8 @@ async function stop(cfg, opts = {}) {
     const pid = st._record.pid;
     let how = 'clean shutdown';
     try {
-      const res = await fetch(`http://127.0.0.1:${cfg.port}/api/local/shutdown`, {
-        method: 'POST', headers: { 'x-foxy-shutdown-token': st._record.token || '' }, signal: AbortSignal.timeout(3000),
+      const res = await localRequest('POST', `http://127.0.0.1:${cfg.port}/api/local/shutdown`, {
+        headers: { 'x-foxy-shutdown-token': st._record.token || '' }, timeoutMs: 3000,
       });
       if (!res.ok) how = `shutdown request refused (HTTP ${res.status})`;
     } catch { how = 'shutdown request not answered'; }
@@ -213,4 +234,5 @@ async function restart(cfg, opts = {}) {
   return { ...started, oldPid: before.pid || null, message: started.ok ? `Restarted: PID ${before.pid || '-'} -> ${started.pid}.` : started.message };
 }
 
-module.exports = { makeConfig, gatherStatus, fetchHealth, start, stop, restart, readRecord, tailLog };
+module.exports = {
+  localRequest, makeConfig, gatherStatus, fetchHealth, start, stop, restart, readRecord, tailLog };

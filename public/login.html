@@ -143,6 +143,22 @@
     </div>
 
     <script>
+        // Foxy Timer for Windows keeps its own rooms and has no accounts: the
+        // dashboard opens without a login on the laptop itself, and Foxy Timer
+        // Online logins don't exist here. Say so instead of a login that can't work.
+        fetch('/api/health').then(r => r.json()).then(h => {
+            if (!h || h.mode !== 'local') return;
+            document.getElementById('loginForm').style.display = 'none';
+            document.querySelector('.subtitle').textContent = 'Foxy Timer for Windows';
+            const note = document.getElementById('noticeMessage');
+            note.innerHTML = '<b>No sign-in needed on this version.</b><br>The dashboard opens on the show laptop itself: '
+                + 'click the Foxy Timer icon there, or open <b>http://localhost:' + (h.port || 3000) + '/dashboard</b> on it.<br><br>'
+                + 'Phones and screens use the Control and Display links from the dashboard. '
+                + 'Your foxytimer.com (Foxy Timer Online) login doesn’t apply here.';
+            note.style.display = 'block';
+            document.querySelector('.footer-note').innerHTML = '<a href="/help#connect" style="color:#90caf9;">Help: connecting devices</a>';
+        }).catch(() => {});
+
         const form = document.getElementById('loginForm');
         const errorEl = document.getElementById('errorMessage');
         const noticeEl = document.getElementById('noticeMessage');

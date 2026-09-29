@@ -966,7 +966,7 @@ app.post('/api/admin/rooms/:id/start', ...adminRoomAuth, (req, res) => {
     return res.json({ ok: false, error: 'Timer is already running' });
   }
   timerModes.startTimer(timerState, {}, Date.now());
-  io.to(roomId).emit('timerState', timerState);
+  emitState(roomId, timerState);
   scheduleSave();
   res.json({ ok: true, roomId, slug: room.slug, clientName: room.client_name, state: timerState });
 });
@@ -978,7 +978,7 @@ app.post('/api/admin/rooms/:id/pause', ...adminRoomAuth, (req, res) => {
   }
   timerState.mode = 'paused';
   timerState.pauseTime = Date.now();
-  io.to(roomId).emit('timerState', timerState);
+  emitState(roomId, timerState);
   scheduleSave();
   res.json({ ok: true, roomId, slug: room.slug, clientName: room.client_name, state: timerState });
 });
@@ -989,7 +989,7 @@ app.post('/api/admin/rooms/:id/resume', ...adminRoomAuth, (req, res) => {
     return res.json({ ok: false, error: 'Timer is not paused' });
   }
   timerModes.resumeTimer(timerState, Date.now());
-  io.to(roomId).emit('timerState', timerState);
+  emitState(roomId, timerState);
   scheduleSave();
   res.json({ ok: true, roomId, slug: room.slug, clientName: room.client_name, state: timerState });
 });
@@ -997,7 +997,7 @@ app.post('/api/admin/rooms/:id/resume', ...adminRoomAuth, (req, res) => {
 app.post('/api/admin/rooms/:id/reset', ...adminRoomAuth, (req, res) => {
   const { roomId, timerState, room } = req;
   timerModes.resetTimer(timerState, Date.now());
-  io.to(roomId).emit('timerState', timerState);
+  emitState(roomId, timerState);
   scheduleSave();
   res.json({ ok: true, roomId, slug: room.slug, clientName: room.client_name, state: timerState });
 });
@@ -1400,7 +1400,7 @@ app.post('/api/rooms/:roomId/start', ...roomAuth, (req, res) => {
 
   timerModes.startTimer(timerState, {}, Date.now()); // End at rooms start with time-to-target
 
-  io.to(roomId).emit('timerState', timerState);
+  emitState(roomId, timerState);
   scheduleSave();
 
   res.json({ ok: true, roomId: req.params.roomId, state: timerState });
@@ -1418,7 +1418,7 @@ app.post('/api/rooms/:roomId/pause', ...roomAuth, (req, res) => {
   timerState.mode = 'paused';
   timerState.pauseTime = Date.now();
 
-  io.to(roomId).emit('timerState', timerState);
+  emitState(roomId, timerState);
   scheduleSave();
 
   res.json({ ok: true, roomId: req.params.roomId, state: timerState });
@@ -1435,7 +1435,7 @@ app.post('/api/rooms/:roomId/resume', ...roomAuth, (req, res) => {
 
   timerModes.resumeTimer(timerState, Date.now());
 
-  io.to(roomId).emit('timerState', timerState);
+  emitState(roomId, timerState);
   scheduleSave();
 
   res.json({ ok: true, roomId: req.params.roomId, state: timerState });
@@ -1448,7 +1448,7 @@ app.post('/api/rooms/:roomId/reset', ...roomAuth, (req, res) => {
 
   timerModes.resetTimer(timerState, Date.now());
 
-  io.to(roomId).emit('timerState', timerState);
+  emitState(roomId, timerState);
   scheduleSave();
 
   res.json({ ok: true, roomId: req.params.roomId, state: timerState });
@@ -1464,15 +1464,12 @@ app.post('/api/rooms/:roomId/nudge', ...roomAuth, (req, res) => {
   const { roomId } = req;
   const timerState = req.timerState;
 
-  if (timerState.mode === 'running') {
-    timerState.startTime -= ms;
-  } else if (timerState.mode === 'paused') {
-    timerState.pauseTime -= ms;
-  } else {
-    timerModes.nudge(timerState, ms, Date.now());
-  }
+  // Same as the control page's nudge buttons. (This used to shift startTime,
+  // which reversed a running timer's nudges - +1 min took a minute off - and
+  // ignored speed and End at runs.)
+  timerModes.nudge(timerState, ms, Date.now());
 
-  io.to(roomId).emit('timerState', timerState);
+  emitState(roomId, timerState);
   scheduleSave();
 
   res.json({ ok: true, roomId: req.params.roomId, state: timerState });
@@ -1489,7 +1486,7 @@ app.post('/api/rooms/:roomId/set-duration', ...roomAuth, (req, res) => {
   const timerState = req.timerState;
   timerModes.setDuration(timerState, durationMs, Date.now());
 
-  io.to(roomId).emit('timerState', timerState);
+  emitState(roomId, timerState);
   scheduleSave();
 
   res.json({ ok: true, roomId: req.params.roomId, state: timerState });

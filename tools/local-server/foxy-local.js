@@ -155,7 +155,7 @@ async function openQuietly() {
 async function stopOtherCopy() {
   const st = await sup.gatherStatus(cfg);
   if (st.state !== 'UNMANAGED') return 0;
-  try { await fetch(`http://localhost:${cfg.port}/api/local/stop`, { method: 'POST', signal: AbortSignal.timeout(3000) }); } catch { /* older copy */ }
+  try { await sup.localRequest('POST', `http://localhost:${cfg.port}/api/local/stop`, { timeoutMs: 3000 }); } catch { /* older copy */ }
   for (let i = 0; i < 20; i++) {
     await new Promise((r) => setTimeout(r, 250));
     if ((await sup.gatherStatus(cfg)).state === 'STOPPED') { console.log('Stopped the other copy (clean shutdown).'); return 0; }
