@@ -25,6 +25,7 @@ const sup = require('./lib/supervisor');
 const { formatStatusLines } = require('./lib/format');
 const rooms = require('./lib/rooms');
 const { openUrl } = require('./lib/osproc');
+const procsafe = require('./lib/procsafe');
 const fs = require('fs');
 
 const args = process.argv.slice(2);
@@ -132,6 +133,12 @@ async function openQuietly() {
     return 1;
   };
   const st = await sup.gatherStatus(cfg);
+  if (st.state === 'UNMANAGED') {
+    // Another copy of Foxy Timer (e.g. an older download left running) has the
+    // port. Exit code 3 + its folder: Foxy Timer.exe asks whether to stop it.
+    fail(`OTHER_COPY\n${procsafe.otherCopyFolder((st.portOwner && st.portOwner.commandLine) || '')}`);
+    return 3;
+  }
   if (st.state === 'STOPPED') {
     const r = await sup.start(cfg);
     if (!r.ok) return fail(`Foxy Timer could not start.\n\n${r.message}`);
@@ -140,6 +147,22 @@ async function openQuietly() {
   }
   openDashboard();
   return 0;
+}
+
+// Stop ANOTHER copy of Foxy Timer holding the port (the operator said Yes in
+// Foxy Timer.exe). Clean first - copies from a43de83 on stop from the laptop
+// via /api/local/stop - then the existing guarded force-stop for older ones.
+async function stopOtherCopy() {
+  const st = await sup.gatherStatus(cfg);
+  if (st.state !== 'UNMANAGED') return 0;
+  try { await fetch(`http://localhost:${cfg.port}/api/local/stop`, { method: 'POST', signal: AbortSignal.timeout(3000) }); } catch { /* older copy */ }
+  for (let i = 0; i < 20; i++) {
+    await new Promise((r) => setTimeout(r, 250));
+    if ((await sup.gatherStatus(cfg)).state === 'STOPPED') { console.log('Stopped the other copy (clean shutdown).'); return 0; }
+  }
+  const r = await sup.stop(cfg, { forceUnmanaged: true });
+  console.log(r.message);
+  return r.ok ? 0 : 1;
 }
 
 async function doStart() { const r = await sup.start(cfg); console.log(r.message); return r.ok ? 0 : 1; }
@@ -202,6 +225,7 @@ async function menu() {
     case 'menu': code = await menu(); break;
     case 'go': code = await go(); break;
     case 'open': code = await openQuietly(); break;
+    case 'stop-other': code = await stopOtherCopy(); break;
     default:
       console.log('Usage: foxy-local.js [go|open|status|start|stop|restart|open-control|open-display|links] [--port N] [--room name] [--json]');
       code = 1;

@@ -60,4 +60,12 @@ function parseNetstatListener(text, port) {
   return null;
 }
 
-module.exports = { normPath, isNodeImage, commandLineNamesEntry, canTerminateManaged, canForceTerminateUnmanaged, parseNetstatListener };
+// The folder a Foxy server was started from, from its command line:
+// "...\FoxyTimer\node\node.exe ...\FoxyTimer\app\server.js" -> "...\FoxyTimer".
+function otherCopyFolder(commandLine) {
+  const m = /([A-Za-z]:[^"]*?)[\\/]app[\\/]server\.js/i.exec(commandLine) || /([A-Za-z]:[^"]*?)[\\/]server\.js/i.exec(commandLine);
+  if (!m) return 'another folder';
+  return m[1].replace(/^.*\s(?=[A-Za-z]:\\)/, ''); // drop a leading "node.exe " part
+}
+
+module.exports = { otherCopyFolder, normPath, isNodeImage, commandLineNamesEntry, canTerminateManaged, canForceTerminateUnmanaged, parseNetstatListener };

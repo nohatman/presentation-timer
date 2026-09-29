@@ -37,6 +37,36 @@ static class FoxyTimerLauncher
         try { File.Delete(resultFile); } catch { }
 
         string command = args.Length > 0 ? string.Join(" ", args) : "open";
+        int code = RunNode(node, script, command, baseDir, dataDir, resultFile);
+
+        // 3 = another copy of Foxy Timer (e.g. an older download left running)
+        // already has the port. Offer to stop it and carry on.
+        if (code == 3 && command == "open")
+        {
+            string[] lines = File.Exists(resultFile) ? File.ReadAllLines(resultFile) : new string[0];
+            string folder = lines.Length > 1 ? lines[1] : "another folder";
+            DialogResult answer = MessageBox.Show(
+                "Another copy of Foxy Timer is already running, from:\n" + folder +
+                "\n\nStop it and start this one?\n\n(Anything connected to the other copy disconnects.)",
+                "Foxy Timer", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            if (answer != DialogResult.Yes) return 0;
+            RunNode(node, script, "stop-other", baseDir, dataDir, resultFile);
+            try { File.Delete(resultFile); } catch { }
+            code = RunNode(node, script, "open", baseDir, dataDir, resultFile);
+        }
+
+        if (code != 0 && command == "open")
+        {
+            string message = File.Exists(resultFile) ? File.ReadAllText(resultFile).Trim() : "";
+            if (message.Length == 0) message = "Foxy Timer could not start. Try again, or restart the laptop.";
+            MessageBox.Show(message + "\n\nHelp: open the Foxy Timer dashboard's Help, or see foxytimer.com.",
+                "Foxy Timer", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+        return code;
+    }
+
+    static int RunNode(string node, string script, string command, string baseDir, string dataDir, string resultFile)
+    {
         var psi = new ProcessStartInfo(node, "\"" + script + "\" " + command)
         {
             UseShellExecute = false,
@@ -49,21 +79,10 @@ static class FoxyTimerLauncher
         psi.EnvironmentVariables["FOXY_RESULT_FILE"] = resultFile;
         string buildFile = Path.Combine(baseDir, "build.txt");
         if (File.Exists(buildFile)) psi.EnvironmentVariables["FOXY_BUILD_ID"] = File.ReadAllText(buildFile).Trim();
-
-        int code;
         using (Process p = Process.Start(psi))
         {
             p.WaitForExit();
-            code = p.ExitCode;
+            return p.ExitCode;
         }
-
-        if (code != 0 && command == "open")
-        {
-            string message = File.Exists(resultFile) ? File.ReadAllText(resultFile).Trim() : "";
-            if (message.Length == 0) message = "Foxy Timer could not start. Try again, or restart the laptop.";
-            MessageBox.Show(message + "\n\nHelp: open the Foxy Timer dashboard's Help, or see foxytimer.com.",
-                "Foxy Timer", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-        }
-        return code;
     }
 }

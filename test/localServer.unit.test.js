@@ -244,3 +244,15 @@ test('pickRoom: explicit slug wins; a single room is unambiguous; several need a
   assert.equal(pickRoom(rooms, { lastSlug: 'main' }).room.slug, 'main');
   assert.equal(pickRoom(rooms, { lastSlug: 'deleted' }).room, null);
 });
+
+test('otherCopyFolder: the folder another Foxy Timer copy runs from, for the "stop it?" question', () => {
+  const { otherCopyFolder } = require('../tools/local-server/lib/procsafe');
+  assert.equal(
+    otherCopyFolder(String.raw`C:\Users\Andrew\Desktop\FoxyTimer-Windows-a4e033a\FoxyTimer\node\node.exe C:\Users\Andrew\Desktop\FoxyTimer-Windows-a4e033a\FoxyTimer\app\server.js`),
+    String.raw`C:\Users\Andrew\Desktop\FoxyTimer-Windows-a4e033a\FoxyTimer`);
+  assert.equal(
+    otherCopyFolder(String.raw`"C:\Program Files\Foxy Timer\node\node.exe" "C:\Program Files\Foxy Timer\app\server.js"`),
+    String.raw`C:\Program Files\Foxy Timer`);
+  assert.equal(otherCopyFolder(String.raw`"C:\Program Files\nodejs\node.exe" C:\dev\presentation-timer\server.js`), String.raw`C:\dev\presentation-timer`);
+  assert.equal(otherCopyFolder('node server.js'), 'another folder');
+});
