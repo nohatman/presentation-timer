@@ -1602,7 +1602,14 @@ const contactAttempts = new Map(); // ip -> timestamps[]
 const CONTACT_RATE_LIMIT = 5;
 const CONTACT_RATE_WINDOW_MS = 60 * 60 * 1000;
 
-app.post('/api/contact', (req, res) => {
+// The front page's contact form and "Try it now" demo rooms belong to Foxy
+// Timer Online; on a show laptop they'd only let LAN devices fill its database.
+function onlineOnly(req, res, next) {
+  if (process.env.FOXY_MODE === 'local') return res.status(404).json({ ok: false, error: 'Not available on Foxy Timer for Windows' });
+  next();
+}
+
+app.post('/api/contact', onlineOnly, (req, res) => {
   const now = Date.now();
   const recent = (contactAttempts.get(req.ip) || []).filter((t) => now - t < CONTACT_RATE_WINDOW_MS);
   if (recent.length >= CONTACT_RATE_LIMIT) {
@@ -1764,7 +1771,7 @@ function getDemoClientId() {
   return existing ? existing.id : db.createClient(demoRooms.DEMO_CLIENT_NAME).id;
 }
 
-app.post('/api/demo', async (req, res) => {
+app.post('/api/demo', onlineOnly, async (req, res) => {
   const clientId = getDemoClientId();
   if (db.countUnexpiredRoomsForClient(clientId) >= demoConfig.maxActive) {
     return res.status(503).json({ ok: false, error: 'The demo is very busy right now. Please try again in a few minutes.' });
@@ -1874,7 +1881,7 @@ app.get('/help', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'help.html'));
 });
 
-app.get('/try', (req, res) => {
+app.get('/try', onlineOnly, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'try.html'));
 });
 

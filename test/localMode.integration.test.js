@@ -153,6 +153,12 @@ test('This laptop panel: status with addresses and a firewall reading; laptop-on
   }
 });
 
+test('Online-only features are switched off on the laptop: demo rooms, contact form, /try', async () => {
+  assert.equal((await request('POST', '/api/demo', { host: `192.168.1.50:${PORT}` })).status, 404);
+  assert.equal((await request('POST', '/api/contact', { body: { name: 'A', email: 'a@b.co' }, host: `192.168.1.50:${PORT}` })).status, 404);
+  assert.equal((await request('GET', '/try')).status, 404);
+});
+
 test('nobody else gets the no-login dashboard', async () => {
   const cases = [
     ['a non-loopback Host (DNS rebinding)', { host: `evil.example:${PORT}` }],
