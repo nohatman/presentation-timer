@@ -39,6 +39,19 @@
             padding-bottom: calc(2.75rem + env(safe-area-inset-bottom, 0px));
             box-sizing: border-box;
         }
+        /* Optional uploaded background image (Display Appearance). Sits over the
+           background colour, so a transparent PNG shows that colour through. */
+        body.has-bg-image {
+            background-position: center;
+            background-repeat: no-repeat;
+            background-size: cover;
+        }
+        body.has-bg-image.bg-contain { background-size: contain; }
+        body.has-bg-image.bg-stretch { background-size: 100% 100%; }
+        /* Room label hidden: no need to keep room for it under the stack. */
+        body.no-room-badge .container {
+            padding-bottom: calc(2rem + env(safe-area-inset-bottom, 0px));
+        }
         .timer-display {
             /* vmin (not vw) so the clock scales off whichever dimension is
                tightest - on a portrait phone that's the width, but vmin still
@@ -70,6 +83,11 @@
                protection, this is just a hard backstop. */
             display: block;
             overflow: hidden;
+            /* .container is a fixed-height flex column: without this, a too-tall
+               clock is silently squashed to fit (and, with overflow:hidden, its
+               digits clipped) instead of overflowing - so fitToWidth's height
+               check measured nothing wrong and never shrank the font. */
+            flex-shrink: 0;
         }
         #timerDisplayText, #clockDisplayText {
             display: inline-block;
@@ -291,7 +309,7 @@
             <button class="control-button" onclick="window.open('/', '_blank')">Home</button>
         </div>
         
-        <div class="room-badge" style="position: absolute; bottom: max(1rem, env(safe-area-inset-bottom, 0px)); right: max(1.5rem, env(safe-area-inset-right, 0px)); background: rgba(255,255,255,0.08); padding: 5px 12px; border-radius: 5px; font-size: 0.8rem; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.12); opacity: 0.6;">
+        <div class="room-badge" id="roomBadge" style="position: absolute; bottom: max(1rem, env(safe-area-inset-bottom, 0px)); right: max(1.5rem, env(safe-area-inset-right, 0px)); background: rgba(255,255,255,0.08); padding: 5px 12px; border-radius: 5px; font-size: 0.8rem; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.12); opacity: 0.6;">
             <span>Room:</span> <span style="font-family: monospace; color: #90caf9; font-weight: 600;" id="roomDisplay"></span>
         </div>
     </div>
@@ -359,7 +377,7 @@
         // fullscreen, overestimates how much vertical room actually exists, sizing
         // the digits taller than what's visible and getting them hard-clipped by
         // body's overflow:hidden (seen in landscape before entering fullscreen).
-        let baseTimerFontSize = 'min(34vmin, calc(100dvh - 230px))';
+        let baseTimerFontSize = 'min(34vmin, 100dvh)';
         let baseClockFontSize = '18vmin';
         // Cache of the last string measured per element, so the (layout-forcing)
         // fit check only re-runs when something that could change the fit actually
@@ -424,11 +442,24 @@
             });
             if (visibleKids.length) {
                 const rects = visibleKids.map((el) => el.getBoundingClientRect());
-                const naturalHeight = Math.max(...rects.map((r) => r.bottom)) - Math.min(...rects.map((r) => r.top));
+                // Outer margins of the first/last line count too (e.g. the digits'
+                // margin-bottom when they're the only thing shown) - flex centring
+                // includes them, so leaving them out let the stack spill into the padding.
+                const edgeMargins = parseFloat(getComputedStyle(visibleKids[0]).marginTop)
+                    + parseFloat(getComputedStyle(visibleKids[visibleKids.length - 1]).marginBottom);
+                const naturalHeight = Math.max(...rects.map((r) => r.bottom)) - Math.min(...rects.map((r) => r.top)) + Math.max(0, edgeMargins);
                 const availHeight = container.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
                 if (naturalHeight > availHeight && naturalHeight > 0 && availHeight > 0) {
+                    // Only the digits shrink - the other lines keep their size - so
+                    // take the whole overflow out of the digits' own height (which
+                    // is proportional to their font-size), rather than scaling them
+                    // by avail/natural, which leaves the stack still too tall
+                    // whenever anything else is showing.
                     const currentPx = parseFloat(getComputedStyle(outerEl).fontSize);
-                    outerEl.style.fontSize = `${Math.max(8, currentPx * (availHeight / naturalHeight) * 0.96)}px`;
+                    const ownHeight = outerEl.getBoundingClientRect().height;
+                    const excess = naturalHeight - availHeight;
+                    const ratio = ownHeight > excess ? (ownHeight - excess) / ownHeight : 0.1;
+                    outerEl.style.fontSize = `${Math.max(8, currentPx * ratio * 0.97)}px`;
                 }
             }
             lastFitted[key] = { text, base: baseFontSize, viewportW: window.innerWidth, viewportH: window.innerHeight };
@@ -470,16 +501,23 @@
             // updateTimerDisplay/updateClockDisplay) shrinks it further if the
             // actual digits would be wider than the screen.
             const scale = state.displayScale || 1.0;
-            baseTimerFontSize = `min(${(scale * 34).toFixed(2)}vmin, calc(100dvh - 230px))`;
-            lastFitted.timer = null; // scale may have changed even if the digits didn't
+            baseTimerFontSize = `min(${(scale * 34).toFixed(2)}vmin, 100dvh)`;
+            // Scale, or which lines are shown, may have changed even if the digits didn't.
+            lastFitted.timer = null;
+            lastFitted.clock = null;
 
             // Display appearance: background color (chromakey support) and
             // per-element visibility, set by the operator's Control page.
             // showSpeakerName/showUpNext default true (undefined !== false)
             // so older/legacy state without these fields behaves as before.
             const bg = state.displayBgColor || '#000000';
-            document.body.style.background = bg;
-            document.getElementById('messageOverlay').style.background = bg;
+            document.body.style.backgroundColor = bg;
+            applyBackgroundImage(state);
+            // Full-screen messages keep the background image behind them.
+            document.getElementById('messageOverlay').style.background = state.displayBgImage ? 'transparent' : bg;
+            document.getElementById('status').style.display = state.showStatus === false ? 'none' : '';
+            document.getElementById('roomBadge').style.display = state.showRoomBadge === false ? 'none' : '';
+            document.body.classList.toggle('no-room-badge', state.showRoomBadge === false);
             const speakerAllowed = state.showSpeakerName !== false;
             const upNextAllowed  = state.showUpNext !== false;
 
@@ -503,6 +541,23 @@
                 upNextEl.style.display  = 'none';
             }
         });
+
+        // Uploaded background image: fetched by version, so a new upload is a new
+        // URL (and the old one can stay cached). Only touched when something changed.
+        let appliedBgKey = null;
+        function applyBackgroundImage(state) {
+            const fit = ['contain', 'stretch'].includes(state.displayBgFit) ? state.displayBgFit : 'cover';
+            const key = state.displayBgImage ? `${state.displayBgImage}|${fit}` : '';
+            if (key === appliedBgKey) return;
+            appliedBgKey = key;
+            const body = document.body;
+            body.classList.toggle('has-bg-image', !!state.displayBgImage);
+            body.classList.toggle('bg-contain', fit === 'contain');
+            body.classList.toggle('bg-stretch', fit === 'stretch');
+            body.style.backgroundImage = state.displayBgImage
+                ? `url("/api/display-background?token=${encodeURIComponent(displayToken)}&v=${encodeURIComponent(state.displayBgImage)}")`
+                : 'none';
+        }
 
         function updateMessageDisplay() {
             const overlay   = document.getElementById('messageOverlay');
@@ -537,6 +592,10 @@
                 ticker.style.display = 'none';
             }
 
+            if (messageMode !== currentMessageMode) {
+                lastFitted.timer = null; // the ticker adds/removes a line above the digits
+                lastFitted.clock = null;
+            }
             currentMessage     = message;
             currentMessageMode = messageMode;
             currentTickerSpeed = tickerSpeed;
@@ -686,6 +745,7 @@
             lastInfoText = text;
             el.textContent = text;
             el.style.display = text ? 'block' : 'none';
+            lastFitted.timer = null; // line shown/hidden/changed: re-check the digits fit
         }
 
         function updateClockDisplay() {

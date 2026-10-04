@@ -1416,8 +1416,8 @@
             <div class="links" data-view-ok style="border: none; padding: 0; text-align: right; min-width: 0;">
                 <a href="#" id="displayLink" target="_blank"><span class="link-long">Open Display Screen</span><span class="link-short">Display</span></a>
                 <span style="color: #666; margin: 0 8px;">|</span>
-                <a href="/dashboard" target="foxy-dashboard"><span class="link-long">Master Dashboard</span><span class="link-short">Dashboard</span></a>
-                <span style="color: #666; margin: 0 8px;">|</span>
+                <a href="/dashboard" target="foxy-dashboard" id="dashboardLink"><span class="link-long">Master Dashboard</span><span class="link-short">Dashboard</span></a>
+                <span style="color: #666; margin: 0 8px;" id="dashboardLinkSep">|</span>
                 <a href="/help" target="foxy-help" title="Help: connecting devices, Companion, show-day tips">Help</a>
                 <span style="color: #666; margin: 0 8px;">|</span>
                 <a href="#" id="shareLinksLink" onclick="copyRoomLinks(event); return false;" title="Share or copy this room's control and display links">Share links</a>
@@ -1774,7 +1774,7 @@
                 <div>
                     <div style="font-size:0.8rem;color:#999;margin-bottom:8px;font-weight:500;text-transform:uppercase;letter-spacing:0.05em;">Display size &amp; speed</div>
                     <div style="font-size:0.8rem;color:#999;margin-bottom:4px;">Display size: <span id="displayScaleValue" style="color:#90caf9;font-weight:bold;">1.5×</span></div>
-                    <input type="range" id="displayScaleSlider" min="0.5" max="2.0" step="0.1" value="1.5"
+                    <input type="range" id="displayScaleSlider" min="0.5" max="3.0" step="0.1" value="1.5"
                            style="width:100%;height:5px;accent-color:#90caf9;margin-bottom:6px;"
                            oninput="updateDisplayScalePreview()">
                     <button onclick="applyDisplayScale()" class="button" style="width:100%;background:#2196f3;color:white;padding:8px;font-size:0.85rem;margin-bottom:12px;">Apply Size</button>
@@ -1821,6 +1821,21 @@
                         <button type="button" class="button secondary" onclick="setDisplayBgColor('#00ff00')" style="padding:6px 10px;font-size:0.8rem;" title="Chromakey green">Chromakey Green</button>
                         <button type="button" class="button secondary" onclick="setDisplayBgColor('#0000ff')" style="padding:6px 10px;font-size:0.8rem;" title="Chromakey blue">Chromakey Blue</button>
                     </div>
+                    <!-- Background image: uploaded straight to the server (not a setting
+                         saved in this browser), shown over the colour above. -->
+                    <div style="font-size:0.85rem;color:#cfcfcf;margin:14px 0 6px;">Background image <span style="color:#888;">(PNG, JPEG or WebP, up to 10 MB)</span></div>
+                    <div id="bgImagePreview" hidden style="width:100%;aspect-ratio:16/9;border:1px solid #333;border-radius:4px;background:#101010 center/contain no-repeat;margin-bottom:8px;"></div>
+                    <input type="file" id="bgImageFile" accept="image/png,image/jpeg,image/webp" hidden onchange="uploadBackgroundImage(this)">
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+                        <button type="button" class="button secondary" id="bgImageChoose" onclick="document.getElementById('bgImageFile').click()" style="padding:6px 10px;font-size:0.8rem;">Upload image…</button>
+                        <button type="button" class="button secondary" id="bgImageRemove" onclick="removeBackgroundImage()" hidden style="padding:6px 10px;font-size:0.8rem;">Remove image</button>
+                        <select id="displayBgFit" onchange="emitSettings()" hidden title="How the image fills a screen of a different shape" style="padding:5px 6px;font-size:0.8rem;background:#101010;color:#cfcfcf;border:1px solid #333;border-radius:4px;">
+                            <option value="cover">Fill screen (crop edges)</option>
+                            <option value="contain">Fit whole image</option>
+                            <option value="stretch">Stretch to screen</option>
+                        </select>
+                    </div>
+                    <div id="bgImageStatus" style="font-size:0.8rem;color:#999;margin-top:6px;min-height:1em;"></div>
                 </div>
                 <div>
                     <div style="font-size:0.8rem;color:#999;margin-bottom:8px;font-weight:500;text-transform:uppercase;letter-spacing:0.05em;">Elements shown on display</div>
@@ -1836,9 +1851,17 @@
                         <input type="checkbox" id="showTimeOfDay">
                         <span>Time of day ("Now 14:32")</span>
                     </label>
-                    <label class="checkbox-label" style="margin-bottom:0;">
+                    <label class="checkbox-label" style="margin-bottom:8px;">
                         <input type="checkbox" id="showFinishTime">
                         <span>Finish time ("Finish 14:55")</span>
+                    </label>
+                    <label class="checkbox-label" style="margin-bottom:8px;">
+                        <input type="checkbox" id="showStatus" checked>
+                        <span>Status ("Running" / "Paused" / "Ready")</span>
+                    </label>
+                    <label class="checkbox-label" style="margin-bottom:0;">
+                        <input type="checkbox" id="showRoomBadge" checked>
+                        <span>Room label (bottom corner)</span>
                     </label>
                 </div>
             </div>
@@ -2472,6 +2495,10 @@
             const ends = new Date(expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             document.getElementById('demoEnds').textContent = ends;
             bar.hidden = false;
+            // The dashboard is for account holders (it asks for a login); a demo
+            // visitor has no account, so the link would only lead to a dead end.
+            document.getElementById('dashboardLink').hidden = true;
+            document.getElementById('dashboardLinkSep').hidden = true;
         });
 
         // Helper functions for MM:SS format
@@ -2648,9 +2675,14 @@
                 if (state.displayBgColor) document.getElementById('displayBgColor').value = state.displayBgColor;
                 document.getElementById('showSpeakerName').checked = state.showSpeakerName !== false;
                 document.getElementById('showUpNext').checked = state.showUpNext !== false;
+                document.getElementById('showStatus').checked = state.showStatus !== false;
+                document.getElementById('showRoomBadge').checked = state.showRoomBadge !== false;
                 syncHexFields();
                 slidersInitialised = true;
             }
+
+            // Background image isn't a draft-able field - always mirror the server.
+            renderBackgroundImage(state);
 
             // Update message UI to reflect current server state
             updateMessageUI(state);
@@ -3681,7 +3713,10 @@
                 showSpeakerName: document.getElementById('showSpeakerName').checked,
                 showUpNext: document.getElementById('showUpNext').checked,
                 showTimeOfDay: document.getElementById('showTimeOfDay').checked,
-                showFinishTime: document.getElementById('showFinishTime').checked
+                showFinishTime: document.getElementById('showFinishTime').checked,
+                showStatus: document.getElementById('showStatus').checked,
+                showRoomBadge: document.getElementById('showRoomBadge').checked,
+                displayBgFit: document.getElementById('displayBgFit').value
             });
         }
 
@@ -3706,6 +3741,77 @@
             syncHexFields();
             saveSettings();
             emitSettings();
+        }
+
+        // Background image: the server holds the image; state.displayBgImage is its
+        // version (null = none). The preview loads it with this panel's own token.
+        let renderedBgImage;
+        function renderBackgroundImage(state) {
+            const fit = document.getElementById('displayBgFit');
+            if (document.activeElement !== fit) fit.value = state.displayBgFit || 'cover';
+            const version = state.displayBgImage || null;
+            if (version === renderedBgImage) return;
+            renderedBgImage = version;
+            const preview = document.getElementById('bgImagePreview');
+            preview.hidden = !version;
+            preview.style.backgroundImage = version
+                ? `url("/api/display-background?token=${encodeURIComponent(controlToken)}&v=${encodeURIComponent(version)}")`
+                : 'none';
+            document.getElementById('bgImageRemove').hidden = !version;
+            fit.hidden = !version;
+            document.getElementById('bgImageChoose').textContent = version ? 'Replace image…' : 'Upload image…';
+        }
+
+        async function sendBackgroundRequest(method, body) {
+            const res = await fetch('/api/display-background', {
+                method,
+                headers: { 'X-Room-Token': controlToken, 'X-Socket-Id': socket.id || '' },
+                body
+            });
+            let data = {};
+            try { data = await res.json(); } catch { /* non-JSON error page */ }
+            if (!res.ok || !data.ok) throw new Error(data.error || `Upload failed (${res.status}).`);
+        }
+
+        async function uploadBackgroundImage(input) {
+            const file = input.files && input.files[0];
+            input.value = ''; // choosing the same file again still fires change
+            if (!file) return;
+            const status = document.getElementById('bgImageStatus');
+            if (!/^image\/(png|jpeg|webp)$/.test(file.type)) {
+                status.textContent = 'Please choose a PNG, JPEG or WebP image.';
+                return;
+            }
+            if (file.size > 10 * 1024 * 1024) {
+                status.textContent = `That image is ${(file.size / 1048576).toFixed(1)} MB - the limit is 10 MB.`;
+                return;
+            }
+            status.textContent = 'Uploading…';
+            try {
+                await sendBackgroundRequest('PUT', file);
+                const dims = await new Promise((resolve) => {
+                    const img = new Image();
+                    const url = URL.createObjectURL(file);
+                    img.onload = () => { URL.revokeObjectURL(url); resolve(`${img.naturalWidth}×${img.naturalHeight}`); };
+                    img.onerror = () => { URL.revokeObjectURL(url); resolve(''); };
+                    img.src = url;
+                });
+                status.textContent = `Image set${dims ? ` (${dims})` : ''} - showing on the display now.`;
+            } catch (err) {
+                status.textContent = err.message;
+            }
+        }
+
+        async function removeBackgroundImage() {
+            const ok = await openAppDialog({ title: 'Remove background image?', body: 'The display goes back to the plain background colour.', okLabel: 'Remove', danger: true });
+            if (!ok) return;
+            const status = document.getElementById('bgImageStatus');
+            try {
+                await sendBackgroundRequest('DELETE');
+                status.textContent = 'Image removed.';
+            } catch (err) {
+                status.textContent = err.message;
+            }
         }
 
         // Background color preset buttons (Black / Chromakey Green / Chromakey Blue).
@@ -3782,6 +3888,8 @@
                     if (settings.displayBgColor) document.getElementById('displayBgColor').value = settings.displayBgColor;
                     document.getElementById('showSpeakerName').checked = settings.showSpeakerName !== false;
                     document.getElementById('showUpNext').checked = settings.showUpNext !== false;
+                    document.getElementById('showStatus').checked = settings.showStatus !== false;
+                    document.getElementById('showRoomBadge').checked = settings.showRoomBadge !== false;
                 } catch (e) { /* ignore corrupt localStorage */ }
             } else {
                 // Set sensible defaults on first load
@@ -3830,7 +3938,9 @@
                 showSpeakerName: document.getElementById('showSpeakerName').checked,
                 showUpNext: document.getElementById('showUpNext').checked,
                 showTimeOfDay: document.getElementById('showTimeOfDay').checked,
-                showFinishTime: document.getElementById('showFinishTime').checked
+                showFinishTime: document.getElementById('showFinishTime').checked,
+                showStatus: document.getElementById('showStatus').checked,
+                showRoomBadge: document.getElementById('showRoomBadge').checked
             };
             localStorage.setItem('timerSettings', JSON.stringify(settings));
         }
@@ -3843,6 +3953,7 @@
             if (input.id === 'rundownAutoStart') return;
             if (input.id === 'duration' || input.id === 'endAtTime') return; // own listeners (End at is a draft until Set)
             if (input.closest('#appDialogOverlay')) return; // the in-page dialog's own field (e.g. rename) is not a setting
+            if (input.id === 'bgImageFile') return; // uploads itself - see uploadBackgroundImage
             if (input.id === 'messageInput') return; // message text isn't a setting either - it's sent by Full Screen / Ticker
             if (input.classList.contains('hex-input')) return; // own handler: only a valid hex updates the colour
 

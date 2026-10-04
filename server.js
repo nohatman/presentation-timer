@@ -232,6 +232,8 @@ function isHexColor(v) {
   return typeof v === 'string' && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(v);
 }
 
+const BG_FITS = ['cover', 'contain', 'stretch'];
+
 function createDefaultTimerState() {
   return {
     mode: 'stopped', // 'stopped', 'running', 'paused'
@@ -261,10 +263,14 @@ function createDefaultTimerState() {
     timerColorRed: '#f44336',
     timerColorOver: '#9c27b0', // overrun: past zero, or past the set length when counting up
     displayBgColor: '#000000',
+    displayBgImage: null,  // version string of the room's uploaded background image (room_backgrounds), or null
+    displayBgFit: 'cover', // 'cover' (fill, crop edges) | 'contain' (whole image, may letterbox) | 'stretch'
     showSpeakerName: true,
     showUpNext: true,
     showTimeOfDay: false,  // display: "Now 14:32" line under the timer
     showFinishTime: false, // display: "Finish 14:55" line under the timer
+    showStatus: true,      // display: "Running" / "Paused" / "Ready" label under the timer
+    showRoomBadge: true,   // display: the small "Room: x" label, bottom right
     rundown: [],       // [{name, durationMs}] programme list
     rundownIndex: -1,  // -1 = not in rundown mode
     message: '',
@@ -525,6 +531,9 @@ io.on('connection', (socket) => {
     if (data.showUpNext !== undefined) timerState.showUpNext = !!data.showUpNext;
     if (data.showTimeOfDay !== undefined) timerState.showTimeOfDay = !!data.showTimeOfDay;
     if (data.showFinishTime !== undefined) timerState.showFinishTime = !!data.showFinishTime;
+    if (data.showStatus !== undefined) timerState.showStatus = !!data.showStatus;
+    if (data.showRoomBadge !== undefined) timerState.showRoomBadge = !!data.showRoomBadge;
+    if (BG_FITS.includes(data.displayBgFit)) timerState.displayBgFit = data.displayBgFit;
 
     emitState(roomId, timerState);
     scheduleSave();
@@ -808,6 +817,85 @@ app.post('/api/auth/change-password', auth.requireSession, async (req, res) => {
   // changePassword() only deletes OTHER sessions, keeping this one alive by
   // token - no new cookie needed, the existing one still resolves correctly.
   res.json({ ok: true });
+});
+
+// ============================================
+// Display background image - set from a Control page, shown by its Display
+// ============================================
+// Authenticated by the room's own link token, like the sockets: the control
+// token to change it, either token to fetch it. Changing it also needs the
+// caller's socket id to be the room's active controller (X-Socket-Id), the same
+// rule every socket mutation follows - an observer panel can't change the show.
+
+const BG_MAX_BYTES = 10 * 1024 * 1024;
+
+// The file's own first bytes decide what it is - never the declared type.
+function sniffImageMime(buf) {
+  if (buf.length >= 8 && buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return 'image/png';
+  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg';
+  if (buf.length >= 12 && buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP') return 'image/webp';
+  return null;
+}
+
+function roomFromToken(req) {
+  return auth.resolveSocketAccess(req.get('X-Room-Token') || req.query.token);
+}
+
+function requireBackgroundController(req, res, next) {
+  const access = roomFromToken(req);
+  if (!access) return res.status(401).json({ ok: false, error: 'Invalid or expired link.' });
+  if (access.role !== 'control') return res.status(403).json({ ok: false, error: 'Display links cannot change the display.' });
+  if (!timerRooms.get(access.roomId)) return res.status(404).json({ ok: false, error: 'Room not found.' });
+  if (roomControllers.get(access.roomId) !== req.get('X-Socket-Id')) {
+    return res.status(409).json({ ok: false, error: 'This panel is view only. Take over first.' });
+  }
+  req.roomId = access.roomId;
+  next();
+}
+
+app.put('/api/display-background', requireBackgroundController,
+  express.raw({ type: () => true, limit: BG_MAX_BYTES }), (req, res) => {
+    const data = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+    const mime = sniffImageMime(data);
+    if (!mime) return res.status(415).json({ ok: false, error: 'That file is not a PNG, JPEG or WebP image.' });
+    db.setRoomBackground(Number(req.roomId), mime, data);
+    const timerState = timerRooms.get(req.roomId);
+    timerState.displayBgImage = `${Date.now().toString(36)}-${crypto.randomBytes(3).toString('hex')}`;
+    emitState(req.roomId, timerState);
+    scheduleSave();
+    res.json({ ok: true, version: timerState.displayBgImage });
+  });
+
+app.delete('/api/display-background', requireBackgroundController, (req, res) => {
+  db.deleteRoomBackground(Number(req.roomId));
+  const timerState = timerRooms.get(req.roomId);
+  timerState.displayBgImage = null;
+  emitState(req.roomId, timerState);
+  scheduleSave();
+  res.json({ ok: true });
+});
+
+// ?token=<control or display token>&v=<version>. The version is in the URL, so a
+// given URL's bytes never change and can be cached for as long as the browser likes.
+app.get('/api/display-background', (req, res) => {
+  const access = roomFromToken(req);
+  if (!access) return res.status(401).end();
+  const bg = db.getRoomBackground(Number(access.roomId));
+  if (!bg) return res.status(404).end();
+  res.set({
+    'Content-Type': bg.mime,
+    'Cache-Control': 'private, max-age=31536000, immutable',
+    'X-Content-Type-Options': 'nosniff'
+  });
+  res.send(bg.data);
+});
+
+// Upload too big (express.raw's limit) - a JSON answer the Control page can show.
+app.use('/api/display-background', (err, req, res, next) => {
+  if (err && err.type === 'entity.too.large') {
+    return res.status(413).json({ ok: false, error: `Image is too big - the limit is ${BG_MAX_BYTES / 1024 / 1024} MB.` });
+  }
+  next(err);
 });
 
 // ============================================

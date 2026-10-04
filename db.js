@@ -115,6 +115,17 @@ db.exec(`
     created_at INTEGER NOT NULL,
     handled_at INTEGER
   );
+
+  -- Optional display background image, one per room. Kept out of state_json:
+  -- that is broadcast on every timer change, and an image is megabytes. The
+  -- room's state only carries a version string (displayBgImage) that the
+  -- Display page uses to fetch this, so a re-upload busts any cached copy.
+  CREATE TABLE IF NOT EXISTS room_backgrounds (
+    room_id INTEGER PRIMARY KEY REFERENCES rooms(id),
+    mime TEXT NOT NULL,
+    data BLOB NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
 `);
 
 // Migration: CREATE TABLE IF NOT EXISTS above doesn't retroactively add columns to
@@ -991,7 +1002,23 @@ function saveRoomStates(timerRooms) {
 }
 
 function deleteRoom(id) {
+  db.prepare('DELETE FROM room_backgrounds WHERE room_id = ?').run(id);
   db.prepare('DELETE FROM rooms WHERE id = ?').run(id);
+}
+
+function setRoomBackground(roomId, mime, data) {
+  db.prepare(`
+    INSERT INTO room_backgrounds (room_id, mime, data, updated_at) VALUES (?, ?, ?, ?)
+    ON CONFLICT(room_id) DO UPDATE SET mime = excluded.mime, data = excluded.data, updated_at = excluded.updated_at
+  `).run(roomId, mime, data, Date.now());
+}
+
+function getRoomBackground(roomId) {
+  return db.prepare('SELECT mime, data FROM room_backgrounds WHERE room_id = ?').get(roomId) || null;
+}
+
+function deleteRoomBackground(roomId) {
+  db.prepare('DELETE FROM room_backgrounds WHERE room_id = ?').run(roomId);
 }
 
 // Rooms whose expires_at has passed (only demo rooms ever have one).
@@ -1067,5 +1094,8 @@ module.exports = {
   writeRoomState,
   loadAllRoomStates,
   saveRoomStates,
-  deleteRoom
+  deleteRoom,
+  setRoomBackground,
+  getRoomBackground,
+  deleteRoomBackground
 };
