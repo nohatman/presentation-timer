@@ -1965,6 +1965,20 @@ app.get('/dashboard', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
 });
 
+// The Companion module package, for Companion's "Import module package". A fixed
+// link that always serves whichever version is in public/downloads (keep just
+// one there), so Help and the dashboard never need editing for a new release.
+// Static file, so it works on a show laptop with no internet.
+app.get('/download/companion-module', (req, res) => {
+  const dir = path.join(__dirname, 'public', 'downloads');
+  let file = null;
+  try {
+    file = require('fs').readdirSync(dir).filter((f) => /^foxy-presentation-timer-[\d.]+\.tgz$/.test(f)).sort().pop() || null;
+  } catch { /* no downloads folder */ }
+  if (!file) return res.status(404).send('The Companion module is not included in this build.');
+  res.download(path.join(dir, file), file);
+});
+
 app.get('/help', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'help.html'));
 });

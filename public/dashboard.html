@@ -849,6 +849,7 @@
             openModal(`
                 <h2 id="modalTitle" style="margin:0 0 6px 0;font-size:1.2rem;color:#fafafa;">Companion / Stream Deck</h2>
                 <p style="margin:0 0 18px 0;color:#999;font-size:0.85rem;line-height:1.5;">In Companion, add a <b>Foxy Presentation Timer</b> connection and copy these three into its settings. The Stream Deck PC must be on the same network as this laptop. <a href="/help#companion" target="foxy-help" style="color:#90caf9;">Step-by-step guide</a></p>
+                <p style="margin:-8px 0 18px 0;color:#999;font-size:0.85rem;line-height:1.5;">First time? <a href="/download/companion-module" download style="color:#90caf9;font-weight:600;">Download the Companion module</a>, then in Companion: <i>Modules → Import module package</i>.</p>
                 ${companionField('Server URL', 'companionServerUrl', data.serverUrl)}
                 ${companionField('Client API key', 'companionApiKey', data.apiKey)}
                 ${companionField('Room IDs to monitor', 'companionRooms', data.rooms.join(','))}
