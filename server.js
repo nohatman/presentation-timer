@@ -1592,7 +1592,7 @@ function loadRundownItem(s, index, autoStart) {
 app.post('/api/rooms/:roomId/rundown/prev', ...roomAuth, (req, res) => {
   const { roomId } = req;
   const s = req.timerState;
-  if (!s.rundown.length) return res.json({ ok: false, error: 'No rundown configured' });
+  if (!s.rundown.length) return res.json({ ok: false, error: 'No running order set up' });
   const idx = s.rundownIndex <= 0 ? 0 : s.rundownIndex - 1;
   if (idx === s.rundownIndex && s.rundownIndex === 0) return res.json({ ok: false, error: 'Already at first item' });
   loadRundownItem(s, idx, false);
@@ -1605,7 +1605,7 @@ app.post('/api/rooms/:roomId/rundown/prev', ...roomAuth, (req, res) => {
 app.post('/api/rooms/:roomId/rundown/next', ...roomAuth, (req, res) => {
   const { roomId } = req;
   const s = req.timerState;
-  if (!s.rundown.length) return res.json({ ok: false, error: 'No rundown configured' });
+  if (!s.rundown.length) return res.json({ ok: false, error: 'No running order set up' });
   const idx = s.rundownIndex < 0 ? 0 : s.rundownIndex + 1;
   if (idx >= s.rundown.length) return res.json({ ok: false, error: 'Already at last item' });
   loadRundownItem(s, idx, false);
@@ -1619,7 +1619,7 @@ app.post('/api/rooms/:roomId/rundown/next', ...roomAuth, (req, res) => {
 app.post('/api/rooms/:roomId/rundown/take', ...roomAuth, (req, res) => {
   const { roomId } = req;
   const s = req.timerState;
-  if (!s.rundown.length) return res.json({ ok: false, error: 'No rundown configured' });
+  if (!s.rundown.length) return res.json({ ok: false, error: 'No running order set up' });
   const idx = s.rundownIndex < 0 ? 0 : s.rundownIndex;
   loadRundownItem(s, idx, true);
   emitState(roomId, s);

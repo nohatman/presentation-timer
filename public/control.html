@@ -1621,7 +1621,7 @@
             <h3 onclick="toggleRundownPanel()" data-view-ok
                 style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:10px;">
                 <span id="rundownToggleIcon" style="font-size:0.8rem;color:#999;">▶</span>
-                Programme / Rundown
+                Running order
                 <span id="rundownItemCount" style="font-size:0.8rem;color:#999;font-weight:normal;"></span>
             </h3>
             <div id="rundownPanel" style="display:none;margin-top:16px;">
@@ -1653,7 +1653,7 @@
                 <!-- Copy-all panel: whole rundown as plain text -->
                 <div id="rundownExportPanel" data-view-ok style="display:none;border:1px solid #444;border-radius:6px;padding:12px;background:#111;margin-bottom:8px;">
                     <div style="font-size:0.85rem;color:#999;margin-bottom:8px;">
-                        Whole rundown as text (<code style="color:#90caf9;">Name, MM:SS</code> per line). Copy it, reorder it anywhere, then paste it back with <b>Replace</b>.
+                        Whole running order as text (<code style="color:#90caf9;">Name, MM:SS</code> per line). Copy it, reorder it anywhere, then paste it back with <b>Replace</b>.
                     </div>
                     <textarea id="rundownExportText" readonly spellcheck="false"
                               style="width:100%;height:150px;background:#1a1a1a;border:1px solid #333;color:#e5e5e5;border-radius:4px;padding:8px;font-size:0.9rem;font-family:monospace;resize:vertical;"
@@ -1673,10 +1673,10 @@
                               placeholder="Jane Smith, 20:00&#10;Panel Discussion, 45:00&#10;Andrew Fox, 30:00"></textarea>
                     <div style="display:flex;gap:16px;margin:8px 0;flex-wrap:wrap;">
                         <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer;">
-                            <input type="radio" name="rundownImportMode" value="append" checked onchange="updateImportModeUI()"> Append to existing rundown
+                            <input type="radio" name="rundownImportMode" value="append" checked onchange="updateImportModeUI()"> Add to the existing running order
                         </label>
                         <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer;color:#ff9800;">
-                            <input type="radio" name="rundownImportMode" value="replace" onchange="updateImportModeUI()"> Replace existing rundown
+                            <input type="radio" name="rundownImportMode" value="replace" onchange="updateImportModeUI()"> Replace the existing running order
                         </label>
                     </div>
                     <div id="rundownImportMsg" role="status" style="display:none;font-size:0.85rem;margin-bottom:8px;white-space:pre-wrap;"></div>
@@ -1687,7 +1687,7 @@
                 </div>
                 <!-- Undo for the last Replace (this browser tab only) - mutating, observer-hidden -->
                 <div id="rundownUndoBar" style="display:none;margin-bottom:8px;">
-                    <button onclick="undoRundownReplace()" class="button secondary" style="width:100%;color:#ff9800;border-color:#ff9800;">↩ Undo last Replace (restore previous rundown)</button>
+                    <button onclick="undoRundownReplace()" class="button secondary" style="width:100%;color:#ff9800;border-color:#ff9800;">↩ Undo last Replace (restore previous running order)</button>
                 </div>
                 <!-- Add / Paste / Text / Edit: sticky so it is reachable from anywhere in a long rundown.
                      Add/Paste/Edit mutate the rundown (server rejects these from an observer anyway -
@@ -3585,7 +3585,7 @@
         function updateImportModeUI() {
             const replace = importMode() === 'replace';
             const btn = document.getElementById('rundownImportBtn');
-            btn.textContent = replace ? 'Replace rundown…' : 'Import (append)';
+            btn.textContent = replace ? 'Replace running order…' : 'Import (append)';
             btn.style.background = replace ? '#e65100' : '';
             btn.style.borderColor = replace ? '#e65100' : '';
         }
@@ -3611,10 +3611,10 @@
 
             if (mode === 'replace') {
                 const ok = await uiConfirm({
-                    title: 'Replace the rundown?',
-                    body: `Replace the current rundown (${plan.removed} item${plan.removed === 1 ? '' : 's'}) ` +
+                    title: 'Replace the running order?',
+                    body: `Replace the current running order (${plan.removed} item${plan.removed === 1 ? '' : 's'}) ` +
                         `with the pasted one (${plan.added} item${plan.added === 1 ? '' : 's'})?\n\n` +
-                        `The current rundown will be removed. You can undo this straight afterwards with "Undo last Replace".`,
+                        `The current running order will be removed. You can undo this straight afterwards with "Undo last Replace".`,
                     okLabel: 'Replace', danger: true,
                 });
                 if (!ok) return;

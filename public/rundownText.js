@@ -101,7 +101,7 @@
     if (parsed.errors.length) return { ok: false, errors: parsed.errors, warnings: parsed.warnings };
     if (mode === 'replace') {
       if (!parsed.items.length) {
-        return { ok: false, errors: [{ line: 0, text: '', message: 'No rundown lines found - refusing to replace the rundown with nothing.' }], warnings: [] };
+        return { ok: false, errors: [{ line: 0, text: '', message: 'No running order lines found - refusing to replace the running order with nothing.' }], warnings: [] };
       }
       return { ok: true, items: parsed.items, added: parsed.items.length, removed: (existing || []).length, warnings: parsed.warnings };
     }

@@ -112,5 +112,5 @@ test('contact form: store, admin list, handled, spam, auth and rate limit', asyn
 test('hosted mode: / serves the landing page', async () => {
   const res = await fetch(`${BASE_URL}/`, { redirect: 'manual' });
   assert.equal(res.status, 200);
-  assert.match(await res.text(), /One show clock/);
+  assert.match(await res.text(), /Put your timer/);
 });

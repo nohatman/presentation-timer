@@ -11,7 +11,7 @@ A web-based presentation timer with **multi-room support**, separate control and
 - **👥 Multiple control panels per room**: one is in control, the others are view-only until they tap Take over
 - **🏷️ Device names**: each browser gets a friendly name ("Calm Raven") so panels can see who is in control
 - **💬 Messages to the display**: full-screen or ticker, with one-tap Clear from the top of the control page
-- **📋 Programme / rundown**: a running order of sessions with Prev / Take / Next
+- **📋 Running order**: a list of sessions with Prev / Take / Next
 - **🎨 Warning colours**: green → amber → red, with configurable thresholds, colours and background (incl. chromakey)
 - **⚡ Speed control**, count-up after zero, clock mode
 - **🎚️ Bitfocus Companion** integration via REST API (see [COMPANION.md](COMPANION.md))
@@ -66,13 +66,13 @@ still running older code than the files on disk. See [tools/local-server/README.
 - While something is pending, **Reset** (and Start, when stopped) shows what it will load, e.g. **RESET → 23:00**. Changing End at on a running timer asks for confirmation first.
 - **Display Shows** Timer / Clock, **Count up** after zero, and eight **Quick Presets** (Ctrl+Click a preset to save the current duration into it).
 
-**Further down**: Programme / Rundown, Warning Thresholds, Display Appearance (size, speed 0.5×–1.5×, colours, background, what's shown), and **Message to Display Screen** - its Full Screen / Ticker buttons say what a press does (**SHOW**, **● LIVE**, amber **UPDATE** when you've edited a live message, **SWITCH**).
+**Further down**: Running order, Warning Thresholds, Display Appearance (size, speed 0.5×–1.5×, colours, background, what's shown), and **Message to Display Screen** - its Full Screen / Ticker buttons say what a press does (**SHOW**, **● LIVE**, amber **UPDATE** when you've edited a live message, **SWITCH**).
 
 **Several control panels on one room**
 - The first panel is in control; others are **view-only**: an orange frame, greyed controls and a pinned **"View only - Calm Raven is in control · Take over"** strip.
 - Control belongs to a panel, not a connection: a refresh, a phone sleeping or a network blip keeps your seat (held for 30 minutes), and the newest tab on the controlling device takes over from older ones. Anyone can Take over at any time.
 
-**Keyboard shortcuts**: `Space` start/pause/resume · `R` reset · `+`/`-` ±1 min (Shift for ±5) · with the rundown open: `↑`/`↓` browse, `Enter` take.
+**Keyboard shortcuts**: `Space` start/pause/resume · `R` reset · `+`/`-` ±1 min (Shift for ±5) · with the running order open: `↑`/`↓` browse, `Enter` take.
 
 See [TIMER-MODES.md](TIMER-MODES.md) for the exact Duration / End at behaviour and a manual test checklist.
 
@@ -80,7 +80,7 @@ See [TIMER-MODES.md](TIMER-MODES.md) for the exact Duration / End at behaviour a
 
 - Large countdown that fits any screen (portrait or landscape, fit-to-width), H:MM:SS past an hour
 - Colour warnings: green → amber → red, purple when overrunning
-- Speaker name and "up next" lines from the rundown (each can be hidden)
+- Speaker name and "up next" lines from the running order (each can be hidden)
 - Full-screen and ticker messages
 - Home / Fullscreen buttons that fade out when not in use
 - Also drives a physical CDEther/Hive display via the bridge in [tools/cdether-bridge](tools/cdether-bridge)
