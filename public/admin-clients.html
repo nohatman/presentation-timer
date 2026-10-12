@@ -420,7 +420,8 @@
                 <h2 id="modalTitle" style="margin:0 0 12px 0;font-size:1.2rem;color:#fafafa;">Client created — API key</h2>
                 <p style="margin:0 0 8px 0;color:#ccc;font-size:0.9rem;line-height:1.5;">"${escapeHtml(clientName)}" was created. This key is for <strong>Companion and other API integrations</strong> — not for human dashboard login.</p>
                 <div id="apiKeyText" style="background:#0a0a0a;border:1px solid #333;border-radius:6px;padding:12px;margin:12px 0;font-family:'Courier New',monospace;font-size:0.85rem;word-break:break-all;user-select:all;">${escapeHtml(apiKey)}</div>
-                <p style="margin:0 0 20px 0;color:#f44336;font-size:0.82rem;">⚠ This key will not be shown again. Copy it now - if lost, the recovery path is API key rotation.</p>
+                <p style="margin:0 0 8px 0;color:#f44336;font-size:0.82rem;">⚠ This key will not be shown again. Copy it now - if lost, the recovery path is API key rotation.</p>
+                <p style="margin:0 0 20px 0;color:#999;font-size:0.82rem;line-height:1.5;">You don't need to send it to the customer: they can make their own key from <b>Dashboard → Companion</b>.</p>
                 <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;">
                     <button onclick="copyModalSecret('apiKeyText', this)" style="${CANCEL_BTN_STYLE}">📋 Copy</button>
                     <div style="display:flex;gap:10px;flex-wrap:wrap;">

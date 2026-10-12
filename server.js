@@ -1772,6 +1772,45 @@ app.post('/api/local/companion/new-key', auth.requireDashboardAuth, requireLocal
   res.json(localCompanionDetails(req, db.newLocalCompanionKey()));
 });
 
+// Foxy Timer Online: the same Companion window for a logged-in customer. Keys
+// are stored only as a hash, so the current key can't be shown again - the
+// window says when it was made, and "Make a new key" shows the new one once.
+// Logged-in humans only: a Companion connection (Bearer key) must not be able
+// to replace the key it is using, and the laptop has its own routes above.
+function requireOnlineSession(req, res, next) {
+  if (req.authMethod !== 'session') {
+    return res.status(403).json({ ok: false, error: 'Log in to the dashboard to set up Companion' });
+  }
+  next();
+}
+
+function onlineCompanionDetails(req, apiKey) {
+  const client = db.getClientById(req.client.id);
+  return {
+    ok: true,
+    serverUrl: shareBaseUrl(req.protocol, req.get('host')),
+    apiKey: apiKey || null,
+    keyMadeAt: client.api_key_rotated_at || client.api_key_created_at || null,
+    rooms: db.getRoomsForClient(req.client.id).map((r) => r.slug)
+  };
+}
+
+app.get('/api/companion', auth.requireDashboardAuth, requireOnlineSession, (req, res) => {
+  res.json(onlineCompanionDetails(req));
+});
+
+app.post('/api/companion/new-key', auth.requireDashboardAuth, requireOnlineSession, (req, res) => {
+  const rotated = db.rotateClientApiKeyById(req.client.id);
+  db.recordAuditLog({
+    actorUserId: req.user.id,
+    action: 'client.rotate_api_key',
+    targetType: 'client',
+    targetId: req.client.id,
+    targetLabel: req.client.name
+  });
+  res.json(onlineCompanionDetails(req, rotated.apiKey));
+});
+
 // "This laptop" panel on the dashboard: status, network addresses, whether
 // Windows Firewall lets other devices in (checked in the background and cached
 // - it takes a couple of seconds - so it never holds up anything else), and

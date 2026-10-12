@@ -485,6 +485,7 @@
         let draggedElement = null;
         const selectedRooms = new Set();
         let isPlatformAdmin = false; // set from GET /api/whoami - drives cross-client view
+        let isLocalOperator = false; // Foxy Timer for Windows laptop - picks which Companion window to show
 
         // ============================================================
         // Session authentication (Phase 6a) - the normal human workflow is
@@ -539,12 +540,13 @@
                 const data = await response.json();
                 if (data.ok) {
                     isPlatformAdmin = !!data.isPlatformAdmin;
+                    isLocalOperator = !!data.localOperator;
+                    document.getElementById('companionBtn').style.display = 'inline-block';
                     // On a Local Show Server laptop there's no account to log out
                     // of, and Home is this page.
                     if (data.localOperator) {
                         document.getElementById('logoutBtn').style.display = 'none';
                         document.getElementById('homeLink').style.display = 'none';
-                        document.getElementById('companionBtn').style.display = 'inline-block';
                         document.getElementById('dashboardSubtitle').textContent = 'Foxy Timer for Windows · running on this laptop';
                         document.getElementById('laptopPanel').hidden = false;
                         refreshLaptopPanel();
@@ -843,15 +845,32 @@
         }
 
         async function openCompanionSetup(triggerEl, newKey = false) {
-            const response = await authFetch(newKey ? '/api/local/companion/new-key' : '/api/local/companion', { method: newKey ? 'POST' : 'GET' });
+            const base = isLocalOperator ? '/api/local/companion' : '/api/companion';
+            const response = await authFetch(newKey ? base + '/new-key' : base, { method: newKey ? 'POST' : 'GET' });
             const data = await response.json().catch(() => ({}));
             if (!data.ok) { uiNotice('Companion setup', data.error || 'Could not load the Companion details.'); return; }
+            const where = isLocalOperator
+                ? 'The Companion computer must be on the same network as this laptop.'
+                : 'Companion connects over the internet, so it can be anywhere with a connection.';
+            // Online keys are stored scrambled, so a key can only be shown once, when it is made.
+            let keyBlock;
+            if (data.apiKey) {
+                keyBlock = companionField('Client API key', 'companionApiKey', data.apiKey) + (isLocalOperator ? '' :
+                    '<p style="margin:-6px 0 14px 0;color:#ffb74d;font-size:0.82rem;line-height:1.5;">Copy this key now. It won’t be shown again.</p>');
+            } else {
+                const made = data.keyMadeAt ? ' Your current key was made on ' + new Date(data.keyMadeAt).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' }) + '.' : '';
+                keyBlock = `
+                <div style="margin-bottom:14px;">
+                    <label style="display:block;font-size:0.78rem;color:#999;text-transform:uppercase;margin-bottom:6px;">Client API key</label>
+                    <p style="margin:0;color:#ccc;font-size:0.85rem;line-height:1.5;">For security, a key is only shown once, when it is made.${made} Don’t have it? Press <b>Make a new key</b> below.</p>
+                </div>`;
+            }
             openModal(`
                 <h2 id="modalTitle" style="margin:0 0 6px 0;font-size:1.2rem;color:#fafafa;">Companion</h2>
-                <p style="margin:0 0 18px 0;color:#999;font-size:0.85rem;line-height:1.5;">In Companion, add a <b>Foxy Presentation Timer</b> connection and copy these three into its settings. The Companion computer must be on the same network as this laptop. <a href="/help#companion" target="foxy-help" style="color:#90caf9;">Step-by-step guide</a></p>
+                <p style="margin:0 0 18px 0;color:#999;font-size:0.85rem;line-height:1.5;">In Companion, add a <b>Foxy Presentation Timer</b> connection and copy these three into its settings. ${where} <a href="/help#companion" target="foxy-help" style="color:#90caf9;">Step-by-step guide</a></p>
                 <p style="margin:-8px 0 18px 0;color:#999;font-size:0.85rem;line-height:1.5;">First time? <a href="/download/companion-module" download style="color:#90caf9;font-weight:600;">Download the Companion module</a>, then in Companion: <i>Modules → Import module package</i>.</p>
                 ${companionField('Server URL', 'companionServerUrl', data.serverUrl)}
-                ${companionField('Client API key', 'companionApiKey', data.apiKey)}
+                ${keyBlock}
                 ${companionField('Room IDs to monitor', 'companionRooms', data.rooms.join(','))}
                 <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:6px;">
                     <button onclick="makeNewCompanionKey(this)" style="padding:10px 14px;border-radius:8px;border:1px solid #444;background:transparent;color:#ccc;cursor:pointer;font-size:0.85rem;">🔄 Make a new key</button>
@@ -863,7 +882,7 @@
         async function makeNewCompanionKey(triggerEl) {
             const ok = await uiConfirm({
                 title: 'Make a new Companion key?',
-                body: 'The current key stops working straight away. Any Companion connection using it needs the new key pasted in.',
+                body: 'The current key stops working straight away. Any Companion connection using it, including your colleagues’, needs the new key pasted in.',
                 okLabel: 'Make new key',
                 danger: true
             }, triggerEl);
