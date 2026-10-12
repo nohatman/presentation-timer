@@ -424,7 +424,7 @@
                     <a href="/" id="homeLink" class="nav-link">🏠 Home</a>
                     <a href="/admin/clients" id="manageClientsLink" class="nav-link" style="display:none;">🏢 Manage Clients</a>
                     <a href="/help" id="helpLink" class="nav-link" target="foxy-help">❓ Help</a>
-                    <button id="companionBtn" onclick="openCompanionSetup(this)" class="nav-link" style="display:none;cursor:pointer;">🎛️ Companion / Stream Deck</button>
+                    <button id="companionBtn" onclick="openCompanionSetup(this)" class="nav-link" style="display:none;cursor:pointer;">🎛️ Companion</button>
                     <button onclick="logout()" id="logoutBtn" class="nav-link" style="cursor:pointer;">🚪 Logout</button>
                 </div>
                 <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; justify-content: flex-end;">
@@ -847,8 +847,8 @@
             const data = await response.json().catch(() => ({}));
             if (!data.ok) { uiNotice('Companion setup', data.error || 'Could not load the Companion details.'); return; }
             openModal(`
-                <h2 id="modalTitle" style="margin:0 0 6px 0;font-size:1.2rem;color:#fafafa;">Companion / Stream Deck</h2>
-                <p style="margin:0 0 18px 0;color:#999;font-size:0.85rem;line-height:1.5;">In Companion, add a <b>Foxy Presentation Timer</b> connection and copy these three into its settings. The Stream Deck PC must be on the same network as this laptop. <a href="/help#companion" target="foxy-help" style="color:#90caf9;">Step-by-step guide</a></p>
+                <h2 id="modalTitle" style="margin:0 0 6px 0;font-size:1.2rem;color:#fafafa;">Companion</h2>
+                <p style="margin:0 0 18px 0;color:#999;font-size:0.85rem;line-height:1.5;">In Companion, add a <b>Foxy Presentation Timer</b> connection and copy these three into its settings. The Companion computer must be on the same network as this laptop. <a href="/help#companion" target="foxy-help" style="color:#90caf9;">Step-by-step guide</a></p>
                 <p style="margin:-8px 0 18px 0;color:#999;font-size:0.85rem;line-height:1.5;">First time? <a href="/download/companion-module" download style="color:#90caf9;font-weight:600;">Download the Companion module</a>, then in Companion: <i>Modules → Import module package</i>.</p>
                 ${companionField('Server URL', 'companionServerUrl', data.serverUrl)}
                 ${companionField('Client API key', 'companionApiKey', data.apiKey)}
@@ -863,7 +863,7 @@
         async function makeNewCompanionKey(triggerEl) {
             const ok = await uiConfirm({
                 title: 'Make a new Companion key?',
-                body: 'The current key stops working straight away. Any Stream Deck using it needs the new key pasted into its Companion connection.',
+                body: 'The current key stops working straight away. Any Companion connection using it needs the new key pasted in.',
                 okLabel: 'Make new key',
                 danger: true
             }, triggerEl);
@@ -930,7 +930,7 @@
         async function stopLaptopServer(triggerEl) {
             const ok = await uiConfirm({
                 title: 'Stop Foxy Timer?',
-                body: 'Every display, control page and Stream Deck connected to this laptop disconnects. Timers are saved and carry on where they were when you start again (from the Foxy Timer icon).',
+                body: 'Every display, control page and Companion connection to this laptop disconnects. Timers are saved and carry on where they were when you start again (from the Foxy Timer icon).',
                 okLabel: 'Stop Foxy Timer',
                 danger: true
             }, triggerEl);
