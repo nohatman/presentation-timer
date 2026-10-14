@@ -214,10 +214,15 @@
         <h2>Foxy Timer for Windows <span class="ver win">Windows</span></h2>
         <h3>Start and stop</h3>
         <ul>
-            <li><b>Start:</b> the <b>Foxy Timer</b> icon on the desktop or Start menu. It starts quietly in the background and opens the dashboard in your browser.</li>
-            <li><b>Stop or restart:</b> the <b>This laptop</b> panel on the dashboard. Closing the browser does <em>not</em> stop the timer, on purpose, so a show can't stop by accident.</li>
-            <li>Opening the icon again while it's running just reopens the dashboard.</li>
+            <li><b>Start:</b> the <b>Foxy Timer</b> icon on the desktop or Start menu. It opens its own window with the dashboard.</li>
+            <li><b>Stop or restart:</b> the <b>This laptop</b> panel on the dashboard. Closing the window asks whether to stop the timer or keep it running, so a show can't stop by accident.</li>
+            <li>Opening the icon again while it's running just brings the window back.</li>
         </ul>
+        <h3 id="screens">Showing the timer on other screens</h3>
+        <p>Use the <b>Output</b> menu at the top of the Foxy Timer window. Each screen can show a room, or nothing, so two extra monitors can show two different rooms. <b>Identify screens</b> puts a big number on each monitor so you can tell which is which. Your choices are remembered.</p>
+        <h3 id="fuzzy">Text looks fuzzy after moving a window between screens</h3>
+        <p>This happens on laptops with two graphics chips (for example Intel and NVIDIA) when the screens use different scaling, such as a 100% laptop screen and a 300% portable monitor. Windows copies each picture from one chip to the other and stretches it on the way.</p>
+        <p>The fix: in the Foxy Timer window, open <b>View</b> and tick <b>Sharper text on mixed screens</b>, then let it reopen its windows. The timer keeps running while it does. This makes Foxy Timer use the laptop's built-in graphics. It's the same as choosing <b>Power saving</b> for Foxy Timer in Windows' <b>Settings &gt; System &gt; Display &gt; Graphics</b>. The option only appears on laptops with two graphics chips.</p>
         <h3>On the laptop, no login</h3>
         <p>The dashboard opens without a login <em>on the laptop itself</em>. Other devices can only use the links you give them.</p>
         <h3>Where your rooms are kept</h3>

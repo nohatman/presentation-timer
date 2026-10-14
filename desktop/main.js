@@ -25,7 +25,7 @@
 // Development: `npm start` in desktop/ uses the system Node and the repo.
 
 const { app, BrowserWindow, Menu, dialog, screen, shell, powerSaveBlocker } = require('electron');
-const { spawn } = require('child_process');
+const { spawn, execFileSync } = require('child_process');
 const http = require('http');
 const path = require('path');
 const fs = require('fs');
@@ -109,6 +109,52 @@ async function ensureEngine() {
     return false;
   }
   return true;
+}
+
+// ---------------------------------------------------------------- graphics
+// Laptops with two graphics chips (e.g. Intel + NVIDIA) can show this app's
+// windows fuzzy when screens use different scaling (100% laptop + 300%
+// monitor): Windows copies each frame between the chips and stretches it.
+// Running on the built-in chip fixes it. That is Windows' own per-app setting
+// (Settings > System > Display > Graphics), which View > Sharper text sets.
+const GPU_PREFS_KEY = 'HKCU\\Software\\Microsoft\\DirectX\\UserGpuPreferences';
+function readGpuPrefs() {
+  try {
+    const out = execFileSync('reg', ['query', GPU_PREFS_KEY, '/v', process.execPath], { encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+    const m = out.match(/REG_SZ\s+(.*)$/m);
+    return m ? m[1].trim() : '';
+  } catch { return ''; }
+}
+let powerSavingGpu = /(^|;)GpuPreference=1;/.test(readGpuPrefs());
+let hasTwoGpus = false; // set once Electron has listed the graphics chips
+
+// Keeps any other Windows graphics options already set for this app.
+function setPowerSavingGpu(on) {
+  const others = readGpuPrefs().split(';').filter((p) => p && !p.startsWith('GpuPreference='));
+  const data = [...(on ? ['GpuPreference=1'] : []), ...others].map((p) => `${p};`).join('');
+  try {
+    if (data) execFileSync('reg', ['add', GPU_PREFS_KEY, '/v', process.execPath, '/t', 'REG_SZ', '/d', data, '/f'], { windowsHide: true, stdio: 'ignore' });
+    else execFileSync('reg', ['delete', GPU_PREFS_KEY, '/v', process.execPath, '/f'], { windowsHide: true, stdio: 'ignore' });
+    return true;
+  } catch { return false; }
+}
+
+async function toggleSharperText(item) {
+  if (!setPowerSavingGpu(item.checked)) {
+    item.checked = !item.checked;
+    dialog.showErrorBox('Foxy Timer', 'Windows did not accept the change. You can set it yourself in Settings > System > Display > Graphics.');
+    return;
+  }
+  powerSavingGpu = item.checked;
+  const { response } = await dialog.showMessageBox(mainWindow, {
+    type: 'question', title: 'Foxy Timer', buttons: ['Reopen windows now', 'Later'], defaultId: 0, cancelId: 1,
+    message: 'Reopen Foxy Timer\'s windows to apply this?',
+    detail: 'The timer keeps running and phones stay connected. Screens showing the timer go blank for a couple of seconds while the windows reopen.\n\nChoose Later to apply it the next time Foxy Timer opens.',
+  });
+  if (response !== 0) return;
+  quitting = true;
+  app.relaunch();
+  app.exit(0); // the engine is a separate process and keeps running
 }
 
 // ---------------------------------------------------------------- settings
@@ -376,7 +422,13 @@ function buildMenu() {
     },
     {
       label: 'View',
-      submenu: [{ role: 'reload' }, { role: 'togglefullscreen' }, { type: 'separator' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { role: 'resetZoom' }],
+      submenu: [
+        { role: 'reload' }, { role: 'togglefullscreen' }, { type: 'separator' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { role: 'resetZoom' },
+        ...(hasTwoGpus || powerSavingGpu ? [
+          { type: 'separator' },
+          { label: 'Sharper text on mixed screens (use built-in graphics)', type: 'checkbox', checked: powerSavingGpu, click: toggleSharperText },
+        ] : []),
+      ],
     },
     {
       label: 'Help',
@@ -402,6 +454,11 @@ if (process.argv.includes('--stop')) {
   app.whenReady().then(async () => {
     if (!(await ensureEngine())) { app.quit(); return; }
     powerSaveBlocker.start('prevent-display-sleep'); // no screen blanking or sleep mid-show
+    // Two real graphics chips (not counting Windows' basic display driver)?
+    app.getGPUInfo('basic').then((info) => {
+      hasTwoGpus = (info.gpuDevice || []).filter((d) => d.vendorId !== 0x1414).length > 1;
+      if (hasTwoGpus) buildMenu();
+    }).catch(() => {});
     await refreshRooms();
     createMainWindow();
     buildMenu();
