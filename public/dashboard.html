@@ -440,6 +440,9 @@
         .screen-chip.on { border: 1px solid #1f4a66; background: #10202c; color: #90caf9; font-weight: 600; }
         .room-menu .menu-note { color: #999; font-size: 0.78rem; padding: 6px 12px 4px; max-width: 260px; line-height: 1.4; }
         .room-menu .sub { display: block; color: #888; font-size: 0.75rem; font-weight: 400; }
+        .room-menu .screen-option { display: flex; gap: 10px; align-items: flex-start; }
+        .room-menu .tick { flex: 0 0 18px; height: 18px; margin-top: 1px; border: 2px solid #666; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; color: #fff; }
+        .room-menu .screen-option[aria-checked="true"] .tick { background: #2e7d32; border-color: #2e7d32; }
         .room-menu hr { border: 0; border-top: 1px solid #333; margin: 4px 0; }
 
         /* The ⋯ menu lives outside the rooms (they redraw every second). */
@@ -1562,9 +1565,10 @@
             const roomName = (id) => { const r = roomsData.find((x) => x.id === id); return r ? r.slug : 'another room'; };
             const items = appOutputs.screens.map((sc) => {
                 const mine = sc.roomId === room.id;
-                const now = mine ? 'showing this room - choose again to clear' : (sc.roomId ? `now showing ${roomName(sc.roomId)}` : 'now showing nothing');
-                const warn = sc.primary ? ' · covers this laptop\'s screen' : '';
-                return `<button type="button" role="menuitemcheckbox" aria-checked="${mine}" onclick="chooseScreen(${sc.id})">${mine ? '✓ ' : ''}${escapeHtml(sc.label)}<span class="sub">${escapeHtml(now + warn)}</span></button>`;
+                const now = mine ? '' : (sc.roomId ? `Now showing ${roomName(sc.roomId)}` : 'Showing nothing');
+                const warn = sc.primary ? 'Covers this laptop\'s screen · Esc closes it' : '';
+                const sub = [now, warn].filter(Boolean).join(' · ');
+                return `<button type="button" class="screen-option" role="menuitemcheckbox" aria-checked="${mine}" onclick="chooseScreen(${sc.id})"><span class="tick" aria-hidden="true">${mine ? '✓' : ''}</span><span>${escapeHtml(sc.label)}${sub ? `<span class="sub">${escapeHtml(sub)}</span>` : ''}</span></button>`;
             }).join('');
             const note = appOutputs.enabled ? '' : '<div class="menu-note">Timers on other screens are switched off. Choosing a screen turns them on.</div>';
             const single = appOutputs.screens.length < 2 ? '<div class="menu-note">Only this laptop\'s screen is connected. Plug in a screen or projector to show the timer on it.</div>' : '';
@@ -1593,8 +1597,11 @@
             const roomId = screenMenuFor;
             const sc = appOutputs && appOutputs.screens.find((x) => x.id === displayId);
             if (!roomId || !sc) return;
-            closeScreenMenu();
+            // Tick boxes: the list stays open so a room can go on several screens.
             setAppOutputs(await window.foxyApp.setScreenRoom(displayId, sc.roomId === roomId ? null : roomId));
+            const options = [...document.querySelectorAll('#screenMenu .screen-option')];
+            const again = options[appOutputs.screens.findIndex((x) => x.id === displayId)];
+            if (again) again.focus();
         }
 
         // ---- The shared ⋯ menu ----

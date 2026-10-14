@@ -325,38 +325,77 @@ function setScreenRoom(entry, roomId) {
   buildMenu();
 }
 
-function openOutputWindow(display, url) {
+// Pointer hidden until the mouse moves, then shown for 2 s with a note that
+// Esc stops this screen. On the laptop's own screen the note also shows for a
+// few seconds on opening - the output covers the dashboard there.
+const OUTPUT_CSS = `
+  html.foxy-still, html.foxy-still * { cursor: none !important; }
+  #foxyEscHint { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); z-index: 2147483647;
+    background: rgba(20,20,20,0.92); color: #fff; border: 1px solid #555; border-radius: 10px; padding: 10px 18px;
+    font: 600 16px 'Segoe UI', sans-serif; pointer-events: none; transition: opacity 0.3s; }
+  html.foxy-still #foxyEscHint { opacity: 0; }`;
+const outputScript = (showOnOpen) => `(() => {
+  if (window.__foxyOutput) return; window.__foxyOutput = true;
+  const hint = document.createElement('div');
+  hint.id = 'foxyEscHint';
+  hint.textContent = 'Press Esc to stop showing the timer on this screen';
+  document.body.appendChild(hint);
+  const root = document.documentElement;
+  let t = null;
+  const wake = (ms) => { root.classList.remove('foxy-still'); clearTimeout(t); t = setTimeout(() => root.classList.add('foxy-still'), ms); };
+  root.classList.add('foxy-still');
+  addEventListener('mousemove', () => wake(2000));
+  if (${showOnOpen}) wake(5000);
+})();`;
+
+function openOutputWindow(display, url, onLaptopScreen, onEscape) {
   const win = new BrowserWindow({
     ...display.bounds, frame: false, show: false, skipTaskbar: true, autoHideMenuBar: true,
     backgroundColor: '#000000', icon: ICON, title: 'Foxy Timer output',
     webPreferences: { contextIsolation: true },
   });
-  win.webContents.on('did-finish-load', () => { if (!win.isDestroyed()) win.webContents.insertCSS('* { cursor: none !important; }'); });
+  win.webContents.on('did-finish-load', () => {
+    if (win.isDestroyed()) return;
+    win.webContents.insertCSS(OUTPUT_CSS);
+    win.webContents.executeJavaScript(outputScript(onLaptopScreen)).catch(() => {});
+  });
+  // Esc on a timer screen = "show nothing here" (the same as the Output menu).
+  win.webContents.on('before-input-event', (event, input) => {
+    if (input.type === 'keyDown' && input.key === 'Escape') { event.preventDefault(); onEscape(); }
+  });
   win.loadURL(url);
   win.once('ready-to-show', () => {
     if (win.isDestroyed()) return;
     win.setBounds(display.bounds);
-    if (!HIDDEN) { win.showInactive(); win.setFullScreen(true); }
+    if (HIDDEN) return;
+    // On the laptop's own screen take the keyboard, so Esc works straight away.
+    if (onLaptopScreen) win.show(); else win.showInactive();
+    win.setFullScreen(true);
   });
   return win;
 }
 
 // Create, move, change or close output windows to match monitors + settings.
 function syncOutput() {
-  const wanted = new Map(); // display id -> { display, url }
+  const wanted = new Map(); // display id -> { display, url, primary }
   if (settings.outputEnabled) {
     for (const entry of orderedDisplays()) {
       const room = roomById(screenRoomId(entry));
-      if (room) wanted.set(entry.display.id, { display: entry.display, url: toLocal(room.displayUrl) });
+      if (room) wanted.set(entry.display.id, { display: entry.display, url: toLocal(room.displayUrl), primary: entry.primary });
     }
   }
   for (const [id, win] of outputWindows) {
     if (!wanted.has(id) || win.isDestroyed()) { if (!win.isDestroyed()) win.destroy(); outputWindows.delete(id); }
   }
-  for (const [id, { display, url }] of wanted) {
+  for (const [id, { display, url, primary }] of wanted) {
     const win = outputWindows.get(id);
     if (!win) {
-      const created = openOutputWindow(display, url);
+      const escape = () => {
+        const entry = orderedDisplays().find((e) => e.display.id === id);
+        if (entry) setScreenRoom(entry, null);
+        if (primary && mainWindow && !mainWindow.isDestroyed()) mainWindow.focus();
+      };
+      const created = openOutputWindow(display, url, primary, escape);
       created.on('closed', () => { if (outputWindows.get(id) === created) outputWindows.delete(id); });
       outputWindows.set(id, created);
       continue;
