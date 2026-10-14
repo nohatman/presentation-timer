@@ -24,7 +24,7 @@
 //   Foxy Timer.exe  (this app)   node\node.exe   app\ (engine)   resources\app\ (this folder)
 // Development: `npm start` in desktop/ uses the system Node and the repo.
 
-const { app, BrowserWindow, Menu, dialog, screen, shell, powerSaveBlocker } = require('electron');
+const { app, BrowserWindow, Menu, dialog, screen, shell, powerSaveBlocker, ipcMain } = require('electron');
 const { spawn, execFileSync } = require('child_process');
 const http = require('http');
 const path = require('path');
@@ -250,7 +250,8 @@ function createMainWindow() {
   mainWindow = new BrowserWindow({
     ...(bounds || { width: 1280, height: 860 }), minWidth: 420, minHeight: 500,
     title: 'Foxy Timer', icon: ICON, backgroundColor: '#0a0a0a', show: false,
-    webPreferences: { contextIsolation: true },
+    // preload.js: lets the dashboard show and change which screen each room is on
+    webPreferences: { contextIsolation: true, preload: path.join(__dirname, 'preload.js') },
   });
   wireLinks(mainWindow);
   mainWindow.loadURL(`${LOCAL}/dashboard`);
@@ -407,6 +408,35 @@ async function refreshRooms() {
   return rooms;
 }
 
+// ---------------------------------------------------------------- dashboard
+// What the dashboard needs to show "🖥 Screen 2" on each room and change it
+// (desktop/preload.js). Sent again whenever the menu is rebuilt - that is,
+// after every routing, room or monitor change.
+function outputsSnapshot() {
+  return {
+    enabled: settings.outputEnabled,
+    screens: orderedDisplays().map((entry) => ({
+      id: entry.display.id,
+      number: entry.number,
+      label: screenLabel(entry),
+      primary: entry.primary,
+      roomId: settings.outputEnabled ? screenRoomId(entry) : null,
+    })),
+  };
+}
+
+ipcMain.handle('outputs:get', () => outputsSnapshot());
+ipcMain.handle('outputs:set', (event, displayId, roomId) => {
+  const entry = orderedDisplays().find((e) => e.display.id === Number(displayId));
+  const room = roomId == null ? null : roomById(String(roomId));
+  if (entry && (roomId == null || (room && !room.licenceLocked))) {
+    if (!settings.outputEnabled) settings.outputEnabled = true; // choosing a screen switches outputs on
+    setScreenRoom(entry, room ? room.id : null);
+  }
+  return outputsSnapshot();
+});
+ipcMain.handle('outputs:identify', () => { identifyScreens(); });
+
 // ---------------------------------------------------------------- menu
 function buildMenu() {
   const entries = orderedDisplays();
@@ -467,6 +497,7 @@ function buildMenu() {
     },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('outputs:changed', outputsSnapshot());
 }
 
 // ---------------------------------------------------------------- lifecycle

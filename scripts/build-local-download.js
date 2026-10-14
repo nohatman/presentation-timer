@@ -87,7 +87,7 @@ if (!fs.existsSync(path.join(DESKTOP, 'node_modules', '@electron', 'packager')))
 const stage = path.join(DIST, 'desktop-stage');
 fs.rmSync(stage, { recursive: true, force: true });
 fs.mkdirSync(stage, { recursive: true });
-fs.copyFileSync(path.join(DESKTOP, 'main.js'), path.join(stage, 'main.js'));
+for (const f of ['main.js', 'preload.js']) fs.copyFileSync(path.join(DESKTOP, f), path.join(stage, f));
 fs.copyFileSync(ICON, path.join(stage, 'foxy-timer.ico'));
 const desktopPkg = JSON.parse(fs.readFileSync(path.join(DESKTOP, 'package.json'), 'utf8'));
 fs.writeFileSync(path.join(stage, 'package.json'), JSON.stringify({

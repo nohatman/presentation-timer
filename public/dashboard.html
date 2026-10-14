@@ -433,6 +433,15 @@
         .mini-actions .action-btn { padding: 7px 4px; text-align: center; overflow: hidden; text-overflow: ellipsis; }
         .room-card.mini.licence-locked .licence-locked-note, .room-row .licence-locked-note { padding: 0.4rem 0.6rem; font-size: 0.8rem; }
 
+        /* Which screen a room is on (Foxy Timer for Windows app only) */
+        .rooms-grid.layout-list.has-screens .room-row { grid-template-columns: auto minmax(120px, 1fr) 88px 100px 104px 46px 124px 292px; }
+        .screen-chip { background: transparent; border: 1px dashed #444; color: #888; border-radius: 6px; padding: 4px 8px; font-size: 0.78rem; cursor: pointer; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+        .screen-chip:hover { border-color: #90caf9; color: #cfe6fb; }
+        .screen-chip.on { border: 1px solid #1f4a66; background: #10202c; color: #90caf9; font-weight: 600; }
+        .room-menu .menu-note { color: #999; font-size: 0.78rem; padding: 6px 12px 4px; max-width: 260px; line-height: 1.4; }
+        .room-menu .sub { display: block; color: #888; font-size: 0.75rem; font-weight: 400; }
+        .room-menu hr { border: 0; border-top: 1px solid #333; margin: 4px 0; }
+
         /* The ⋯ menu lives outside the rooms (they redraw every second). */
         .room-menu { position: fixed; z-index: 900; background: #1c1c1c; border: 1px solid #3a3a3a; border-radius: 8px; box-shadow: 0 8px 28px rgba(0,0,0,0.5); padding: 4px; min-width: 190px; }
         .room-menu[hidden] { display: none; }
@@ -445,6 +454,7 @@
             .room-row > .sel { grid-area: sel; } .room-row > .name { grid-area: name; } .room-row > .room-status { grid-area: status; }
             .room-row > .timer-display { grid-area: time; } .room-row > .ends { display: none; } .room-row > .conns { grid-area: meta; }
             .room-row > .row-actions { grid-area: act; justify-content: stretch; }
+            .room-row > .screen-cell { display: none; }
             .room-row > .row-actions .action-btn:not(.more) { flex: 1; text-align: center; }
             .rooms-grid.layout-mini { grid-template-columns: 1fr 1fr; }
         }
@@ -565,6 +575,7 @@
 
     <!-- One shared ⋯ menu for List and Mini layouts: kept outside
          #roomsContainer, which is redrawn every second. -->
+    <div id="screenMenu" class="room-menu" role="menu" hidden></div>
     <div id="roomMenu" class="room-menu" role="menu" hidden>
         <button type="button" role="menuitem" onclick="roomMenuAction('share', this)">🔗 Share links &amp; QR</button>
         <button type="button" role="menuitem" onclick="roomMenuAction('links', this)">🔄 New links</button>
@@ -1275,7 +1286,7 @@
 
             // Keep rooms in custom order
             const sortedRooms = sortRoomsByOrder(roomsData);
-            container.className = `rooms-grid layout-${roomLayout}`;
+            container.className = `rooms-grid layout-${roomLayout}${appOutputs ? ' has-screens' : ''}`;
 
             container.innerHTML = sortedRooms.map(room => {
                 let displayTime;
@@ -1390,6 +1401,7 @@
                                 <div class="info-label">Ending At</div>
                                 <div class="info-value">${room.mode === 'running' ? getEndingTime(room.remainingMs) : '—'}</div>
                             </div>
+                            ${appOutputs ? `<div class="info-item"><div class="info-label">Screen</div><div class="info-value">${screenChip(room)}</div></div>` : ''}
                         </div>
 
                         <div class="room-actions">
@@ -1483,6 +1495,7 @@
                 <div class="timer-display ${v.timerClass}">${v.displayTime}</div>
                 <div class="row-meta ends">${ends}</div>
                 <div class="row-meta conns" title="Connections">👥 ${room.connections}</div>
+                ${appOutputs ? `<div class="screen-cell">${screenChip(room)}</div>` : ''}
                 <div class="row-actions">
                     ${primaryRoomButton(room, true)}
                     <a href="${room.controlUrl}" class="action-btn control" target="foxy-control-${id}">Control</a>
@@ -1509,7 +1522,7 @@
                     <div class="room-status ${room.mode}">${room.mode}</div>
                 </div>
                 <div class="timer-display ${v.timerClass}">${v.displayTime}</div>
-                <div class="mini-meta"><span title="Connections">👥 ${room.connections}</span><span>${ends}</span></div>
+                <div class="mini-meta"><span title="Connections">👥 ${room.connections}</span>${screenChip(room)}<span>${ends}</span></div>
                 <div class="mini-actions">
                     ${primaryRoomButton(room, true)}
                     <a href="${room.controlUrl}" class="action-btn control" target="foxy-control-${id}">Control</a>
@@ -1519,12 +1532,78 @@
             </div>`;
         }
 
+        // ---- Which screen each room is on (Foxy Timer for Windows app) ----
+        // window.foxyApp comes from the app's desktop/preload.js; in a browser
+        // it's undefined and none of this shows.
+        let appOutputs = null;
+        function setAppOutputs(outputs) {
+            appOutputs = outputs;
+            if (!roomsData.length) return; // rooms not loaded yet; the next refresh draws them
+            updateDashboard();
+            if (screenMenuFor) renderScreenMenu();
+        }
+        if (window.foxyApp) {
+            window.foxyApp.getOutputs().then(setAppOutputs).catch(() => {});
+            window.foxyApp.onOutputs(setAppOutputs);
+        }
+
+        function screenChip(room) {
+            if (!appOutputs || room.licenceLocked) return '';
+            const nums = appOutputs.screens.filter((sc) => sc.roomId === room.id).map((sc) => sc.number);
+            const label = nums.length ? `🖥 Screen ${nums.join(' + ')}` : (appOutputs.enabled ? '🖥 No screen' : '🖥 Screens off');
+            return `<button type="button" class="screen-chip ${nums.length ? 'on' : ''}" aria-haspopup="menu" title="Choose which screen shows this room" onclick="openScreenMenu('${escapeHtml(room.id)}', this)">${label}</button>`;
+        }
+
+        let screenMenuFor = null;
+        function renderScreenMenu() {
+            const menu = document.getElementById('screenMenu');
+            const room = roomsData.find((r) => r.id === screenMenuFor);
+            if (!room || !appOutputs) { closeScreenMenu(); return; }
+            const roomName = (id) => { const r = roomsData.find((x) => x.id === id); return r ? r.slug : 'another room'; };
+            const items = appOutputs.screens.map((sc) => {
+                const mine = sc.roomId === room.id;
+                const now = mine ? 'showing this room - choose again to clear' : (sc.roomId ? `now showing ${roomName(sc.roomId)}` : 'now showing nothing');
+                const warn = sc.primary ? ' · covers this laptop\'s screen' : '';
+                return `<button type="button" role="menuitemcheckbox" aria-checked="${mine}" onclick="chooseScreen(${sc.id})">${mine ? '✓ ' : ''}${escapeHtml(sc.label)}<span class="sub">${escapeHtml(now + warn)}</span></button>`;
+            }).join('');
+            const note = appOutputs.enabled ? '' : '<div class="menu-note">Timers on other screens are switched off. Choosing a screen turns them on.</div>';
+            const single = appOutputs.screens.length < 2 ? '<div class="menu-note">Only this laptop\'s screen is connected. Plug in a screen or projector to show the timer on it.</div>' : '';
+            menu.innerHTML = `<div class="menu-note">Show <b>${escapeHtml(room.slug)}</b> on:</div>${note}${items}${single}<hr><button type="button" role="menuitem" onclick="window.foxyApp.identifyScreens()">🔢 Identify screens</button>`;
+        }
+        function openScreenMenu(id, btn) {
+            const menu = document.getElementById('screenMenu');
+            if (!menu.hidden && screenMenuFor === id) { closeScreenMenu(); return; }
+            closeRoomMenu();
+            screenMenuFor = id;
+            renderScreenMenu();
+            menu.hidden = false;
+            const b = btn.getBoundingClientRect();
+            const w = menu.offsetWidth, h = menu.offsetHeight;
+            menu.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, b.left)) + 'px';
+            menu.style.top = (b.bottom + h + 8 > window.innerHeight ? Math.max(8, b.top - h - 4) : b.bottom + 4) + 'px';
+            const first = menu.querySelector('button');
+            if (first) first.focus();
+        }
+        function closeScreenMenu() {
+            const menu = document.getElementById('screenMenu');
+            if (menu) menu.hidden = true;
+            screenMenuFor = null;
+        }
+        async function chooseScreen(displayId) {
+            const roomId = screenMenuFor;
+            const sc = appOutputs && appOutputs.screens.find((x) => x.id === displayId);
+            if (!roomId || !sc) return;
+            closeScreenMenu();
+            setAppOutputs(await window.foxyApp.setScreenRoom(displayId, sc.roomId === roomId ? null : roomId));
+        }
+
         // ---- The shared ⋯ menu ----
         let roomMenuFor = null;
         let roomMenuTrigger = null;
         function openRoomMenu(id, btn) {
             const menu = document.getElementById('roomMenu');
             if (!menu.hidden && roomMenuFor === id) { closeRoomMenu(); return; }
+            closeScreenMenu();
             roomMenuFor = id;
             roomMenuTrigger = btn;
             menu.hidden = false;
@@ -1552,10 +1631,11 @@
         }
         document.addEventListener('click', (e) => {
             if (!e.target.closest('#roomMenu') && !e.target.closest('.action-btn.more')) closeRoomMenu();
+            if (!e.target.closest('#screenMenu') && !e.target.closest('.screen-chip')) closeScreenMenu();
         });
-        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeRoomMenu(); });
-        window.addEventListener('scroll', closeRoomMenu, { passive: true });
-        window.addEventListener('resize', closeRoomMenu);
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeRoomMenu(); closeScreenMenu(); } });
+        window.addEventListener('scroll', () => { closeRoomMenu(); closeScreenMenu(); }, { passive: true });
+        window.addEventListener('resize', () => { closeRoomMenu(); closeScreenMenu(); });
 
         // ---- "This laptop": one summary line unless opened or something needs attention ----
         let laptopOpenedByUser = false;
