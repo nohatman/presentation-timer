@@ -10,10 +10,13 @@
 //   Main window    the dashboard (no login on the laptop itself); Control,
 //                  Display and Help open as app windows, other sites in the
 //                  normal browser.
-//   Output window  Irisdown-style: the chosen room's Display, full screen with
-//                  no frame or pointer, on the second monitor - automatically,
-//                  and following monitors being plugged in or out. Chosen from
-//                  the Output menu; remembered.
+//   Output windows Irisdown-style: a room's Display, full screen with no frame
+//                  or pointer. Each screen is set separately in the Output menu
+//                  (a room, or nothing), so two extra monitors can show two
+//                  rooms - or the same room twice. First run: the first extra
+//                  screen shows the first room. Follows monitors being plugged
+//                  in or out; remembered. Identify screens puts a big number
+//                  on each one.
 //   Also           keeps the laptop and screens awake; asks before closing;
 //                  one copy only; offers a restart if the engine stops.
 //
@@ -110,15 +113,23 @@ async function ensureEngine() {
 
 // ---------------------------------------------------------------- settings
 const SETTINGS_FILE = path.join(app.getPath('userData'), 'settings.json');
-let settings = { outputEnabled: true, outputRoomId: null, outputDisplayId: null };
+// outputs: { [display id]: room id, or null for nothing } - a screen not in it
+// yet gets the default (see screenRoomId). outputEnabled switches them all off.
+let settings = { outputEnabled: true, outputs: {} };
 try { settings = { ...settings, ...JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8')) }; } catch { /* first run */ }
+// Settings from the one-output version: carry its screen + room across.
+if (settings.outputDisplayId != null && !Object.keys(settings.outputs).length) {
+  settings.outputs[settings.outputDisplayId] = settings.outputRoomId || null;
+}
+delete settings.outputDisplayId;
+delete settings.outputRoomId;
 function saveSettings() {
   try { fs.mkdirSync(path.dirname(SETTINGS_FILE), { recursive: true }); fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2)); } catch { /* not fatal */ }
 }
 
 // ---------------------------------------------------------------- windows
 let mainWindow = null;
-let outputWindow = null;
+const outputWindows = new Map(); // display id -> BrowserWindow
 let rooms = [];
 let quitting = false;
 
@@ -163,49 +174,125 @@ function createMainWindow() {
   });
 }
 
-function outputTarget() {
-  const displays = screen.getAllDisplays();
+// Screens in desk order: the laptop's own screen is 1, then the others left to
+// right (top to bottom when stacked), matching Identify screens.
+function orderedDisplays() {
   const primary = screen.getPrimaryDisplay();
-  if (!settings.outputEnabled) return null;
-  const chosen = displays.find((d) => d.id === settings.outputDisplayId);
-  if (chosen) return chosen;
-  if (process.env.FOXY_APP_OUTPUT_ON_MAIN === '1') return primary; // automated tests on a one-screen PC
-  return displays.find((d) => d.id !== primary.id) || null; // no second screen: no output window
+  const others = screen.getAllDisplays().filter((d) => d.id !== primary.id)
+    .sort((a, b) => (a.bounds.x - b.bounds.x) || (a.bounds.y - b.bounds.y));
+  return [primary, ...others].map((d, i) => ({ display: d, number: i + 1, primary: i === 0 }));
 }
 
-function outputRoom() {
-  return rooms.find((r) => r.id === settings.outputRoomId) || rooms[0] || null;
+function screenLabel({ display, number, primary }) {
+  const size = `${display.size.width}×${display.size.height}`;
+  return primary ? `Screen 1 · this laptop (${size})` : `Screen ${number} (${size})`;
 }
 
-// Create, move or close the output window to match monitors + settings.
+const roomById = (id) => rooms.find((r) => r.id === id) || null;
+
+// The room a screen shows, or null. Screens never set before: the first extra
+// screen shows the first room, every other screen shows nothing (an extra
+// monitor may be for slides). Automated tests can put it on the main screen.
+function screenRoomId(entry) {
+  const key = String(entry.display.id);
+  if (Object.prototype.hasOwnProperty.call(settings.outputs, key)) {
+    const id = settings.outputs[key];
+    return id && roomById(id) && !roomById(id).licenceLocked ? id : null;
+  }
+  if (Object.values(settings.outputs).some((v) => v)) return null;
+  const all = orderedDisplays();
+  const defaultScreen = all.find((e) => !e.primary) || (process.env.FOXY_APP_OUTPUT_ON_MAIN === '1' ? all[0] : null);
+  return defaultScreen && defaultScreen.display.id === entry.display.id && rooms[0] ? rooms[0].id : null;
+}
+
+function setScreenRoom(entry, roomId) {
+  // Keep what the other screens show now (e.g. the first-run default) before
+  // this choice changes which defaults apply.
+  for (const other of orderedDisplays()) {
+    const key = String(other.display.id);
+    if (!Object.prototype.hasOwnProperty.call(settings.outputs, key)) settings.outputs[key] = screenRoomId(other);
+  }
+  settings.outputs[String(entry.display.id)] = roomId;
+  saveSettings();
+  syncOutput();
+  buildMenu();
+}
+
+function openOutputWindow(display, url) {
+  const win = new BrowserWindow({
+    ...display.bounds, frame: false, show: false, skipTaskbar: true, autoHideMenuBar: true,
+    backgroundColor: '#000000', icon: ICON, title: 'Foxy Timer output',
+    webPreferences: { contextIsolation: true },
+  });
+  win.webContents.on('did-finish-load', () => { if (!win.isDestroyed()) win.webContents.insertCSS('* { cursor: none !important; }'); });
+  win.loadURL(url);
+  win.once('ready-to-show', () => {
+    if (win.isDestroyed()) return;
+    win.setBounds(display.bounds);
+    if (!HIDDEN) { win.showInactive(); win.setFullScreen(true); }
+  });
+  return win;
+}
+
+// Create, move, change or close output windows to match monitors + settings.
 function syncOutput() {
-  const target = outputTarget();
-  const room = outputRoom();
-  if (!target || !room) {
-    if (outputWindow) { outputWindow.destroy(); outputWindow = null; }
-    return;
+  const wanted = new Map(); // display id -> { display, url }
+  if (settings.outputEnabled) {
+    for (const entry of orderedDisplays()) {
+      const room = roomById(screenRoomId(entry));
+      if (room) wanted.set(entry.display.id, { display: entry.display, url: toLocal(room.displayUrl) });
+    }
   }
-  const url = toLocal(room.displayUrl);
-  if (!outputWindow) {
-    outputWindow = new BrowserWindow({
-      ...target.bounds, frame: false, show: false, skipTaskbar: true, autoHideMenuBar: true,
-      backgroundColor: '#000000', icon: ICON, title: 'Foxy Timer output',
-      webPreferences: { contextIsolation: true },
-    });
-    outputWindow.webContents.on('did-finish-load', () => outputWindow && outputWindow.webContents.insertCSS('* { cursor: none !important; }'));
-    outputWindow.on('closed', () => { outputWindow = null; });
-    outputWindow.loadURL(url);
-    outputWindow.once('ready-to-show', () => {
-      if (!outputWindow) return;
-      outputWindow.setBounds(target.bounds);
-      if (!HIDDEN) { outputWindow.showInactive(); outputWindow.setFullScreen(true); }
-    });
-  } else {
-    if (outputWindow.webContents.getURL() !== url) outputWindow.loadURL(url);
-    outputWindow.setFullScreen(false);
-    outputWindow.setBounds(target.bounds);
-    if (!HIDDEN) outputWindow.setFullScreen(true);
+  for (const [id, win] of outputWindows) {
+    if (!wanted.has(id) || win.isDestroyed()) { if (!win.isDestroyed()) win.destroy(); outputWindows.delete(id); }
   }
+  for (const [id, { display, url }] of wanted) {
+    const win = outputWindows.get(id);
+    if (!win) {
+      const created = openOutputWindow(display, url);
+      created.on('closed', () => { if (outputWindows.get(id) === created) outputWindows.delete(id); });
+      outputWindows.set(id, created);
+      continue;
+    }
+    if (win.webContents.getURL() !== url) win.loadURL(url);
+    const b = win.getBounds();
+    const t = display.bounds;
+    if (b.x !== t.x || b.y !== t.y || b.width !== t.width || b.height !== t.height) {
+      win.setFullScreen(false);
+      win.setBounds(t);
+      if (!HIDDEN) win.setFullScreen(true);
+    }
+  }
+}
+
+// A big number on every screen for a few seconds, so "Screen 3" in the menu
+// can be matched to a monitor on the desk.
+const IDENTIFY_MS = 4000;
+let identifyWindows = [];
+function identifyScreens() {
+  for (const w of identifyWindows) if (!w.isDestroyed()) w.destroy();
+  const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  identifyWindows = orderedDisplays().map((entry) => {
+    const { x, y, width, height } = entry.display.workArea;
+    const w = Math.min(520, width);
+    const h = Math.min(360, height);
+    const win = new BrowserWindow({
+      x: Math.round(x + (width - w) / 2), y: Math.round(y + (height - h) / 2), width: w, height: h,
+      frame: false, alwaysOnTop: true, skipTaskbar: true, focusable: false, resizable: false,
+      backgroundColor: '#141414', show: false, webPreferences: { contextIsolation: true },
+    });
+    win.setAlwaysOnTop(true, 'screen-saver');
+    const room = settings.outputEnabled ? roomById(screenRoomId(entry)) : null;
+    const showing = room ? `Showing: ${room.slug}` : 'Showing: nothing';
+    const html = `<!doctype html><meta charset="utf-8"><body style="margin:0;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#141414;color:#fff;font-family:Segoe UI,sans-serif;border:6px solid #ff6a1a;box-sizing:border-box;cursor:none">
+      <div style="font-size:200px;font-weight:800;line-height:1;color:#ff6a1a">${entry.number}</div>
+      <div style="font-size:26px;margin-top:12px">${esc(screenLabel(entry))}</div>
+      <div style="font-size:20px;margin-top:8px;color:#aaa">${esc(showing)}</div></body>`;
+    win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+    win.once('ready-to-show', () => { if (!HIDDEN && !win.isDestroyed()) win.showInactive(); });
+    setTimeout(() => { if (!win.isDestroyed()) win.destroy(); }, IDENTIFY_MS);
+    return win;
+  });
 }
 
 async function refreshRooms() {
@@ -216,11 +303,7 @@ async function refreshRooms() {
 
 // ---------------------------------------------------------------- menu
 function buildMenu() {
-  const displays = screen.getAllDisplays();
-  const primary = screen.getPrimaryDisplay();
-  const target = outputTarget();
-  const room = outputRoom();
-  const displayLabel = (d, i) => `${d.id === primary.id ? 'Main screen' : `Screen ${i + 1}`} (${d.size.width}×${d.size.height})`;
+  const entries = orderedDisplays();
   const template = [
     {
       label: 'Foxy Timer',
@@ -233,19 +316,30 @@ function buildMenu() {
     {
       label: 'Output',
       submenu: [
-        { label: 'Show the timer on a second screen', type: 'checkbox', checked: settings.outputEnabled,
+        { label: 'Show timers on other screens', type: 'checkbox', checked: settings.outputEnabled,
           click: (item) => { settings.outputEnabled = item.checked; saveSettings(); syncOutput(); buildMenu(); } },
+        { label: 'Identify screens', click: identifyScreens },
         { type: 'separator' },
-        { label: 'Screen', enabled: settings.outputEnabled, submenu: displays.map((d, i) => ({
-          label: displayLabel(d, i), type: 'radio', checked: !!target && target.id === d.id,
-          click: () => { settings.outputDisplayId = d.id; saveSettings(); syncOutput(); buildMenu(); },
-        })) },
-        { label: 'Room', enabled: settings.outputEnabled && rooms.length > 0, submenu: rooms.length ? rooms.map((r) => ({
-          label: r.slug, type: 'radio', checked: !!room && room.id === r.id,
-          click: () => { settings.outputRoomId = r.id; saveSettings(); syncOutput(); buildMenu(); },
-        })) : [{ label: 'No rooms yet', enabled: false }] },
-        { type: 'separator' },
-        { label: target ? `Showing "${room ? room.slug : '-'}" on ${displayLabel(target, displays.indexOf(target))}` : 'No second screen connected', enabled: false },
+        ...entries.map((entry) => {
+          const current = screenRoomId(entry);
+          const room = roomById(current);
+          return {
+            label: `${screenLabel(entry)}  →  ${room ? room.slug : 'nothing'}`,
+            enabled: settings.outputEnabled,
+            submenu: [
+              { label: 'Nothing', type: 'radio', checked: !current, click: () => setScreenRoom(entry, null) },
+              { type: 'separator' },
+              ...(rooms.length
+                ? rooms.map((r) => ({
+                  label: r.licenceLocked ? `${r.slug} (not in the free version)` : r.slug,
+                  type: 'radio', checked: current === r.id, enabled: !r.licenceLocked,
+                  click: () => setScreenRoom(entry, r.id),
+                }))
+                : [{ label: 'No rooms yet', enabled: false }]),
+            ],
+          };
+        }),
+        ...(entries.length === 1 ? [{ type: 'separator' }, { label: 'No other screen connected', enabled: false }] : []),
       ],
     },
     {
@@ -283,19 +377,19 @@ if (process.argv.includes('--stop')) {
 
     screen.on('display-added', () => { syncOutput(); buildMenu(); });
     screen.on('display-removed', () => { syncOutput(); buildMenu(); });
-    screen.on('display-metrics-changed', () => syncOutput());
+    screen.on('display-metrics-changed', () => { syncOutput(); buildMenu(); });
 
     // Keep the Output > Room list current, and notice if the engine stops
     // (e.g. Stop Foxy Timer on the dashboard, or a crash).
     let engineDownSince = null;
     let asking = false;
     setInterval(async () => {
-      const before = rooms.map((r) => r.id + r.slug).join();
+      const before = rooms.map((r) => r.id + r.slug + r.licenceLocked).join();
       const health = await getJson('/api/health', 3000);
       if (health && health.ok) {
         engineDownSince = null;
         await refreshRooms();
-        if (rooms.map((r) => r.id + r.slug).join() !== before) { buildMenu(); syncOutput(); }
+        if (rooms.map((r) => r.id + r.slug + r.licenceLocked).join() !== before) { buildMenu(); syncOutput(); }
         return;
       }
       engineDownSince = engineDownSince || Date.now();
@@ -307,7 +401,7 @@ if (process.argv.includes('--stop')) {
         detail: 'Displays, control pages and Stream Decks are disconnected until it runs again.',
       });
       asking = false;
-      if (response === 0 && (await ensureEngine())) { engineDownSince = null; mainWindow.loadURL(`${LOCAL}/dashboard`); if (outputWindow) outputWindow.reload(); }
+      if (response === 0 && (await ensureEngine())) { engineDownSince = null; mainWindow.loadURL(`${LOCAL}/dashboard`); for (const w of outputWindows.values()) w.reload(); }
       else if (response === 1) { quitting = true; app.quit(); }
     }, 5000);
   });
