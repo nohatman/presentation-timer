@@ -46,6 +46,7 @@ const io = socketIo(server, {
 // Enable CORS for all routes
 app.use(cors());
 app.use(express.json());
+app.use((req, res, next) => { noteRemotePeer(req.socket.remoteAddress); next(); });
 
 // Serve static files with cache-control (avoid stale HTML after deploy)
 app.use(express.static(path.join(__dirname, 'public'), {
@@ -323,6 +324,7 @@ function attachTimerState(req, res, next) {
 // (control or display), resolved against the database. Nothing client-declared
 // (room name, "type" param) is ever trusted.
 io.on('connection', (socket) => {
+  noteRemotePeer(socket.handshake.address);
   const token = (socket.handshake.auth && socket.handshake.auth.token) || socket.handshake.query.token;
   const access = auth.resolveSocketAccess(token);
 
@@ -1965,6 +1967,29 @@ function firewallStatus(alias, { refresh = false } = {}) {
   return firewallCache.pending;
 }
 
+// Proof that another device really reached this laptop. The firewall check
+// only covers the laptop itself; venue and guest Wi-Fi often keeps devices
+// apart ("client isolation"), which nothing on the laptop can see - so the
+// dashboard says "not tested yet" until a phone, screen or Companion PC gets
+// through, and offers /check (QR on the dashboard) to test with a phone.
+let lastRemoteDevice = null; // { at, address }
+function noteRemotePeer(address) {
+  if (!LOCAL_MODE || !address) return;
+  if (lastRemoteDevice && Date.now() - lastRemoteDevice.at < 10000) return;
+  if (auth.isThisMachineAddress(address)) return;
+  lastRemoteDevice = { at: Date.now(), address: String(address).replace(/^::ffff:/, '') };
+}
+
+app.get('/check', (req, res) => {
+  if (!LOCAL_MODE) return res.status(404).send('Not found');
+  res.set('Cache-Control', 'no-store');
+  res.send(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Foxy Timer connection check</title>
+<body style="margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0a0a0a;color:#f5f5f5;font-family:-apple-system,Segoe UI,Roboto,sans-serif;text-align:center;padding:24px;box-sizing:border-box">
+<div><div style="font-size:64px;color:#4caf50">✓</div><h1 style="font-size:1.4rem;margin:8px 0">This device can reach Foxy Timer</h1>
+<p style="color:#aaa;line-height:1.5">The show laptop now shows the check as passed.<br>Control and Display links will work from here too.</p></div></body>`);
+});
+
 async function laptopStatus(req, opts) {
   const lan = selectLanAddresses();
   const port = Number(process.env.PORT || 3000);
@@ -1975,7 +2000,8 @@ async function laptopStatus(req, opts) {
     build: STARTED_BUILD.label,
     port,
     addresses: lan.candidates.map((c) => ({ name: c.name, address: c.address, url: `http://${c.address}:${port}`, virtual: c.virtual })),
-    firewall: lan.primary ? await firewallStatus(lan.primary.name, opts) : { state: 'unknown', reason: 'no-network' }
+    firewall: lan.primary ? await firewallStatus(lan.primary.name, opts) : { state: 'unknown', reason: 'no-network' },
+    remoteDevice: lastRemoteDevice
   };
 }
 

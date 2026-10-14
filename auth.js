@@ -204,6 +204,11 @@ function ownAddresses() {
   return out;
 }
 
+function isThisMachineAddress(address) {
+  const peer = String(address || '').replace(/^::ffff:/, '');
+  return LOOPBACK_PEERS.has(peer) || peer === '127.0.0.1' || ownAddresses().has(peer);
+}
+
 function isThisMachine(req) {
   const peer = String((req.socket && req.socket.remoteAddress) || '').replace(/^::ffff:/, '');
   if (LOOPBACK_PEERS.has(peer) || peer === '127.0.0.1') return { ok: true, own: null };
@@ -316,6 +321,7 @@ module.exports = {
   resolveOwnedRoom,
   resolveSocketAccess,
   isLocalOperatorRequest,
+  isThisMachineAddress,
   requirePlatformAdmin,
   resolveRoomById,
   // sessions

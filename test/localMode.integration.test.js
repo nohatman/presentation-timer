@@ -207,3 +207,11 @@ test('free version: a second room is shut off for displays, control and Companio
   const main = db.getRoomsForClient(db.getOrCreateLocalClient().id)[0];
   assert.deepEqual((await join(main.display_token)).info, { limited: true });
 });
+
+test('connection check: /check page, and the laptop itself never counts as another device', async () => {
+  const page = await request('GET', '/check');
+  assert.equal(page.status, 200);
+  const status = await request('GET', '/api/local/status');
+  assert.equal(status.status, 200);
+  assert.equal(status.json.remoteDevice, null, 'requests from this laptop are not "another device"');
+});
