@@ -146,10 +146,14 @@ async function toggleSharperText(item) {
     return;
   }
   powerSavingGpu = item.checked;
-  const { response } = await dialog.showMessageBox(mainWindow, {
-    type: 'question', title: 'Foxy Timer', buttons: ['Reopen windows now', 'Later'], defaultId: 0, cancelId: 1,
-    message: 'Reopen Foxy Timer\'s windows to apply this?',
-    detail: 'The timer keeps running and phones stay connected. Screens showing the timer go blank for a couple of seconds while the windows reopen.\n\nChoose Later to apply it the next time Foxy Timer opens.',
+  const response = await appDialog({
+    title: 'Reopen Foxy Timer\'s windows to apply this?',
+    message: 'The timer keeps running and phones stay connected. Screens showing the timer go blank for a couple of seconds while the windows reopen.',
+    options: [
+      { label: 'Reopen windows now', kind: 'primary', busy: 'Reopening…' },
+      { label: 'Later', detail: 'Applies the next time Foxy Timer opens.', kind: 'plain' },
+    ],
+    cancelId: 1,
   });
   if (response !== 0) return;
   quitting = true;
@@ -265,18 +269,25 @@ function createMainWindow() {
   mainWindow.on('move', rememberSoon);
   mainWindow.on('maximize', rememberSoon);
   mainWindow.on('unmaximize', rememberSoon);
+  let closeAsked = false;
   mainWindow.on('close', async (e) => {
     if (quitting) return;
     e.preventDefault();
-    const { response } = await dialog.showMessageBox(mainWindow, {
-      type: 'question', title: 'Close Foxy Timer',
-      buttons: ['Stop Foxy Timer and close', 'Close, keep the timer running', 'Cancel'], defaultId: 2, cancelId: 2,
-      message: 'Close Foxy Timer?',
-      detail: 'Stopping disconnects every display, control page and Stream Deck.\n\nIf you keep it running, phones, screens and Stream Decks carry on working; open Foxy Timer again to get this window back.',
+    if (closeAsked) return;
+    closeAsked = true;
+    const response = await appDialog({
+      title: 'Close Foxy Timer?',
+      options: [
+        { label: 'Keep the timer running', detail: 'Closes this window. Phones, screens and Companion carry on. Open Foxy Timer again to get the window back.', kind: 'primary', busy: 'Closing…' },
+        { label: 'Stop Foxy Timer', detail: 'Stops the timer. Every display, control page and Companion disconnects.', kind: 'danger', busy: 'Stopping…' },
+        { label: 'Cancel', kind: 'plain' },
+      ],
+      cancelId: 2,
     });
+    closeAsked = false;
     if (response === 2) return;
     quitting = true;
-    if (response === 0) await runLauncher('stop');
+    if (response === 1) await runLauncher('stop');
     app.quit();
   });
 }
@@ -453,6 +464,40 @@ async function refreshRooms() {
   return rooms;
 }
 
+// ---------------------------------------------------------------- app questions
+// Asked inside the dashboard window in the app's own style (desktop/preload.js
+// + dashboard.html #appDialog), not as Windows message boxes. Each option is
+// { label, detail?, kind?: 'primary' | 'danger' | 'plain', busy? } - busy is
+// shown on the button while the app acts on it. Falls back to a Windows box
+// if the page doesn't take it within 1.5 s (e.g. it's reloading), so a
+// question can never get lost.
+let dialogSeq = 0;
+const dialogWaiters = new Map(); // id -> { shown, answer }
+ipcMain.on('app:dialog-shown', (event, id) => { const w = dialogWaiters.get(id); if (w) w.shown(); });
+ipcMain.on('app:dialog-answer', (event, id, index) => { const w = dialogWaiters.get(id); if (w) { dialogWaiters.delete(id); w.answer(index); } });
+
+async function appDialog({ title, message, options, cancelId }) {
+  if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isLoading()) {
+    const id = ++dialogSeq;
+    let shown; let answer;
+    const shownP = new Promise((res) => { shown = () => res(true); });
+    const answerP = new Promise((res) => { answer = res; });
+    dialogWaiters.set(id, { shown, answer });
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    if (!HIDDEN) { mainWindow.show(); mainWindow.focus(); }
+    mainWindow.webContents.send('app:dialog', { id, title, message, options, cancelId });
+    const ok = await Promise.race([shownP, new Promise((res) => setTimeout(() => res(false), 1500))]);
+    if (ok) return answerP;
+    dialogWaiters.delete(id);
+  }
+  const { response } = await dialog.showMessageBox(mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined, {
+    type: 'question', title: 'Foxy Timer', message: title,
+    detail: [message, ...options.filter((o) => o.detail).map((o) => `${o.label}: ${o.detail}`)].filter(Boolean).join('\n\n'),
+    buttons: options.map((o) => o.label), defaultId: 0, cancelId,
+  });
+  return response;
+}
+
 // ---------------------------------------------------------------- dashboard
 // What the dashboard needs to show "🖥 Screen 2" on each room and change it
 // (desktop/preload.js). Sent again whenever the menu is rebuilt - that is,
@@ -588,10 +633,14 @@ if (process.argv.includes('--stop')) {
       engineDownSince = engineDownSince || Date.now();
       if (asking || quitting || Date.now() - engineDownSince < 6000) return;
       asking = true;
-      const { response } = await dialog.showMessageBox(mainWindow, {
-        type: 'warning', title: 'Foxy Timer', buttons: ['Start it again', 'Close Foxy Timer'], defaultId: 0, cancelId: 1,
-        message: 'Foxy Timer\'s timer engine has stopped.',
-        detail: 'Displays, control pages and Stream Decks are disconnected until it runs again.',
+      const response = await appDialog({
+        title: 'The timer has stopped running',
+        message: 'Displays, control pages and Companion are disconnected until it runs again.',
+        options: [
+          { label: 'Start it again', kind: 'primary', busy: 'Starting…' },
+          { label: 'Close Foxy Timer', kind: 'plain' },
+        ],
+        cancelId: 1,
       });
       asking = false;
       if (response === 0 && (await ensureEngine())) { engineDownSince = null; mainWindow.loadURL(`${LOCAL}/dashboard`); for (const w of outputWindows.values()) w.reload(); }

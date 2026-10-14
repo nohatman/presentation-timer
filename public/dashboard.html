@@ -445,6 +445,23 @@
         .room-menu .screen-option[aria-checked="true"] .tick { background: #2e7d32; border-color: #2e7d32; }
         .room-menu hr { border: 0; border-top: 1px solid #333; margin: 4px 0; }
 
+        /* The Windows app's own questions (close, restart...) - see appDialog in desktop/main.js */
+        .app-dialog { position: fixed; inset: 0; z-index: 2000; background: rgba(0,0,0,0.65); display: flex; align-items: center; justify-content: center; padding: 16px; }
+        .app-dialog[hidden] { display: none; }
+        .app-dialog-box { background: #1a1a1a; border: 1px solid #333; border-radius: 14px; box-shadow: 0 16px 48px rgba(0,0,0,0.6); width: 100%; max-width: 460px; padding: 22px; outline: none; }
+        .app-dialog-box h2 { margin: 0 0 6px; font-size: 1.25rem; color: #fafafa; display: flex; align-items: center; gap: 10px; }
+        .app-dialog-box .msg { color: #bbb; font-size: 0.92rem; line-height: 1.5; margin: 0 0 14px; }
+        .app-options { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+        .app-option { text-align: left; border-radius: 10px; padding: 12px 14px; cursor: pointer; border: 1px solid #3a3a3a; background: #222; color: #eee; font-size: 0.98rem; font-weight: 700; }
+        .app-option .detail { display: block; font-weight: 400; font-size: 0.84rem; color: #bbb; margin-top: 3px; line-height: 1.45; }
+        .app-option.primary { background: #1f3a24; border-color: #2e7d32; }
+        .app-option.primary:hover, .app-option.primary:focus-visible { background: #24472b; outline: 2px solid #4caf50; outline-offset: 1px; }
+        .app-option.danger { background: #2a1616; border-color: #7a2323; }
+        .app-option.danger:hover, .app-option.danger:focus-visible { background: #351a1a; outline: 2px solid #e57373; outline-offset: 1px; }
+        .app-option.plain { background: transparent; border-color: transparent; color: #aaa; font-weight: 500; text-align: center; padding: 8px; }
+        .app-option.plain:hover, .app-option.plain:focus-visible { color: #fff; outline: 1px solid #444; }
+        .app-option:disabled { cursor: progress; opacity: 0.7; }
+
         /* The ⋯ menu lives outside the rooms (they redraw every second). */
         .room-menu { position: fixed; z-index: 900; background: #1c1c1c; border: 1px solid #3a3a3a; border-radius: 8px; box-shadow: 0 8px 28px rgba(0,0,0,0.5); padding: 4px; min-width: 190px; }
         .room-menu[hidden] { display: none; }
@@ -579,6 +596,9 @@
     <!-- One shared ⋯ menu for List and Mini layouts: kept outside
          #roomsContainer, which is redrawn every second. -->
     <div id="screenMenu" class="room-menu" role="menu" hidden></div>
+    <div id="appDialog" class="app-dialog" hidden>
+        <div class="app-dialog-box" role="alertdialog" aria-modal="true" aria-labelledby="appDialogTitle" tabindex="-1"></div>
+    </div>
     <div id="roomMenu" class="room-menu" role="menu" hidden>
         <button type="button" role="menuitem" onclick="roomMenuAction('share', this)">🔗 Share links &amp; QR</button>
         <button type="button" role="menuitem" onclick="roomMenuAction('links', this)">🔄 New links</button>
@@ -1602,6 +1622,47 @@
             const options = [...document.querySelectorAll('#screenMenu .screen-option')];
             const again = options[appOutputs.screens.findIndex((x) => x.id === displayId)];
             if (again) again.focus();
+        }
+
+        // ---- The Windows app's own questions (close, restart...) ----
+        // desktop/main.js appDialog asks; this draws it in the app's style and
+        // answers with the chosen option. Esc or clicking outside = cancel.
+        let appDialogReq = null;
+        function answerAppDialog(index) {
+            const req = appDialogReq;
+            if (!req) return;
+            const opt = req.options[index];
+            if (opt && opt.busy && index !== req.cancelId) {
+                // Stay up, showing what's happening, until the app acts.
+                document.querySelectorAll('#appDialog .app-option').forEach((b, i) => {
+                    b.disabled = true;
+                    if (i === index) b.firstChild.textContent = opt.busy;
+                });
+                appDialogReq = { ...req, answered: true };
+            } else {
+                appDialogReq = null;
+                document.getElementById('appDialog').hidden = true;
+            }
+            window.foxyApp.dialogAnswer(req.id, index);
+        }
+        if (window.foxyApp) {
+            window.foxyApp.onDialog((req) => {
+                closeRoomMenu(); closeScreenMenu();
+                appDialogReq = req;
+                const box = document.querySelector('#appDialog .app-dialog-box');
+                box.innerHTML = `<h2 id="appDialogTitle"><img src="/favicon.svg" alt="" width="24" height="24">${escapeHtml(req.title)}</h2>`
+                    + (req.message ? `<p class="msg">${escapeHtml(req.message)}</p>` : '')
+                    + '<div class="app-options">' + req.options.map((o, i) => `<button type="button" class="app-option ${o.kind || 'plain'}" onclick="answerAppDialog(${i})"><span>${escapeHtml(o.label)}</span>${o.detail ? `<span class="detail">${escapeHtml(o.detail)}</span>` : ''}</button>`).join('') + '</div>';
+                document.getElementById('appDialog').hidden = false;
+                box.querySelector('.app-option').focus();
+                window.foxyApp.dialogShown(req.id);
+            });
+            document.getElementById('appDialog').addEventListener('click', (e) => {
+                if (e.target.id === 'appDialog' && appDialogReq && !appDialogReq.answered) answerAppDialog(appDialogReq.cancelId);
+            });
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && appDialogReq && !appDialogReq.answered) { e.stopPropagation(); answerAppDialog(appDialogReq.cancelId); }
+            }, true);
         }
 
         // ---- The shared ⋯ menu ----
