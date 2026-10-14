@@ -12,6 +12,7 @@ const { sanitizeDeviceName, sanitizePanelId } = require('./deviceNames');
 const enquiries = require('./enquiries');
 const demoRooms = require('./demoRooms');
 const trials = require('./trials');
+const { createLicenceManager } = require('./licence');
 const QRCode = require('qrcode');
 const { selectLanAddresses } = require('./tools/local-server/lib/lan');
 const firewall = require('./tools/local-server/lib/firewall');
@@ -332,7 +333,13 @@ io.on('connection', (socket) => {
   }
 
   const { roomId, role } = access; // role: 'control' | 'display', derived server-side
+  if (!licenceAllowsRoom(roomId)) {
+    socket.emit('authError', { reason: 'licence', message: LIMITED_ROOM_MESSAGE });
+    socket.disconnect(true);
+    return;
+  }
   socket.join(roomId);
+  if (licence) socket.emit('licenceInfo', { limited: licence.isLimited() });
   if (access.room.expires_at) socket.emit('demoInfo', { expiresAt: access.room.expires_at });
   socket.clientType = role;
   socket.roomId = roomId;
@@ -943,7 +950,8 @@ function summarizeRoom(row, req) {
     amberThresholdMs: state.amberThresholdMs,
     redThresholdMs: state.redThresholdMs,
     controlUrl: links.controlUrl,
-    displayUrl: links.displayUrl
+    displayUrl: links.displayUrl,
+    licenceLocked: !licenceAllowsRoom(roomId)
   };
 }
 
@@ -976,6 +984,9 @@ app.post('/api/rooms', auth.requireDashboardAuth, (req, res) => {
     return res.status(400).json({ ok: false, error: 'Missing or invalid "slug" in request body' });
   }
   const cleanSlug = slug.trim().slice(0, 100);
+  if (licence && licence.isLimited() && db.getRoomsForClient(req.client.id).length >= 1) {
+    return res.status(403).json({ ok: false, reason: 'licence', error: 'The free version of Foxy Timer for Windows runs one room.' });
+  }
 
   let room;
   try {
@@ -1390,7 +1401,12 @@ app.post('/api/admin/clients/:id/rotate-key', ...adminClientAuth, (req, res) => 
 // and the slug is resolved only within that client's own rooms.
 // ============================================
 
-const roomAuth = [auth.requireDashboardAuth, auth.resolveOwnedRoom, attachTimerState];
+function requireLicensedRoom(req, res, next) {
+  if (!licenceAllowsRoom(req.roomId)) return res.status(403).json({ ok: false, reason: 'licence', error: LIMITED_ROOM_MESSAGE });
+  next();
+}
+
+const roomAuth = [auth.requireDashboardAuth, auth.resolveOwnedRoom, requireLicensedRoom, attachTimerState];
 
 // GET pre-computed display values optimised for Companion button feedback
 app.get('/api/rooms/:roomId/companion', ...roomAuth, (req, res) => {
@@ -1670,6 +1686,26 @@ app.post('/api/rooms/:roomId/message', ...roomAuth, (req, res) => {
 const STARTED_AT = Date.now();
 const STARTED_BUILD = buildInfo.getBuildInfo(__dirname);
 const LOCAL_MODE = process.env.FOXY_MODE === 'local'; // set only by the Local Show Server launcher
+
+// Foxy Timer for Windows trial (licence.js). Full or limited is decided at
+// startup; limited = the first room only, plus a small mark on displays.
+// Online has no licence (null) and is never limited.
+const licence = LOCAL_MODE ? createLicenceManager({
+  getMeta: db.getMeta,
+  setMeta: db.setMeta,
+  appVersion: STARTED_BUILD.label,
+  onChange: (info) => {
+    console.log('🔓 Foxy Timer for Windows: full version active');
+    io.emit('licenceInfo', { limited: info.limited });
+  }
+}) : null;
+const LIMITED_ROOM_MESSAGE = 'The free version of Foxy Timer for Windows runs one room. Open the dashboard on the show laptop to see your options.';
+
+function licenceAllowsRoom(roomId) {
+  if (!licence || !licence.isLimited()) return true;
+  const ids = db.getRoomsForClient(db.getOrCreateLocalClient().id).map((r) => r.id);
+  return ids.length > 0 && String(Math.min(...ids)) === String(roomId);
+}
 let diskFingerprintCache = { at: 0, value: STARTED_BUILD.fingerprint };
 
 function currentDiskFingerprint() {
@@ -1947,6 +1983,16 @@ app.get('/api/local/status', auth.requireDashboardAuth, requireLocalOperator, as
   res.json(await laptopStatus(req, { refresh: req.query.refresh === '1' }));
 });
 
+// Trial status for the dashboard's banner, and a "Check again" that asks
+// Foxy Timer Online straight away (e.g. after connecting to the internet).
+app.get('/api/local/licence', auth.requireDashboardAuth, requireLocalOperator, (req, res) => {
+  res.json({ ok: true, ...licence.info() });
+});
+
+app.post('/api/local/licence/check', auth.requireDashboardAuth, requireLocalOperator, async (req, res) => {
+  res.json({ ok: true, ...(await licence.checkIn()) });
+});
+
 app.post('/api/local/firewall/allow', auth.requireDashboardAuth, requireLocalOperator, async (req, res) => {
   const result = await firewall.allowThroughFirewall(process.execPath);
   const status = await laptopStatus(req, { refresh: true });
@@ -2166,6 +2212,13 @@ app.get('/admin/clients/:id', requirePlatformAdminPage, (req, res) => {
 loadRooms();
 sweepExpiredDemoRooms();
 if (LOCAL_MODE) ensureLocalStarterRoom();
+// Check in with Foxy Timer Online at startup and every few hours (picks up a
+// new trial or an extension; offline is fine), and keep the clock guard current.
+if (licence) {
+  licence.checkIn();
+  setInterval(() => licence.checkIn(), 6 * 60 * 60 * 1000).unref();
+  setInterval(() => licence.tickClock(), 60 * 60 * 1000).unref();
+}
 setInterval(sweepExpiredDemoRooms, demoConfig.sweepMs).unref();
 
 // Start server

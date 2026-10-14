@@ -2484,7 +2484,7 @@
                 return;
             }
             document.body.innerHTML = `<div style="padding:40px;text-align:center;font-family:sans-serif;color:#ccc;">
-                <h2>Access denied</h2>
+                <h2>${reason === 'licence' ? 'Room not available' : 'Access denied'}</h2>
                 <p>${message || 'This link is no longer valid.'}</p>
             </div>`;
         });

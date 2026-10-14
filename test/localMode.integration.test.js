@@ -20,6 +20,7 @@ process.env.PORT = String(PORT);
 process.env.LEGACY_ROOMS_JSON_PATH = path.join(os.tmpdir(), `pt-localmode-test-no-such-file-${Date.now()}.json`);
 process.env.FOXY_MODE = 'local';
 delete process.env.FOXY_SHUTDOWN_TOKEN;
+process.env.FOXY_ONLINE_URL = 'http://127.0.0.1:9'; // never reaches the real Foxy Timer Online
 
 const realConsoleLog = console.log;
 console.log = () => {};
@@ -91,10 +92,17 @@ test('first run: starter room, no-login dashboard on the laptop, LAN links', asy
   // 127.0.0.1 counts as the laptop too
   assert.equal((await request('GET', '/api/rooms', { host: `127.0.0.1:${PORT}` })).status, 200);
 
-  // Same-origin create and QR work
+  // No trial yet (never been online), so the free version: one room only
   const created = await request('POST', '/api/rooms', { body: { slug: 'Breakout 1' }, headers: { Origin: `http://localhost:${PORT}` } });
-  assert.equal(created.status, 200);
-  const qr = await request('POST', '/api/qr', { body: { text: created.json.controlUrl }, headers: { 'Sec-Fetch-Site': 'same-origin' } });
+  assert.equal(created.status, 403);
+  assert.equal(created.json.reason, 'licence');
+  assert.equal(rooms.json[0].licenceLocked, false);
+  const lic = await request('GET', '/api/local/licence');
+  assert.equal(lic.json.status, 'none');
+  assert.equal(lic.json.limited, true);
+
+  // Same-origin QR works
+  const qr = await request('POST', '/api/qr', { body: { text: rooms.json[0].controlUrl }, headers: { 'Sec-Fetch-Site': 'same-origin' } });
   assert.equal(qr.status, 200);
   assert.match(qr.json.svg, /^<svg/);
 
@@ -171,4 +179,31 @@ test('nobody else gets the no-login dashboard', async () => {
     assert.equal((await request('GET', '/api/rooms', opts)).status, 401, label);
   }
   assert.equal((await request('POST', '/api/rooms', { body: { slug: 'x' }, headers: { Origin: 'http://evil.example' } })).status, 401);
+});
+
+test('free version: a second room is shut off for displays, control and Companion', async () => {
+  const db = require('../db');
+  const { io: ioClient } = require('socket.io-client');
+  const extra = db.createRoom(db.getOrCreateLocalClient().id, 'Breakout 2'); // e.g. made during the trial
+
+  const rooms = (await request('GET', '/api/rooms')).json;
+  assert.equal(rooms.find((r) => r.slug === 'Main stage').licenceLocked, false);
+  assert.equal(rooms.find((r) => r.slug === 'Breakout 2').licenceLocked, true);
+
+  const { apiKey } = (await request('GET', '/api/local/companion')).json;
+  const auth = { Authorization: `Bearer ${apiKey}`, Host: `192.168.1.50:${PORT}` };
+  assert.equal((await request('GET', `/api/rooms/${encodeURIComponent('Breakout 2')}/companion`, { headers: auth, host: `192.168.1.50:${PORT}` })).json.reason, 'licence');
+  assert.equal((await request('GET', `/api/rooms/${encodeURIComponent('Main stage')}/companion`, { headers: auth, host: `192.168.1.50:${PORT}` })).status, 200);
+
+  function join(token) {
+    return new Promise((resolve) => {
+      const s = ioClient(`http://127.0.0.1:${PORT}`, { auth: { token }, transports: ['websocket'], reconnection: false });
+      s.on('authError', (e) => { s.close(); resolve({ error: e }); });
+      s.on('licenceInfo', (info) => { s.close(); resolve({ info }); });
+    });
+  }
+  assert.equal((await join(extra.display_token)).error.reason, 'licence');
+  assert.equal((await join(extra.control_token)).error.reason, 'licence');
+  const main = db.getRoomsForClient(db.getOrCreateLocalClient().id)[0];
+  assert.deepEqual((await join(main.display_token)).info, { limited: true });
 });

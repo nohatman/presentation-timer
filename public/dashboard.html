@@ -400,6 +400,10 @@
         .laptop-warning { margin-top: 0.9rem; background: #2a2010; border: 1px solid #5a4410; border-radius: 9px; padding: 0.8rem 1rem; color: #f3dfb5; font-size: 0.9rem; line-height: 1.5; }
         .laptop-warning b { color: #ffb300; }
         .laptop-warning .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 0.6rem; }
+        .laptop-warning a { color: #ffb74d; }
+        #licenceText.soon { color: #ffb300; }
+        .room-card.licence-locked { opacity: 0.6; }
+        .licence-locked-note { background: #1c1c1c; border: 1px dashed #444; border-radius: 8px; padding: 0.7rem 0.9rem; color: #bbb; font-size: 0.88rem; line-height: 1.45; }
     </style>
 </head>
 <body>
@@ -457,8 +461,10 @@
             <div><span class="laptop-label">Status</span><span id="laptopStatusText">Running</span></div>
             <div><span class="laptop-label">Address for other devices</span><span id="laptopAddress">…</span></div>
             <div><span class="laptop-label">Firewall</span><span id="laptopFirewall">Checking…</span></div>
+            <div><span class="laptop-label">Version</span><span id="licenceText">…</span></div>
         </div>
         <div id="laptopWarning" class="laptop-warning" hidden></div>
+        <div id="licenceWarning" class="laptop-warning" hidden></div>
     </section>
 
     <div id="roomsContainer" class="rooms-grid">
@@ -551,6 +557,8 @@
                         document.getElementById('laptopPanel').hidden = false;
                         refreshLaptopPanel();
                         setInterval(refreshLaptopPanel, 30000);
+                        refreshLicence();
+                        setInterval(refreshLicence, 60000);
                         document.title = 'Foxy Timer for Windows - Dashboard';
                     }
                 }
@@ -922,6 +930,67 @@
             }
         }
 
+        // Free trial / free version (licence.js). The free version runs one
+        // room with a small "Foxy Timer" mark on displays.
+        const FREE_VERSION_LIMITS = 'one room, with a small "Foxy Timer" mark on displays';
+        function renderLicence(lic) {
+            const text = document.getElementById('licenceText');
+            const warn = document.getElementById('licenceWarning');
+            const contact = `<a href="${escapeHtml(lic.onlineUrl)}/#contact" target="_blank" rel="noopener">get in touch</a>`;
+            text.classList.toggle('soon', lic.status === 'active' && lic.daysLeft <= 3);
+            if (!lic.limited) {
+                text.textContent = `Free trial · ${lic.daysLeft} ${lic.daysLeft === 1 ? 'day' : 'days'} left`;
+                warn.hidden = true;
+                return;
+            }
+            text.textContent = 'Free version';
+            let msg;
+            if (lic.status === 'expired') {
+                msg = `<b>Your free trial has ended.</b> Foxy Timer keeps working as the free version: ${FREE_VERSION_LIMITS}. To keep using every room, ${contact}.`;
+            } else if (lic.status === 'clock') {
+                msg = `<b>This laptop's date or time looks wrong</b> (it's earlier than the last time Foxy Timer ran), so it's running as the free version: ${FREE_VERSION_LIMITS}. Set the correct date and time, then press Restart.`;
+            } else {
+                msg = `<b>Start your free trial:</b> connect this laptop to the internet once, then press Check again. Until then it runs as the free version: ${FREE_VERSION_LIMITS}.`;
+            }
+            const failed = lic.lastCheckIn && !lic.lastCheckIn.ok && lic.status !== 'clock'
+                ? `<div style="margin-top:0.4rem;color:#bfa77a;">Last check: ${escapeHtml(lic.lastCheckIn.error === 'Offline' || lic.lastCheckIn.error === 'No reply' ? "couldn't reach Foxy Timer Online" : lic.lastCheckIn.error)}.</div>`
+                : '';
+            const button = lic.status === 'clock' ? '' : '<div class="row"><button type="button" class="laptop-btn" onclick="checkLicenceNow(this)">Check again</button></div>';
+            warn.innerHTML = msg + failed + button;
+            warn.hidden = false;
+        }
+
+        let licenceLimited = null;
+        async function refreshLicence() {
+            try {
+                const response = await authFetch('/api/local/licence');
+                const data = await response.json();
+                if (!data.ok) return;
+                renderLicence(data);
+                // The first check-in at startup may still be on its way.
+                if (data.limited && !data.lastCheckIn) setTimeout(refreshLicence, 3000);
+                if (licenceLimited !== null && licenceLimited !== data.limited) fetchRooms();
+                licenceLimited = data.limited;
+            } catch (err) { /* keep the last reading */ }
+        }
+
+        async function checkLicenceNow(btn) {
+            btn.disabled = true;
+            btn.textContent = 'Checking…';
+            try {
+                const response = await authFetch('/api/local/licence/check', { method: 'POST' });
+                const data = await response.json();
+                if (data.ok) {
+                    renderLicence(data);
+                    if (licenceLimited !== data.limited) fetchRooms();
+                    licenceLimited = data.limited;
+                }
+            } catch (err) {
+                btn.disabled = false;
+                btn.textContent = 'Check again';
+            }
+        }
+
         async function refreshLaptopPanel(force) {
             try {
                 const response = await authFetch('/api/local/status' + (force ? '?refresh=1' : ''));
@@ -1118,6 +1187,20 @@
                     : room.mode === 'paused'
                         ? `<button onclick="toggleRoomTimer('${escapeHtml(room.id)}', 'paused')" class="action-btn primary-action" style="background:#4caf50;border-color:#4caf50;color:white;">▶️ Resume</button>`
                         : `<button onclick="toggleRoomTimer('${escapeHtml(room.id)}', 'stopped')" class="action-btn primary-action" style="background:#4caf50;border-color:#4caf50;color:white;">▶️ Start</button>`;
+
+                if (room.licenceLocked) {
+                    return `
+                    <div class="room-card licence-locked" data-room-id="${escapeHtml(room.id)}">
+                        <div class="room-header">
+                            <div class="room-name">${escapeHtml(room.slug)}</div>
+                            <div class="room-status">free version</div>
+                        </div>
+                        <div class="licence-locked-note">The free version runs one room, so this room is switched off. Its links will work again with the full version.</div>
+                        <div class="room-actions" style="margin-top:0.8rem;">
+                            <button onclick="deleteRoom('${escapeHtml(room.id)}')" class="action-btn danger secondary-action">🗑️ Delete</button>
+                        </div>
+                    </div>`;
+                }
 
                 return `
                     <div class="room-card ${room.mode}"

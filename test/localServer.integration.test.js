@@ -25,6 +25,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'foxy-local-it-'));
 process.env.DATABASE_PATH = path.join(tmp, 'db.sqlite');                      // scratch DB, inherited by spawned servers
 process.env.LEGACY_ROOMS_JSON_PATH = path.join(tmp, 'no-such-rooms.json');
 process.env.FOXY_NO_BROWSER = '1';
+process.env.FOXY_ONLINE_URL = 'http://127.0.0.1:9';                             // spawned servers never reach the real Foxy Timer Online
 
 function freePort() {
   return new Promise((resolve, reject) => {

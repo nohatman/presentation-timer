@@ -1141,6 +1141,9 @@ module.exports = {
   listEnquiries,
   getEnquiryById,
   setEnquiryHandled,
+  // meta (key/value settings)
+  getMeta,
+  setMeta,
   // Windows trials
   getOrStartWindowsTrial,
   getWindowsTrialSettings,
