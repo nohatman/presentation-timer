@@ -138,12 +138,44 @@ const isOurs = (url) => {
 };
 const toLocal = (url) => { const u = new URL(url); return `${LOCAL}${u.pathname}${u.search}${u.hash}`; };
 
+// Mixed-scaling screens (e.g. a 100% laptop with a 300% portable monitor): a
+// window that lands on a screen with a different scale can stay fuzzy - a
+// stretched copy - until something makes it redraw. A one-pixel resize there
+// and back forces that redraw at the new scale. Maximised and full-screen
+// windows can't be resized without un-maximising, so they just repaint.
+function keepSharp(win) {
+  let lastScale = null;
+  let timer = null;
+  const scaleNow = () => screen.getDisplayMatching(win.getBounds()).scaleFactor;
+  const redraw = () => {
+    if (win.isDestroyed()) return;
+    if (!win.isMaximized() && !win.isFullScreen()) {
+      const [w, h] = win.getSize();
+      win.setSize(w + 1, h);
+      setTimeout(() => { if (!win.isDestroyed()) { win.setSize(w, h); win.webContents.invalidate(); } }, 60);
+    } else {
+      win.webContents.invalidate();
+    }
+  };
+  const check = () => {
+    if (win.isDestroyed()) return;
+    const scale = scaleNow();
+    if (lastScale !== null && scale !== lastScale) redraw();
+    lastScale = scale;
+  };
+  win.once('ready-to-show', () => { lastScale = scaleNow(); if (lastScale !== screen.getPrimaryDisplay().scaleFactor) setTimeout(redraw, 300); });
+  win.on('move', () => { clearTimeout(timer); timer = setTimeout(check, 250); });
+  win.on('moved', check);
+  win.on('show', check);
+}
+app.on('browser-window-created', (e, win) => keepSharp(win));
+
 function wireLinks(win) {
   // Our own pages (Control, Display, Help) open as app windows; anything else
   // (foxytimer.com, Companion docs...) goes to the normal browser.
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (!isOurs(url)) { shell.openExternal(url); return { action: 'deny' }; }
-    return { action: 'allow', overrideBrowserWindowOptions: { autoHideMenuBar: true, icon: ICON, width: 1100, height: 800, show: !HIDDEN } };
+    return { action: 'allow', overrideBrowserWindowOptions: { icon: ICON, width: 1100, height: 800, show: !HIDDEN } };
   });
   win.webContents.on('did-create-window', (child) => wireLinks(child));
   win.webContents.on('will-navigate', (e, url) => { if (!isOurs(url)) { e.preventDefault(); shell.openExternal(url); } });
@@ -349,7 +381,7 @@ function buildMenu() {
     {
       label: 'Help',
       submenu: [
-        { label: 'Foxy Timer help', click: () => { const w = new BrowserWindow({ width: 900, height: 800, icon: ICON, autoHideMenuBar: true, show: !HIDDEN }); wireLinks(w); w.loadURL(`${LOCAL}/help`); } },
+        { label: 'Foxy Timer help', click: () => { const w = new BrowserWindow({ width: 900, height: 800, icon: ICON, show: !HIDDEN }); wireLinks(w); w.loadURL(`${LOCAL}/help`); } },
         { label: 'foxytimer.com', click: () => shell.openExternal('https://foxytimer.com') },
       ],
     },
@@ -377,7 +409,7 @@ if (process.argv.includes('--stop')) {
 
     screen.on('display-added', () => { syncOutput(); buildMenu(); });
     screen.on('display-removed', () => { syncOutput(); buildMenu(); });
-    screen.on('display-metrics-changed', () => { syncOutput(); buildMenu(); });
+    screen.on('display-metrics-changed', () => { syncOutput(); buildMenu(); for (const w of BrowserWindow.getAllWindows()) w.emit('moved'); });
 
     // Keep the Output > Room list current, and notice if the engine stops
     // (e.g. Stop Foxy Timer on the dashboard, or a crash).

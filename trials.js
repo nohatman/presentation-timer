@@ -78,7 +78,10 @@ function licenceStatus(licence, machineId, now = Date.now(), publicKey = LICENCE
   const data = verifyLicence(licence, machineId, publicKey);
   if (!data) return { status: 'invalid' };
   if (now >= data.expiresAt) return { status: 'expired', expiresAt: data.expiresAt };
-  return { status: 'active', expiresAt: data.expiresAt, daysLeft: Math.ceil((data.expiresAt - now) / DAY_MS) };
+  // An hour's leeway so a laptop clock a little behind Online's doesn't turn a
+  // fresh 14-day trial into "15 days left"; never shows 0 while still active.
+  const daysLeft = Math.max(1, Math.ceil((data.expiresAt - now - 60 * 60 * 1000) / DAY_MS));
+  return { status: 'active', expiresAt: data.expiresAt, daysLeft };
 }
 
 function parseTrialDays(value) {

@@ -102,3 +102,10 @@ test('a licence for another machine or signed by another key is ignored', async 
   s.meta.set('windows_licence', trials.signLicence({ id: 1, machine: lic.machineId, issuedAt: 0, expiresAt: s.t.now + DAY }, other));
   assert.equal(s.make().info().status, 'invalid');
 });
+
+test('days left: a laptop clock a little behind Online still shows 14, never 15', () => {
+  const now = 1_800_000_000_000;
+  const licence = trials.signLicence({ id: 1, machine: 'm'.repeat(64), issuedAt: now, expiresAt: now + 14 * DAY }, privateKey);
+  assert.equal(trials.licenceStatus(licence, 'm'.repeat(64), now - 30 * 1000, publicKey).daysLeft, 14);
+  assert.equal(trials.licenceStatus(licence, 'm'.repeat(64), now + 14 * DAY - 10 * 60 * 1000, publicKey).daysLeft, 1);
+});
