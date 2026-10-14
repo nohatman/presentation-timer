@@ -20,9 +20,9 @@
         }
         .header {
             background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
-            padding: 2rem;
+            padding: 1.1rem 1.5rem;
             border-radius: 12px;
-            margin-bottom: 2rem;
+            margin-bottom: 1rem;
             border: 1px solid #333;
             display: flex;
             justify-content: space-between;
@@ -31,7 +31,7 @@
             gap: 1rem;
         }
         .header h1 {
-            font-size: 2rem;
+            font-size: 1.6rem;
             color: #fafafa;
         }
         .header-info {
@@ -77,6 +77,8 @@
             opacity: 0.5;
             transform: scale(0.95);
         }
+        .room-row.drag-over, .room-row.dragging { border-color: #4caf50; }
+        .room-row.dragging { opacity: 0.5; }
         .room-card.drag-over {
             border-color: #4caf50;
             box-shadow: 0 4px 20px rgba(76, 175, 80, 0.4);
@@ -309,7 +311,7 @@
         .create-room-row {
             display: flex;
             gap: 0.5rem;
-            margin-top: 1rem;
+            margin-top: 0.25rem;
         }
         .create-room-row input {
             flex: 1;
@@ -384,7 +386,69 @@
                 max-width: 100%;
             }
         }
-        .laptop-panel { background: #141816; border: 1px solid #2c3a30; border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 1.5rem; }
+        .laptop-panel { background: #141816; border: 1px solid #2c3a30; border-radius: 12px; padding: 0.8rem 1.25rem; margin-bottom: 1rem; }
+        /* Collapsed "This laptop": one summary line; warnings still show below it. */
+        .laptop-summary { color: #aaa; font-size: 0.85rem; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .laptop-summary .ok { color: #81c784; }
+        .laptop-panel:not(.collapsed) .laptop-summary { display: none; }
+        .laptop-panel.collapsed .laptop-body, .laptop-panel.collapsed .laptop-check { display: none; }
+
+        /* Room layout switch (List / Mini / Full), remembered per browser */
+        .rooms-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
+        .rooms-toolbar h2 { font-size: 0.8rem; color: #8a8a8a; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
+        .layout-switch { display: inline-flex; border: 1px solid #333; border-radius: 8px; overflow: hidden; }
+        .layout-switch button { background: #161616; color: #bbb; border: 0; padding: 6px 14px; font-size: 0.85rem; cursor: pointer; }
+        .layout-switch button + button { border-left: 1px solid #333; }
+        .layout-switch button[aria-pressed="true"] { background: #2e7d32; color: #fff; font-weight: 600; }
+        .rooms-grid.layout-mini { grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 0.75rem; }
+        .rooms-grid.layout-list { display: flex; flex-direction: column; gap: 6px; }
+
+        .room-row {
+            display: grid; align-items: center; gap: 0.75rem;
+            grid-template-columns: auto minmax(120px, 1fr) 88px 100px 104px 46px 292px;
+            background: #161616; border: 1px solid #2a2a2a; border-left: 4px solid #555; border-radius: 8px;
+            padding: 6px 10px; cursor: move;
+        }
+        .room-row.running { border-left-color: #4caf50; }
+        .room-row.paused { border-left-color: #ff9800; }
+        .room-row .room-name { font-size: 1rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .room-row .room-status { padding: 3px 8px; font-size: 0.68rem; text-align: center; }
+        .room-row .timer-display { font-size: 1.35rem; text-shadow: none; }
+        .row-meta { color: #999; font-size: 0.8rem; white-space: nowrap; }
+        .row-actions { display: flex; gap: 6px; justify-content: flex-end; }
+        .row-actions .action-btn, .mini-actions .action-btn { padding: 6px 10px; font-size: 0.8rem; white-space: nowrap; }
+        .row-actions .action-btn:hover, .mini-actions .action-btn:hover { transform: none; }
+        .action-btn.go { background: #4caf50; border-color: #4caf50; color: #fff; font-weight: 700; }
+        .action-btn.hold { background: #ff9800; border-color: #ff9800; color: #fff; font-weight: 700; }
+        .action-btn.more { min-width: 34px; flex: 0 0 auto; font-weight: 700; letter-spacing: 1px; }
+        .row-actions .action-btn.go, .row-actions .action-btn.hold { min-width: 88px; }
+
+        .room-card.mini { padding: 0.8rem 0.9rem; border-width: 1px; border-left-width: 4px; }
+        .room-card.mini .room-header { margin-bottom: 0.4rem; padding-bottom: 0.4rem; }
+        .room-card.mini .room-name { font-size: 1.02rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .room-card.mini .room-status { padding: 3px 8px; font-size: 0.66rem; }
+        .room-card.mini .timer-display { font-size: 2.1rem; text-shadow: none; text-align: center; margin: 0.2rem 0; }
+        .mini-meta { display: flex; justify-content: space-between; color: #999; font-size: 0.78rem; margin-bottom: 0.6rem; }
+        .mini-actions { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, 1fr) 34px; gap: 6px; }
+        .mini-actions .action-btn { padding: 7px 4px; text-align: center; overflow: hidden; text-overflow: ellipsis; }
+        .room-card.mini.licence-locked .licence-locked-note, .room-row .licence-locked-note { padding: 0.4rem 0.6rem; font-size: 0.8rem; }
+
+        /* The ⋯ menu lives outside the rooms (they redraw every second). */
+        .room-menu { position: fixed; z-index: 900; background: #1c1c1c; border: 1px solid #3a3a3a; border-radius: 8px; box-shadow: 0 8px 28px rgba(0,0,0,0.5); padding: 4px; min-width: 190px; }
+        .room-menu[hidden] { display: none; }
+        .room-menu button { display: block; width: 100%; text-align: left; background: none; border: 0; color: #e5e5e5; padding: 9px 12px; border-radius: 6px; font-size: 0.88rem; cursor: pointer; }
+        .room-menu button:hover, .room-menu button:focus { background: #2a2a2a; outline: none; }
+        .room-menu button.danger { color: #ef9a9a; }
+
+        @media (max-width: 760px) {
+            .room-row { grid-template-columns: auto 1fr auto; grid-template-areas: "sel name status" "time time meta" "act act act"; row-gap: 6px; }
+            .room-row > .sel { grid-area: sel; } .room-row > .name { grid-area: name; } .room-row > .room-status { grid-area: status; }
+            .room-row > .timer-display { grid-area: time; } .room-row > .ends { display: none; } .room-row > .conns { grid-area: meta; }
+            .room-row > .row-actions { grid-area: act; justify-content: stretch; }
+            .room-row > .row-actions .action-btn:not(.more) { flex: 1; text-align: center; }
+            .rooms-grid.layout-mini { grid-template-columns: 1fr 1fr; }
+        }
+        @media (max-width: 420px) { .rooms-grid.layout-mini { grid-template-columns: 1fr; } }
         .laptop-head { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; }
         .laptop-head h2 { font-size: 1.05rem; color: #fafafa; margin: 0; display: flex; align-items: center; gap: 10px; }
         .laptop-dot { width: 10px; height: 10px; border-radius: 50%; background: #4caf50; box-shadow: 0 0 0 4px rgba(76,175,80,0.18); }
@@ -458,10 +522,12 @@
     <!-- "This laptop" (Foxy Timer for Windows only, opened on the laptop itself):
          is it running, the address other devices use, whether Windows Firewall
          lets them in (with a one-click fix), Stop / Restart, help. -->
-    <section id="laptopPanel" class="laptop-panel" hidden aria-labelledby="laptopPanelTitle">
+    <section id="laptopPanel" class="laptop-panel collapsed" hidden aria-labelledby="laptopPanelTitle">
         <div class="laptop-head">
             <h2 id="laptopPanelTitle"><span class="laptop-dot" id="laptopDot"></span>This laptop</h2>
+            <span class="laptop-summary" id="laptopSummary"></span>
             <div class="laptop-actions">
+                <button type="button" class="laptop-btn" id="laptopToggle" onclick="toggleLaptopPanel()" aria-expanded="false" aria-controls="laptopPanel">Details ▾</button>
                 <a href="/help#connect" target="foxy-help" class="laptop-btn">❓ Connecting devices</a>
                 <button type="button" class="laptop-btn" onclick="restartLaptopServer(this)">🔄 Restart</button>
                 <button type="button" class="laptop-btn danger" onclick="stopLaptopServer(this)">⏹ Stop Foxy Timer</button>
@@ -485,8 +551,24 @@
         <div id="licenceWarning" class="laptop-warning" hidden></div>
     </section>
 
+    <div class="rooms-toolbar">
+        <h2>Rooms</h2>
+        <div class="layout-switch" role="group" aria-label="Room layout">
+            <button type="button" data-layout="list" onclick="setRoomLayout('list')">List</button>
+            <button type="button" data-layout="mini" onclick="setRoomLayout('mini')">Mini</button>
+            <button type="button" data-layout="full" onclick="setRoomLayout('full')">Full</button>
+        </div>
+    </div>
     <div id="roomsContainer" class="rooms-grid">
         <div class="loading">Loading rooms...</div>
+    </div>
+
+    <!-- One shared ⋯ menu for List and Mini layouts: kept outside
+         #roomsContainer, which is redrawn every second. -->
+    <div id="roomMenu" class="room-menu" role="menu" hidden>
+        <button type="button" role="menuitem" onclick="roomMenuAction('share', this)">🔗 Share links &amp; QR</button>
+        <button type="button" role="menuitem" onclick="roomMenuAction('links', this)">🔄 New links</button>
+        <button type="button" role="menuitem" class="danger" onclick="roomMenuAction('delete', this)">🗑️ Delete room</button>
     </div>
 
     <!-- Generic modal shell (dashboard UX fix), same pattern as control.html's
@@ -947,6 +1029,7 @@
                 warn.hidden = true;
             }
             renderReachCheck(s, addr, fw);
+            updateLaptopCollapse();
         }
 
         // Has another device actually reached this laptop? Until one has, offer
@@ -997,6 +1080,7 @@
             if (!lic.limited) {
                 text.textContent = `Free trial · ${lic.daysLeft} ${lic.daysLeft === 1 ? 'day' : 'days'} left`;
                 warn.hidden = true;
+                updateLaptopCollapse();
                 return;
             }
             text.textContent = 'Free version';
@@ -1014,6 +1098,7 @@
             const button = lic.status === 'clock' ? '' : '<div class="row"><button type="button" class="laptop-btn" onclick="checkLicenceNow(this)">Check again</button></div>';
             warn.innerHTML = msg + failed + button;
             warn.hidden = false;
+            updateLaptopCollapse();
         }
 
         let licenceLimited = null;
@@ -1170,6 +1255,7 @@
         function updateDashboard() {
             const container = document.getElementById('roomsContainer');
 
+            autoRoomLayout();
             // Update header stats
             document.getElementById('totalRooms').textContent = roomsData.length;
             const totalConnections = roomsData.reduce((sum, room) => sum + room.connections, 0);
@@ -1189,6 +1275,7 @@
 
             // Keep rooms in custom order
             const sortedRooms = sortRoomsByOrder(roomsData);
+            container.className = `rooms-grid layout-${roomLayout}`;
 
             container.innerHTML = sortedRooms.map(room => {
                 let displayTime;
@@ -1244,9 +1331,13 @@
                         ? `<button onclick="toggleRoomTimer('${escapeHtml(room.id)}', 'paused')" class="action-btn primary-action" style="background:#4caf50;border-color:#4caf50;color:white;">▶️ Resume</button>`
                         : `<button onclick="toggleRoomTimer('${escapeHtml(room.id)}', 'stopped')" class="action-btn primary-action" style="background:#4caf50;border-color:#4caf50;color:white;">▶️ Start</button>`;
 
+                const view = { displayTime, timerClass, isSelected, clientBadge };
+                if (roomLayout === 'list') return renderRoomRow(room, view);
+                if (roomLayout === 'mini') return renderRoomMini(room, view);
+
                 if (room.licenceLocked) {
                     return `
-                    <div class="room-card licence-locked" data-room-id="${escapeHtml(room.id)}">
+                    <div class="room-card room-item licence-locked" data-room-id="${escapeHtml(room.id)}">
                         <div class="room-header">
                             <div class="room-name">${escapeHtml(room.slug)}</div>
                             <div class="room-status">free version</div>
@@ -1259,7 +1350,7 @@
                 }
 
                 return `
-                    <div class="room-card ${room.mode}"
+                    <div class="room-card room-item ${room.mode}"
                          draggable="true"
                          data-room-id="${escapeHtml(room.id)}"
                          ondragstart="handleDragStart(event)"
@@ -1328,6 +1419,168 @@
             }).join('');
 
             updateSelectionUI();
+        }
+
+        // ---- Room layouts: List (one slim row), Mini (small card), Full ----
+        const LAYOUT_KEY = 'foxyDashboardLayout';
+        let roomLayout = null;
+        try { roomLayout = localStorage.getItem(LAYOUT_KEY); } catch { /* private mode */ }
+        let layoutChosen = ['list', 'mini', 'full'].includes(roomLayout);
+        if (!layoutChosen) roomLayout = 'full';
+
+        function setRoomLayout(layout, remember = true) {
+            roomLayout = layout;
+            if (remember) {
+                layoutChosen = true;
+                try { localStorage.setItem(LAYOUT_KEY, layout); } catch { /* not saved */ }
+            }
+            document.querySelectorAll('.layout-switch button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.layout === layout)));
+            closeRoomMenu();
+            updateDashboard();
+        }
+
+        // Until someone picks a layout: big cards for a couple of rooms, mini beyond that.
+        function autoRoomLayout() {
+            if (!document.querySelector('.layout-switch [aria-pressed="true"]')) {
+                document.querySelectorAll('.layout-switch button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.layout === roomLayout)));
+            }
+            if (layoutChosen) return;
+            const want = roomsData.length > 2 ? 'mini' : 'full';
+            if (want !== roomLayout) setRoomLayout(want, false);
+        }
+
+        function primaryRoomButton(room, compact) {
+            const id = escapeHtml(room.id);
+            if (room.mode === 'running') return `<button onclick="toggleRoomTimer('${id}', 'running')" class="action-btn hold">${compact ? '⏸ Pause' : '⏸️ Pause'}</button>`;
+            if (room.mode === 'paused') return `<button onclick="toggleRoomTimer('${id}', 'paused')" class="action-btn go">▶ Resume</button>`;
+            return `<button onclick="toggleRoomTimer('${id}', 'stopped')" class="action-btn go">▶ Start</button>`;
+        }
+
+        function moreButton(room) {
+            return `<button type="button" class="action-btn more" aria-haspopup="menu" aria-label="More for ${escapeHtml(room.slug)}" onclick="openRoomMenu('${escapeHtml(room.id)}', this)">⋯</button>`;
+        }
+
+        const dragAttrs = `draggable="true" ondragstart="handleDragStart(event)" ondragover="handleDragOver(event)" ondrop="handleDrop(event)" ondragend="handleDragEnd(event)" ondragenter="handleDragEnter(event)" ondragleave="handleDragLeave(event)"`;
+
+        function selectBox(room, isSelected) {
+            return `<input type="checkbox" class="room-checkbox" data-room-id="${escapeHtml(room.id)}" ${isSelected ? 'checked' : ''} onchange="onCheckboxChange(this)" onclick="event.stopPropagation()" style="width:16px;height:16px;cursor:pointer;accent-color:#4caf50;" aria-label="Select ${escapeHtml(room.slug)}">`;
+        }
+
+        function renderRoomRow(room, v) {
+            const id = escapeHtml(room.id);
+            if (room.licenceLocked) {
+                return `<div class="room-row room-item" data-room-id="${id}">
+                    <span class="sel"></span><div class="name room-name">${escapeHtml(room.slug)}</div>
+                    <div class="licence-locked-note" style="grid-column: 3 / 7;">Free version: this room is switched off</div>
+                    <div class="row-actions"><button onclick="deleteRoom('${id}')" class="action-btn danger">🗑️ Delete</button></div>
+                </div>`;
+            }
+            const ends = room.mode === 'running' ? `ends ${getEndingTime(room.remainingMs)}` : '';
+            return `<div class="room-row room-item ${room.mode}" data-room-id="${id}" ${dragAttrs}>
+                <span class="sel">${selectBox(room, v.isSelected)}</span>
+                <div class="name" style="min-width:0"><div class="room-name" title="${escapeHtml(room.slug)}">${escapeHtml(room.slug)}</div>${v.clientBadge}</div>
+                <div class="room-status ${room.mode}">${room.mode}</div>
+                <div class="timer-display ${v.timerClass}">${v.displayTime}</div>
+                <div class="row-meta ends">${ends}</div>
+                <div class="row-meta conns" title="Connections">👥 ${room.connections}</div>
+                <div class="row-actions">
+                    ${primaryRoomButton(room, true)}
+                    <a href="${room.controlUrl}" class="action-btn control" target="foxy-control-${id}">Control</a>
+                    <a href="${room.displayUrl}" class="action-btn display" target="foxy-display-${id}">Display</a>
+                    ${moreButton(room)}
+                </div>
+            </div>`;
+        }
+
+        function renderRoomMini(room, v) {
+            const id = escapeHtml(room.id);
+            if (room.licenceLocked) {
+                return `<div class="room-card mini room-item licence-locked" data-room-id="${id}">
+                    <div class="room-header"><div class="room-name">${escapeHtml(room.slug)}</div></div>
+                    <div class="licence-locked-note">Free version: this room is switched off</div>
+                    <div style="margin-top:0.5rem"><button onclick="deleteRoom('${id}')" class="action-btn danger" style="padding:6px 10px;font-size:0.8rem;">🗑️ Delete</button></div>
+                </div>`;
+            }
+            const ends = room.mode === 'running' ? `ends ${getEndingTime(room.remainingMs)}` : '';
+            return `<div class="room-card mini room-item ${room.mode}" data-room-id="${id}" ${dragAttrs}>
+                <div class="room-header">
+                    <div style="display:flex;align-items:center;gap:8px;min-width:0;">${selectBox(room, v.isSelected)}
+                        <div style="min-width:0"><div class="room-name" title="${escapeHtml(room.slug)}">${escapeHtml(room.slug)}</div>${v.clientBadge}</div></div>
+                    <div class="room-status ${room.mode}">${room.mode}</div>
+                </div>
+                <div class="timer-display ${v.timerClass}">${v.displayTime}</div>
+                <div class="mini-meta"><span title="Connections">👥 ${room.connections}</span><span>${ends}</span></div>
+                <div class="mini-actions">
+                    ${primaryRoomButton(room, true)}
+                    <a href="${room.controlUrl}" class="action-btn control" target="foxy-control-${id}">Control</a>
+                    <a href="${room.displayUrl}" class="action-btn display" target="foxy-display-${id}">Display</a>
+                    ${moreButton(room)}
+                </div>
+            </div>`;
+        }
+
+        // ---- The shared ⋯ menu ----
+        let roomMenuFor = null;
+        let roomMenuTrigger = null;
+        function openRoomMenu(id, btn) {
+            const menu = document.getElementById('roomMenu');
+            if (!menu.hidden && roomMenuFor === id) { closeRoomMenu(); return; }
+            roomMenuFor = id;
+            roomMenuTrigger = btn;
+            menu.hidden = false;
+            const b = btn.getBoundingClientRect();
+            const w = menu.offsetWidth, h = menu.offsetHeight;
+            menu.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, b.right - w)) + 'px';
+            menu.style.top = (b.bottom + h + 8 > window.innerHeight ? Math.max(8, b.top - h - 4) : b.bottom + 4) + 'px';
+            menu.querySelector('button').focus();
+        }
+        function closeRoomMenu() {
+            const menu = document.getElementById('roomMenu');
+            if (menu) menu.hidden = true;
+            roomMenuFor = null;
+        }
+        function roomMenuAction(action, el) {
+            const id = roomMenuFor;
+            // The button that opened the menu was probably redrawn since; give
+            // dialogs a stable element to return focus to.
+            const trigger = document.querySelector(`.room-item[data-room-id="${CSS.escape(id || '')}"] .more`) || document.getElementById('roomsContainer');
+            closeRoomMenu();
+            if (!id) return;
+            if (action === 'share') showRoomLinks(id, trigger);
+            else if (action === 'links') regenerateLinks(id, trigger);
+            else if (action === 'delete') deleteRoom(id);
+        }
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('#roomMenu') && !e.target.closest('.action-btn.more')) closeRoomMenu();
+        });
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeRoomMenu(); });
+        window.addEventListener('scroll', closeRoomMenu, { passive: true });
+        window.addEventListener('resize', closeRoomMenu);
+
+        // ---- "This laptop": one summary line unless opened or something needs attention ----
+        let laptopOpenedByUser = false;
+        function toggleLaptopPanel() {
+            laptopOpenedByUser = document.getElementById('laptopPanel').classList.contains('collapsed');
+            updateLaptopCollapse();
+        }
+        function updateLaptopCollapse() {
+            const panel = document.getElementById('laptopPanel');
+            const problem = !document.getElementById('laptopWarning').hidden || !document.getElementById('licenceWarning').hidden;
+            const open = laptopOpenedByUser || problem;
+            panel.classList.toggle('collapsed', !open);
+            const t = document.getElementById('laptopToggle');
+            t.textContent = open ? 'Hide ▴' : 'Details ▾';
+            t.setAttribute('aria-expanded', String(open));
+            const text = (elId) => (document.getElementById(elId).textContent || '').trim();
+            const reach = document.getElementById('laptopReach');
+            const reachOk = reach.classList.contains('ok');
+            document.getElementById('laptopSummary').innerHTML = [
+                escapeHtml(text('laptopStatusText').replace(/ since .*/, '')),
+                escapeHtml(text('laptopAddress')),
+                'Firewall: ' + escapeHtml(text('laptopFirewall').split(' on "')[0].toLowerCase()),
+                reachOk ? '<span class="ok">Phones ✓</span>' : 'Phones: not tested',
+                escapeHtml(text('licenceText')),
+            ].filter(Boolean).join(' · ');
         }
 
         function escapeHtml(text) {
@@ -1529,14 +1782,14 @@
         }
 
         function handleDragEnter(event) {
-            const target = event.target.closest('.room-card');
+            const target = event.target.closest('.room-item');
             if (target && target !== draggedElement) {
                 target.classList.add('drag-over');
             }
         }
 
         function handleDragLeave(event) {
-            const target = event.target.closest('.room-card');
+            const target = event.target.closest('.room-item');
             if (target) {
                 target.classList.remove('drag-over');
             }
@@ -1546,7 +1799,7 @@
             event.stopPropagation();
             event.preventDefault();
             
-            const target = event.target.closest('.room-card');
+            const target = event.target.closest('.room-item');
             if (!target || target === draggedElement) {
                 return false;
             }
@@ -1579,7 +1832,7 @@
             event.target.classList.remove('dragging');
             
             // Remove all drag-over classes
-            document.querySelectorAll('.room-card').forEach(card => {
+            document.querySelectorAll('.room-item').forEach(card => {
                 card.classList.remove('drag-over');
             });
             

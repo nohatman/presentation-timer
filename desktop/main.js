@@ -227,15 +227,43 @@ function wireLinks(win) {
   win.webContents.on('will-navigate', (e, url) => { if (!isOurs(url)) { e.preventDefault(); shell.openExternal(url); } });
 }
 
+// The dashboard window opens maximised the first time, then where it was left
+// (if that screen is still connected).
+function savedMainBounds() {
+  const saved = settings.mainWindow && settings.mainWindow.bounds;
+  if (!saved) return null;
+  const onScreen = screen.getAllDisplays().some((d) => {
+    const a = d.workArea;
+    return saved.x < a.x + a.width - 100 && saved.x + saved.width > a.x + 100 && saved.y >= a.y - 20 && saved.y < a.y + a.height - 100;
+  });
+  return onScreen ? saved : null;
+}
+
+function rememberMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed() || mainWindow.isMinimized() || mainWindow.isFullScreen()) return;
+  settings.mainWindow = { bounds: mainWindow.getNormalBounds(), maximized: mainWindow.isMaximized() };
+  saveSettings();
+}
+
 function createMainWindow() {
+  const bounds = savedMainBounds();
   mainWindow = new BrowserWindow({
-    width: 1280, height: 860, minWidth: 420, minHeight: 500,
+    ...(bounds || { width: 1280, height: 860 }), minWidth: 420, minHeight: 500,
     title: 'Foxy Timer', icon: ICON, backgroundColor: '#0a0a0a', show: false,
     webPreferences: { contextIsolation: true },
   });
   wireLinks(mainWindow);
   mainWindow.loadURL(`${LOCAL}/dashboard`);
-  mainWindow.once('ready-to-show', () => { if (!HIDDEN) mainWindow.show(); });
+  mainWindow.once('ready-to-show', () => {
+    if (!bounds || settings.mainWindow.maximized) mainWindow.maximize();
+    if (!HIDDEN) mainWindow.show();
+  });
+  let rememberTimer = null;
+  const rememberSoon = () => { clearTimeout(rememberTimer); rememberTimer = setTimeout(rememberMainWindow, 500); };
+  mainWindow.on('resize', rememberSoon);
+  mainWindow.on('move', rememberSoon);
+  mainWindow.on('maximize', rememberSoon);
+  mainWindow.on('unmaximize', rememberSoon);
   mainWindow.on('close', async (e) => {
     if (quitting) return;
     e.preventDefault();
