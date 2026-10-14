@@ -325,27 +325,31 @@ function setScreenRoom(entry, roomId) {
   buildMenu();
 }
 
-// Pointer hidden until the mouse moves, then shown for 2 s with a note that
-// Esc stops this screen. On the laptop's own screen the note also shows for a
-// few seconds on opening - the output covers the dashboard there.
+// Pointer hidden until the mouse moves, then shown for 2 s. On the laptop's
+// own screen only - where the output covers the dashboard - Esc takes the
+// timer off it, and a note saying so shows on opening and with the pointer.
+// External screens ignore Esc: a stray key must never blank what the
+// audience sees; they're changed from the dashboard or the Output menu.
 const OUTPUT_CSS = `
   html.foxy-still, html.foxy-still * { cursor: none !important; }
   #foxyEscHint { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); z-index: 2147483647;
     background: rgba(20,20,20,0.92); color: #fff; border: 1px solid #555; border-radius: 10px; padding: 10px 18px;
     font: 600 16px 'Segoe UI', sans-serif; pointer-events: none; transition: opacity 0.3s; }
   html.foxy-still #foxyEscHint { opacity: 0; }`;
-const outputScript = (showOnOpen) => `(() => {
+const outputScript = (onLaptopScreen) => `(() => {
   if (window.__foxyOutput) return; window.__foxyOutput = true;
-  const hint = document.createElement('div');
-  hint.id = 'foxyEscHint';
-  hint.textContent = 'Press Esc to stop showing the timer on this screen';
-  document.body.appendChild(hint);
+  if (${onLaptopScreen}) {
+    const hint = document.createElement('div');
+    hint.id = 'foxyEscHint';
+    hint.textContent = 'Press Esc to stop showing the timer on this screen';
+    document.body.appendChild(hint);
+  }
   const root = document.documentElement;
   let t = null;
   const wake = (ms) => { root.classList.remove('foxy-still'); clearTimeout(t); t = setTimeout(() => root.classList.add('foxy-still'), ms); };
   root.classList.add('foxy-still');
   addEventListener('mousemove', () => wake(2000));
-  if (${showOnOpen}) wake(5000);
+  if (${onLaptopScreen}) wake(5000);
 })();`;
 
 function openOutputWindow(display, url, onLaptopScreen, onEscape) {
@@ -359,10 +363,12 @@ function openOutputWindow(display, url, onLaptopScreen, onEscape) {
     win.webContents.insertCSS(OUTPUT_CSS);
     win.webContents.executeJavaScript(outputScript(onLaptopScreen)).catch(() => {});
   });
-  // Esc on a timer screen = "show nothing here" (the same as the Output menu).
-  win.webContents.on('before-input-event', (event, input) => {
-    if (input.type === 'keyDown' && input.key === 'Escape') { event.preventDefault(); onEscape(); }
-  });
+  // Laptop screen only: Esc = "show nothing here" (the same as unticking it).
+  if (onLaptopScreen) {
+    win.webContents.on('before-input-event', (event, input) => {
+      if (input.type === 'keyDown' && input.key === 'Escape') { event.preventDefault(); onEscape(); }
+    });
+  }
   win.loadURL(url);
   win.once('ready-to-show', () => {
     if (win.isDestroyed()) return;
