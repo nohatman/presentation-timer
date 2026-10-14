@@ -11,6 +11,7 @@ const timerModes = require('./timerModes');
 const { sanitizeDeviceName, sanitizePanelId } = require('./deviceNames');
 const enquiries = require('./enquiries');
 const demoRooms = require('./demoRooms');
+const trials = require('./trials');
 const QRCode = require('qrcode');
 const { selectLanAddresses } = require('./tools/local-server/lib/lan');
 const firewall = require('./tools/local-server/lib/firewall');
@@ -1740,6 +1741,103 @@ app.post('/api/admin/enquiries/:id/handled', ...adminClientAuth, (req, res) => {
     targetLabel: existing.email
   });
   res.json({ ok: true, enquiry: db.getEnquiryById(id) });
+});
+
+// ============================================
+// Foxy Timer for Windows: download link and trial licences (see trials.js).
+// The download itself is hosted elsewhere (too big for Railway); /download/windows
+// redirects to the admin-set link so the website never needs editing for a release.
+// ============================================
+const TRIAL_RATE_WINDOW_MS = 60 * 60 * 1000;
+const TRIAL_RATE_LIMIT = 20;
+const trialAttempts = new Map();
+
+function windowsTrialSettings() {
+  return db.getWindowsTrialSettings(trials.DEFAULT_TRIAL_DAYS);
+}
+
+app.get('/api/windows/info', onlineOnly, (req, res) => {
+  const { trialDays, downloadUrl } = windowsTrialSettings();
+  res.json({ ok: true, trialDays, downloadAvailable: Boolean(downloadUrl) });
+});
+
+app.get('/download/windows', onlineOnly, (req, res) => {
+  const { downloadUrl } = windowsTrialSettings();
+  if (!downloadUrl) return res.status(404).send('Foxy Timer for Windows is not available to download yet.');
+  res.redirect(302, downloadUrl);
+});
+
+// Called by the Windows app on first launch (and whenever it's online later,
+// to pick up an extension). Same machine always gets its original expiry.
+app.post('/api/windows/trial', onlineOnly, (req, res) => {
+  const now = Date.now();
+  const recent = (trialAttempts.get(req.ip) || []).filter((t) => now - t < TRIAL_RATE_WINDOW_MS);
+  if (recent.length >= TRIAL_RATE_LIMIT) {
+    trialAttempts.set(req.ip, recent);
+    return res.status(429).json({ ok: false, error: 'Too many requests. Please try again later.' });
+  }
+  recent.push(now);
+  trialAttempts.set(req.ip, recent);
+
+  const { machineId, appVersion } = req.body || {};
+  if (!trials.isValidMachineId(machineId)) return res.status(400).json({ ok: false, error: 'Invalid machine id' });
+  if (!trials.isConfigured()) return res.status(503).json({ ok: false, error: 'Trials are not set up on this server' });
+
+  const version = typeof appVersion === 'string' ? appVersion.slice(0, 40) : null;
+  const trial = db.getOrStartWindowsTrial(machineId, windowsTrialSettings().trialDays, version);
+  const licence = trials.signLicence({
+    id: trial.id, machine: trial.machine_id, issuedAt: trial.issued_at, expiresAt: trial.expires_at
+  });
+  res.json({ ok: true, licence, expiresAt: trial.expires_at, started: trial.started });
+});
+
+app.get('/api/admin/windows-trials', ...adminClientAuth, (req, res) => {
+  res.json({
+    ok: true,
+    settings: { ...windowsTrialSettings(), maxTrialDays: trials.MAX_TRIAL_DAYS, signingConfigured: trials.isConfigured() },
+    trials: db.listWindowsTrials()
+  });
+});
+
+app.post('/api/admin/windows-trials/settings', ...adminClientAuth, (req, res) => {
+  const body = req.body || {};
+  const update = {};
+  if (body.trialDays !== undefined) {
+    update.trialDays = trials.parseTrialDays(body.trialDays);
+    if (update.trialDays === null) return res.status(400).json({ ok: false, error: `Trial length must be 1-${trials.MAX_TRIAL_DAYS} days` });
+  }
+  if (body.downloadUrl !== undefined) {
+    update.downloadUrl = trials.parseDownloadUrl(body.downloadUrl);
+    if (update.downloadUrl === null) return res.status(400).json({ ok: false, error: 'Download link must start with https://' });
+  }
+  db.setWindowsTrialSettings(update);
+  const settings = windowsTrialSettings();
+  db.recordAuditLog({
+    actorUserId: req.user.id,
+    action: 'windows_trial.settings',
+    targetType: 'setting',
+    targetLabel: `${settings.trialDays} days`
+  });
+  res.json({ ok: true, settings });
+});
+
+// Adds days from whichever is later: now or the current expiry, so extending
+// an expired trial gives the full number of days from today.
+app.post('/api/admin/windows-trials/:id/extend', ...adminClientAuth, (req, res) => {
+  const id = Number(req.params.id);
+  const trial = Number.isInteger(id) ? db.getWindowsTrialById(id) : null;
+  if (!trial) return res.status(404).json({ ok: false, error: 'Trial not found' });
+  const days = trials.parseTrialDays(req.body && req.body.days);
+  if (days === null) return res.status(400).json({ ok: false, error: `Days must be 1-${trials.MAX_TRIAL_DAYS}` });
+  db.setWindowsTrialExpiry(id, Math.max(Date.now(), trial.expires_at) + days * trials.DAY_MS);
+  db.recordAuditLog({
+    actorUserId: req.user.id,
+    action: 'windows_trial.extended',
+    targetType: 'windows_trial',
+    targetId: id,
+    targetLabel: `+${days} days`
+  });
+  res.json({ ok: true, trial: db.getWindowsTrialById(id) });
 });
 
 // ============================================

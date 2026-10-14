@@ -156,6 +156,27 @@
         .enq-actions button { padding: 7px 14px; border-radius: 6px; border: 1px solid #444; background: #1f1f1f; color: #e5e5e5; cursor: pointer; font-size: 0.85rem; }
         .enq-actions button:hover { border-color: #4caf50; }
         .enquiries details summary { cursor: pointer; color: #999; margin: 0.9rem 0 0.6rem; }
+        /* Foxy Timer for Windows trials */
+        .wintrials { margin-bottom: 2rem; }
+        .wintrials h2 { font-size: 1.2rem; color: #fafafa; margin-bottom: 0.9rem; }
+        .wt-box { background: #161618; border: 1px solid #333; border-radius: 10px; padding: 1rem 1.2rem; }
+        .wt-settings { display: grid; grid-template-columns: auto 1fr; gap: 0.7rem 1rem; align-items: center; }
+        .wt-settings label { color: #bbb; font-size: 0.9rem; }
+        .wt-settings input { padding: 8px 10px; border-radius: 6px; border: 1px solid #444; background: #0f0f10; color: #eee; font-size: 0.9rem; min-width: 0; }
+        .wt-settings input[type=number] { width: 90px; }
+        .wt-row-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 0.9rem; }
+        .wt-row-actions button, .wt-table button { padding: 7px 14px; border-radius: 6px; border: 1px solid #444; background: #1f1f1f; color: #e5e5e5; cursor: pointer; font-size: 0.85rem; }
+        .wt-row-actions button:hover, .wt-table button:hover { border-color: #4caf50; }
+        .wt-note { color: #888; font-size: 0.85rem; }
+        .wt-note.warn { color: #ffb74d; }
+        .wt-table { width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.88rem; }
+        .wt-table th { text-align: left; color: #888; font-weight: 500; padding: 6px 8px; border-bottom: 1px solid #333; }
+        .wt-table td { padding: 8px; border-bottom: 1px solid #222; color: #ddd; vertical-align: middle; }
+        .wt-table input { width: 60px; padding: 5px 6px; border-radius: 6px; border: 1px solid #444; background: #0f0f10; color: #eee; }
+        .wt-status-active { color: #81c784; }
+        .wt-status-expired { color: #e57373; }
+        .wt-scroll { overflow-x: auto; }
+        @media (max-width: 700px) { .wt-settings { grid-template-columns: 1fr; } }
         .empty-state, .loading {
             text-align: center;
             padding: 4rem 2rem;
@@ -197,6 +218,24 @@
     <section class="enquiries" id="enquiriesSection" style="display:none;">
         <h2>📨 Enquiries <span class="enq-count" id="enqCount"></span></h2>
         <div id="enquiriesContainer"></div>
+    </section>
+
+    <section class="wintrials" id="winTrialsSection" style="display:none;">
+        <h2>💻 Foxy Timer for Windows trials</h2>
+        <div class="wt-box">
+            <div class="wt-settings">
+                <label for="wtDays">Trial length (days)</label>
+                <input type="number" id="wtDays" min="1" max="365" step="1">
+                <label for="wtUrl">Download link</label>
+                <input type="url" id="wtUrl" placeholder="https://… (the installer, e.g. a GitHub Release file)">
+            </div>
+            <div class="wt-row-actions">
+                <button onclick="saveWinTrialSettings()">Save</button>
+                <span class="wt-note" id="wtSaveNote"></span>
+            </div>
+            <div class="wt-note" id="wtInfo" style="margin-top:0.6rem;"></div>
+            <div class="wt-scroll" id="wtList"></div>
+        </div>
     </section>
 
     <div id="clientsContainer">
@@ -563,7 +602,79 @@
             if (response.ok) fetchEnquiries();
         }
 
+        // Foxy Timer for Windows trials: the trial length and download link
+        // settings, and each laptop that has started a trial.
+        function fmtDate(ms) {
+            return new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+        }
+
+        async function fetchWinTrials() {
+            try {
+                const response = await authFetch('/api/admin/windows-trials');
+                if (!response.ok) return;
+                const data = await response.json();
+                if (!data.ok) return;
+                document.getElementById('winTrialsSection').style.display = '';
+                document.getElementById('wtDays').value = data.settings.trialDays;
+                document.getElementById('wtUrl').value = data.settings.downloadUrl;
+                const info = document.getElementById('wtInfo');
+                if (!data.settings.signingConfigured) {
+                    info.className = 'wt-note warn';
+                    info.textContent = "Trials can't start yet: FOXY_LICENCE_PRIVATE_KEY is not set on this server.";
+                } else {
+                    info.className = 'wt-note';
+                    info.textContent = 'A new length applies to trials that start after you save it. The download button on the website only appears once there is a download link.';
+                }
+                const now = Date.now();
+                const rows = data.trials.map((t) => {
+                    const active = t.expires_at > now;
+                    const left = Math.ceil((t.expires_at - now) / 86400000);
+                    const ends = active ? `${left} ${left === 1 ? 'day' : 'days'} left` : 'ended';
+                    return `<tr>
+                        <td>#${t.id}</td>
+                        <td>${escapeHtml(fmtDate(t.issued_at))}</td>
+                        <td class="${active ? 'wt-status-active' : 'wt-status-expired'}">${escapeHtml(fmtDate(t.expires_at))} · ${ends}</td>
+                        <td>${escapeHtml(fmtDate(t.last_seen_at))}</td>
+                        <td>${escapeHtml(t.app_version || '')}</td>
+                        <td style="white-space:nowrap;"><input type="number" min="1" max="365" value="${data.settings.trialDays}" id="wtExt${t.id}" aria-label="Days to add"> <button onclick="extendWinTrial(${t.id})">Add days</button></td>
+                    </tr>`;
+                }).join('');
+                document.getElementById('wtList').innerHTML = data.trials.length
+                    ? `<table class="wt-table"><thead><tr><th>Laptop</th><th>Started</th><th>Ends</th><th>Last seen</th><th>Version</th><th></th></tr></thead><tbody>${rows}</tbody></table>`
+                    : '<div class="wt-note" style="margin-top:1rem;">No trials started yet.</div>';
+            } catch (error) {
+                console.error('Error fetching Windows trials:', error);
+            }
+        }
+
+        async function saveWinTrialSettings() {
+            const note = document.getElementById('wtSaveNote');
+            const response = await authFetch('/api/admin/windows-trials/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    trialDays: Number(document.getElementById('wtDays').value),
+                    downloadUrl: document.getElementById('wtUrl').value
+                })
+            });
+            const data = await response.json().catch(() => ({}));
+            note.className = response.ok ? 'wt-note' : 'wt-note warn';
+            note.textContent = response.ok ? 'Saved' : (data.error || 'Could not save');
+            if (response.ok) fetchWinTrials();
+        }
+
+        async function extendWinTrial(id) {
+            const days = Number(document.getElementById('wtExt' + id).value);
+            const response = await authFetch(`/api/admin/windows-trials/${id}/extend`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ days })
+            });
+            if (response.ok) fetchWinTrials();
+        }
+
         fetchEnquiries();
+        fetchWinTrials();
         fetchClients();
     </script>
 </body>

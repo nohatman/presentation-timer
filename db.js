@@ -120,6 +120,18 @@ db.exec(`
   -- that is broadcast on every timer change, and an image is megabytes. The
   -- room's state only carries a version string (displayBgImage) that the
   -- Display page uses to fetch this, so a re-upload busts any cached copy.
+  -- Foxy Timer for Windows trials (trials.js), one per machine. machine_id is
+  -- an opaque hash the app sends; last_seen_at/app_version are updated each
+  -- time the app checks in. expires_at is what an admin extends.
+  CREATE TABLE IF NOT EXISTS windows_trials (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    machine_id TEXT NOT NULL UNIQUE,
+    app_version TEXT,
+    issued_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    last_seen_at INTEGER NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS room_backgrounds (
     room_id INTEGER PRIMARY KEY REFERENCES rooms(id),
     mime TEXT NOT NULL,
@@ -747,6 +759,55 @@ function setEnquiryHandled(id, handled) {
   db.prepare('UPDATE enquiries SET handled_at = ? WHERE id = ?').run(handled ? Date.now() : null, id);
 }
 
+// ============================================
+// Foxy Timer for Windows trials
+// ============================================
+
+// Returns the existing trial for this machine (touching last_seen_at), or
+// starts one that runs for trialDays from now.
+function getOrStartWindowsTrial(machineId, trialDays, appVersion) {
+  const now = Date.now();
+  const existing = db.prepare('SELECT * FROM windows_trials WHERE machine_id = ?').get(machineId);
+  if (existing) {
+    db.prepare('UPDATE windows_trials SET last_seen_at = ?, app_version = COALESCE(?, app_version) WHERE id = ?')
+      .run(now, appVersion || null, existing.id);
+    return { ...db.prepare('SELECT * FROM windows_trials WHERE id = ?').get(existing.id), started: false };
+  }
+  const info = db.prepare(`
+    INSERT INTO windows_trials (machine_id, app_version, issued_at, expires_at, last_seen_at)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(machineId, appVersion || null, now, now + trialDays * 24 * 60 * 60 * 1000, now);
+  return { ...db.prepare('SELECT * FROM windows_trials WHERE id = ?').get(info.lastInsertRowid), started: true };
+}
+
+// Admin settings, kept in meta. trialDays/downloadUrl are validated by the
+// caller (trials.js); an unset download link falls back to WINDOWS_DOWNLOAD_URL.
+function getWindowsTrialSettings(defaultDays) {
+  const days = Number(getMeta('windows_trial_days'));
+  const url = getMeta('windows_download_url');
+  return {
+    trialDays: Number.isInteger(days) && days > 0 ? days : defaultDays,
+    downloadUrl: url !== null ? url : (process.env.WINDOWS_DOWNLOAD_URL || '')
+  };
+}
+
+function setWindowsTrialSettings({ trialDays, downloadUrl }) {
+  if (trialDays !== undefined) setMeta('windows_trial_days', String(trialDays));
+  if (downloadUrl !== undefined) setMeta('windows_download_url', downloadUrl);
+}
+
+function listWindowsTrials(limit = 500) {
+  return db.prepare('SELECT * FROM windows_trials ORDER BY issued_at DESC LIMIT ?').all(limit);
+}
+
+function getWindowsTrialById(id) {
+  return db.prepare('SELECT * FROM windows_trials WHERE id = ?').get(id) || null;
+}
+
+function setWindowsTrialExpiry(id, expiresAt) {
+  db.prepare('UPDATE windows_trials SET expires_at = ? WHERE id = ?').run(expiresAt, id);
+}
+
 function getAuditLogForTarget(targetType, targetId, limit = 20) {
   return db.prepare(`
     SELECT audit_log.id, audit_log.action, audit_log.target_type, audit_log.target_id,
@@ -1080,6 +1141,13 @@ module.exports = {
   listEnquiries,
   getEnquiryById,
   setEnquiryHandled,
+  // Windows trials
+  getOrStartWindowsTrial,
+  getWindowsTrialSettings,
+  setWindowsTrialSettings,
+  listWindowsTrials,
+  getWindowsTrialById,
+  setWindowsTrialExpiry,
   // rooms
   createRoom,
   getRoomById,
