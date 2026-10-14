@@ -132,7 +132,7 @@ async function openQuietly() {
     if (process.env.FOXY_RESULT_FILE) { try { fs.writeFileSync(process.env.FOXY_RESULT_FILE, message); } catch { /* nothing to report to */ } }
     return 1;
   };
-  const st = await sup.gatherStatus(cfg);
+  const st = await sup.gatherStatus(cfg, { quick: true });
   if (st.state === 'UNMANAGED') {
     // Another copy of Foxy Timer (e.g. an older download left running) has the
     // port. Exit code 3 + its folder: Foxy Timer.exe asks whether to stop it.
@@ -140,7 +140,7 @@ async function openQuietly() {
     return 3;
   }
   if (st.state === 'STOPPED') {
-    const r = await sup.start(cfg);
+    const r = await sup.start(cfg, { quick: true, status: st });
     if (!r.ok) return fail(`Foxy Timer could not start.\n\n${r.message}`);
   } else if (!(st.managed && ['RUNNING', 'STALE_BUILD', 'UNHEALTHY'].includes(st.state))) {
     return fail(`Foxy Timer could not start.\n\n${st.headline}.${st.action ? ' ' + st.action : ''}`);

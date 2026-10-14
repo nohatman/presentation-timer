@@ -84,7 +84,9 @@ async function fetchHealth(port, timeoutMs = 4000) { // generous: a busy show la
 }
 
 // Everything the operator screen needs. `opts.diskFingerprint` lets tests simulate
-// a changed build without editing real files.
+// a changed build without editing real files. `opts.quick` (the desktop app
+// starting up) skips the list of other Node servers - a slow PowerShell query
+// only the status screen shows.
 async function gatherStatus(cfg, opts = {}) {
   const record = readRecord(cfg);
   const { health, reason: healthReason } = await fetchHealth(cfg.port);
@@ -97,7 +99,7 @@ async function gatherStatus(cfg, opts = {}) {
 
   const c = classifyStatus({ record, processInfo, identityOk: identity.ok, health, portOwner, diskFingerprint: disk.fingerprint });
   const lan = selectLanAddresses();
-  const others = c.state === 'RUNNING' && !opts.full ? [] :
+  const others = (c.state === 'RUNNING' || opts.quick) && !opts.full ? [] :
     osproc.listNodeServerProcesses().filter((p) => !(record && p.pid === record.pid) && !(health && p.pid === health.pid));
 
   return {
@@ -131,8 +133,9 @@ function rotateLog(cfg) {
   try { if (fs.statSync(cfg.logFile).size > 2 * 1024 * 1024) fs.renameSync(cfg.logFile, cfg.logFile + '.old'); } catch { /* no log yet */ }
 }
 
+// opts.status: a status just gathered by the caller, to save asking Windows again.
 async function start(cfg, opts = {}) {
-  const st = await gatherStatus(cfg, opts);
+  const st = opts.status || await gatherStatus(cfg, opts);
   if (st.managed && ['RUNNING', 'STALE_BUILD', 'UNHEALTHY'].includes(st.state)) {
     return { ok: true, action: 'already-running', status: st, message: `Already running (PID ${st.pid}); not starting a second copy.` };
   }
@@ -158,14 +161,14 @@ async function start(cfg, opts = {}) {
 
   const deadline = Date.now() + cfg.startTimeoutMs;
   while (Date.now() < deadline) {
-    await sleep(300);
+    await sleep(150);
     if (!osproc.isPidAlive(child.pid)) {
       removeRecord(cfg);
       return { ok: false, action: 'failed', message: `The server exited immediately. Last log lines:\n${tailLog(cfg)}` };
     }
     const { health } = await fetchHealth(cfg.port, 1000);
     if (health && health.pid === child.pid) {
-      return { ok: true, action: 'started', pid: child.pid, status: await gatherStatus(cfg, opts), message: `Started (PID ${child.pid}).` };
+      return { ok: true, action: 'started', pid: child.pid, status: opts.quick ? null : await gatherStatus(cfg, opts), message: `Started (PID ${child.pid}).` };
     }
   }
   // We spawned this process ourselves a moment ago, so cleaning it up is safe.

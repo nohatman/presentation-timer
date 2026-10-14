@@ -95,11 +95,15 @@ async function ensureEngine() {
   let code = await runLauncher('open');
   if (code === 3) {
     const folder = (resultMessage().split('\n')[1] || 'another folder').trim();
-    const { response } = await dialog.showMessageBox({
+    const question = {
       type: 'question', title: 'Foxy Timer', buttons: ['Stop it and start this one', 'Cancel'], defaultId: 0, cancelId: 1,
       message: 'Another copy of Foxy Timer is already running.',
       detail: `It was started from:\n${folder}\n\nStopping it disconnects anything connected to it.`,
-    });
+    };
+    // In front of the "Starting…" window, not hidden behind it.
+    const { response } = splashWindow && !splashWindow.isDestroyed()
+      ? await dialog.showMessageBox(splashWindow, question)
+      : await dialog.showMessageBox(question);
     if (response !== 0) return false;
     await runLauncher('stop-other');
     code = await runLauncher('open');
@@ -179,6 +183,31 @@ function saveSettings() {
 
 // ---------------------------------------------------------------- windows
 let mainWindow = null;
+
+// "Starting Foxy Timer…" - shown the moment the app opens, until the
+// dashboard is ready (starting the timer engine takes a second or two, and a
+// first run can be slower while Windows checks the new files).
+let splashWindow = null;
+function showSplash() {
+  if (HIDDEN) return;
+  splashWindow = new BrowserWindow({
+    width: 360, height: 210, frame: false, resizable: false, movable: true, show: false, center: true,
+    skipTaskbar: false, title: 'Foxy Timer', icon: ICON, backgroundColor: '#141414',
+    webPreferences: { contextIsolation: true },
+  });
+  const html = `<!doctype html><meta charset="utf-8"><body style="margin:0;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:#141414;color:#eee;font-family:Segoe UI,sans-serif;border:1px solid #333;box-sizing:border-box;-webkit-app-region:drag;user-select:none">
+    <div style="font-size:54px;line-height:1">🦊</div>
+    <div style="font-size:20px;font-weight:700">Foxy Timer</div>
+    <div style="display:flex;align-items:center;gap:10px;color:#aaa;font-size:14px"><span style="width:14px;height:14px;border:2px solid #444;border-top-color:#ff6a1a;border-radius:50%;animation:s 0.8s linear infinite"></span>Starting…</div>
+    <style>@keyframes s{to{transform:rotate(360deg)}}</style></body>`;
+  splashWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+  splashWindow.once('ready-to-show', () => { if (splashWindow && !splashWindow.isDestroyed()) splashWindow.show(); });
+  splashWindow.on('closed', () => { splashWindow = null; });
+}
+function closeSplash() {
+  if (splashWindow && !splashWindow.isDestroyed()) splashWindow.destroy();
+  splashWindow = null;
+}
 const outputWindows = new Map(); // display id -> BrowserWindow
 let rooms = [];
 let quitting = false;
@@ -262,6 +291,7 @@ function createMainWindow() {
   mainWindow.once('ready-to-show', () => {
     if (!bounds || settings.mainWindow.maximized) mainWindow.maximize();
     if (!HIDDEN) mainWindow.show();
+    closeSplash();
   });
   let rememberTimer = null;
   const rememberSoon = () => { clearTimeout(rememberTimer); rememberTimer = setTimeout(rememberMainWindow, 500); };
@@ -601,7 +631,8 @@ if (process.argv.includes('--stop')) {
   app.on('second-instance', () => { if (mainWindow) { if (mainWindow.isMinimized()) mainWindow.restore(); mainWindow.show(); mainWindow.focus(); } });
 
   app.whenReady().then(async () => {
-    if (!(await ensureEngine())) { app.quit(); return; }
+    showSplash();
+    if (!(await ensureEngine())) { closeSplash(); app.quit(); return; }
     powerSaveBlocker.start('prevent-display-sleep'); // no screen blanking or sleep mid-show
     // Two real graphics chips (not counting Windows' basic display driver)?
     app.getGPUInfo('basic').then((info) => {
