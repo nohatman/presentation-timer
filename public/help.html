@@ -50,7 +50,26 @@
         th { color: var(--muted); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; background: var(--bg-2); }
         tr:last-child td { border-bottom: 0; }
         kbd { font-family: var(--mono); font-size: 0.85em; border: 1px solid #3a3a40; border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; background: #1d1d20; }
+        /* Which version a bit of help applies to: Online = blue, Windows = purple. */
+        .ver { display: inline-block; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; padding: 2px 9px; border-radius: 999px; vertical-align: middle; margin-left: 8px; border: 1px solid; }
+        .ver.online { color: #7cc0ff; background: #0f1a2a; border-color: #25456e; }
+        .ver.win { color: #c4b2ff; background: #17142a; border-color: #3d3366; }
+        .ver.both { color: var(--muted); background: #1d1d20; border-color: var(--line); }
+        .vbox { border: 1px solid; border-radius: 12px; padding: 14px 16px; margin: 12px 0; }
+        .vbox.online { background: #0d1622; border-color: #25456e; }
+        .vbox.win { background: #13111f; border-color: #3d3366; }
+        .vbox h4 { margin: 0 0 8px; font-size: 1rem; }
+        .vbox.online h4 { color: #7cc0ff; }
+        .vbox.win h4 { color: #c4b2ff; }
+        .vbox p:last-child, .vbox ol:last-child { margin-bottom: 0; }
+        .vbox dl { margin: 0; }
+        .vbox dt { font-weight: 600; margin-top: 10px; }
+        .vbox dt:first-child { margin-top: 0; }
+        .vbox dd { margin: 2px 0 0; color: var(--muted); }
+        .vgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 12px 0; }
+        .vgrid .vbox { margin: 0; }
         @media (max-width: 560px) { .fields { grid-template-columns: 1fr; gap: 2px; } .fields dd { margin-bottom: 8px; } }
+        @media (max-width: 680px) { .vgrid { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body>
@@ -66,7 +85,7 @@
         <a href="#start">Getting started</a>
         <a href="#connect">Connecting phones &amp; screens</a>
         <a href="#not-connecting">Phone won't connect</a>
-        <a href="#companion">Companion / Stream Deck</a>
+        <a href="#companion">Companion</a>
         <a href="#windows">Foxy Timer for Windows</a>
         <a href="#control">Control page tips</a>
     </nav>
@@ -81,27 +100,34 @@
         <p>On the dashboard, press <b>Share links &amp; QR</b> on a room to copy the links or show QR codes to scan. Treat the control link like a password: anyone who has it can run that room.</p>
         <p>Two versions of the same timer exist:</p>
         <ul>
-            <li><b>Foxy Timer Online</b> (foxytimer.com): runs on the internet; every device needs an internet connection.</li>
-            <li><b>Foxy Timer for Windows</b>: runs on your show laptop; devices only need to be on the same network as the laptop, with no internet needed.</li>
+            <li><span class="ver online" style="margin-left:0">Online</span> <b>Foxy Timer Online</b> (foxytimer.com): runs on the internet; every device needs an internet connection.</li>
+            <li><span class="ver win" style="margin-left:0">Windows</span> <b>Foxy Timer for Windows</b>: runs on your show laptop; devices only need to be on the same network as the laptop, with no internet needed.</li>
         </ul>
-        <p>They're separate: a room made on one doesn't exist on the other.</p>
+        <p>They're separate: a room made on one doesn't exist on the other. Throughout this page, help that only applies to one version is marked in its colour: <b style="color:#7cc0ff">blue for Online</b>, <b style="color:#c4b2ff">purple for Windows</b>.</p>
     </section>
 
     <section id="connect">
         <h2>Connecting phones &amp; screens</h2>
-        <p><b>With Foxy Timer Online</b>, any device with internet can open the links.</p>
-        <p><b>With Foxy Timer for Windows</b>, the laptop is the server. Phones, screens and the Stream Deck PC connect <em>to the laptop</em> across the venue network:</p>
-        <ol>
-            <li>Put every device on the <b>same network</b> as the laptop: same Wi-Fi, or the same switch.</li>
-            <li>On the dashboard, press <b>Share links &amp; QR</b>, then <b>QR</b>, and scan with the phone's camera.</li>
-            <li>Open the Display link on the screen's computer, full screen.</li>
-        </ol>
-        <p>The links look like <code>http://192.168.1.13:3000/control?token=…</code>. <b>192.168.1.13</b> is the laptop's address on that network; <b>3000</b> is the door Foxy Timer listens on. The <b>This laptop</b> panel on the dashboard shows the current address.</p>
-        <div class="tip"><b>"localhost" only works on the laptop itself.</b> It means "this computer", so a phone can't use it. The dashboard always gives links with the network address instead.</div>
+        <div class="vbox online">
+            <h4>Foxy Timer Online</h4>
+            <p>Any device with internet can open the links, and Companion connects over the internet too, wherever it is. On the dashboard, press <b>Share links &amp; QR</b> to copy a link or scan its QR code.</p>
+        </div>
+        <div class="vbox win">
+            <h4>Foxy Timer for Windows</h4>
+            <p>The laptop is the server. Phones, screens and Companion connect <em>to the laptop</em> across the venue network:</p>
+            <ol>
+                <li>Put every device on the <b>same network</b> as the laptop: same Wi-Fi, or the same switch.</li>
+                <li>On the dashboard, press <b>Share links &amp; QR</b>, then <b>QR</b>, and scan with the phone's camera.</li>
+                <li>Open the Display link on the screen's computer, full screen.</li>
+            </ol>
+            <p>The links look like <code>http://192.168.1.13:3000/control?token=…</code>. <b>192.168.1.13</b> is the laptop's address on that network; <b>3000</b> is the door Foxy Timer listens on. The <b>This laptop</b> panel on the dashboard shows the current address.</p>
+            <div class="tip" style="margin-bottom:0"><b>"localhost" only works on the laptop itself.</b> It means "this computer", so a phone can't use it. The dashboard always gives links with the network address instead.</div>
+        </div>
     </section>
 
     <section id="not-connecting">
-        <h2>A phone or screen won't connect</h2>
+        <h2>A phone or screen won't connect <span class="ver win">Windows</span></h2>
+        <p>These checks are for <b>Foxy Timer for Windows</b>. With Foxy Timer Online, just check the device has a working internet connection.</p>
         <p>The page usually just keeps loading and then gives up. Work through these in order:</p>
         <h3 id="firewall">1. Windows Firewall is blocking it (the most common cause)</h3>
         <p>Windows blocks other devices from reaching the laptop unless Foxy Timer is allowed through its firewall. It's especially likely when Windows has marked the Wi-Fi as a <b>Public network</b>, which is common at venues and even at home.</p>
@@ -120,23 +146,55 @@
     </section>
 
     <section id="companion">
-        <h2>Companion / Stream Deck</h2>
-        <p>Foxy Timer works with <b>Bitfocus Companion</b>, so Stream Deck buttons can start, pause, nudge and step through the programme, and show live time and colour.</p>
-        <h3>1. Install the module</h3>
-        <p>In Companion, add a connection and search for <b>Foxy Presentation Timer</b>. If it isn't listed, import the module file you were given (Companion: <i>Modules → Import module package</i>).</p>
-        <h3>2. Fill in the connection settings</h3>
-        <dl class="fields">
-            <dt>Server URL</dt>
-            <dd><b>Foxy Timer for Windows:</b> copy it from the dashboard's <b>Companion / Stream Deck</b> window, e.g. <code>http://192.168.1.13:3000</code>. <b>Foxy Timer Online:</b> <code>https://foxytimer.com</code>.</dd>
-            <dt>Client API key</dt>
-            <dd><b>Windows:</b> copy it from the same window. <b>Online:</b> Business Shows gives you your account's key.</dd>
-            <dt>Room IDs to monitor</dt>
-            <dd>The room names, exactly as on the dashboard, separated by commas, e.g. <code>Main stage,Breakout 1</code>. The Windows window lists them ready to copy.</dd>
-            <dt>Poll interval</dt>
-            <dd>Leave at 1000 ms (once a second).</dd>
-        </dl>
-        <p>The connection turns green when it can reach Foxy Timer. The Stream Deck PC must be on the same network as the laptop (Windows) or online (Online).</p>
-        <h3>3. Build buttons</h3>
+        <h2>Companion</h2>
+        <p>Foxy Timer works with <b>Bitfocus Companion</b>, so buttons on any Companion control surface can start, pause, nudge and step through the running order, and show live time and colour. It works with both <b>Foxy Timer Online</b> and <b>Foxy Timer for Windows</b>.</p>
+        <h3>1. Install the module <span class="ver both">Both</span></h3>
+        <p><a href="/download/companion-module" download><b>Download the Foxy Timer Companion module</b></a> (a small <code>.tgz</code> file; works with Companion 4). Then, on the PC running Companion:</p>
+        <ol>
+            <li>Open the Companion web page and go to <b>Modules</b>.</li>
+            <li>Press <b>Import module package</b> and choose the downloaded <code>.tgz</code> file. Don't unzip it.</li>
+            <li>Go to <b>Connections</b>, add a connection and search for <b>Foxy Presentation Timer</b>.</li>
+        </ol>
+        <div class="tip"><b>Updating?</b> Download and import the new file the same way. If the connection still shows the old version, choose the new one in the connection's settings.</div>
+        <h3>2. Fill in the connection settings <span class="ver both">Both, with differences below</span></h3>
+        <p>Companion asks for a <b>Server URL</b>, a <b>Client API key</b> and <b>Room IDs to monitor</b>. Foxy Timer has them ready to copy:</p>
+        <ol>
+            <li>Open your Foxy Timer dashboard, the page that lists your rooms.</li>
+            <li>Press the <b>🎛️ Companion</b> button at the top of it. A window opens showing the settings, each with a <b>Copy</b> button.</li>
+            <li>Copy each one into the box with the same name in Companion's connection settings.</li>
+            <li>Leave <b>Poll interval</b> at 1000 ms (once a second).</li>
+        </ol>
+        <p>What you'll see in that window depends on which version you use:</p>
+        <div class="vgrid">
+            <div class="vbox win">
+                <h4>Foxy Timer for Windows</h4>
+                <dl>
+                    <dt>Server URL</dt>
+                    <dd>The laptop's network address, e.g. <code>http://192.168.1.13:3000</code>. Copy it from the window; don't type <code>localhost</code>.</dd>
+                    <dt>Client API key</dt>
+                    <dd>Always shown in the window. Just copy it.</dd>
+                    <dt>Room IDs to monitor</dt>
+                    <dd>Listed in the window, ready to copy.</dd>
+                    <dt>Where Companion can be</dt>
+                    <dd>On the <b>same network</b> as the laptop.</dd>
+                </dl>
+            </div>
+            <div class="vbox online">
+                <h4>Foxy Timer Online</h4>
+                <dl>
+                    <dt>Server URL</dt>
+                    <dd><code>https://foxytimer.com</code></dd>
+                    <dt>Client API key</dt>
+                    <dd>For security, a key is shown <b>only once</b>, when it's made. The first time (or if you've lost it), press <b>Make a new key</b> at the bottom of the window and copy it straight into Companion.</dd>
+                    <dt>Room IDs to monitor</dt>
+                    <dd>Listed in the window, ready to copy.</dd>
+                    <dt>Where Companion can be</dt>
+                    <dd>Anywhere with an internet connection.</dd>
+                </dl>
+            </div>
+        </div>
+        <p>Room IDs are your room names, exactly as on the dashboard, separated by commas, e.g. <code>Main stage,Breakout 1</code>. The connection turns green in Companion when it can reach Foxy Timer.</p>
+        <h3>3. Build buttons <span class="ver both">Both</span></h3>
         <p>Use the ready-made <b>presets</b>, or add these yourself. Each action asks which room.</p>
         <div class="table-wrap"><table>
             <thead><tr><th>Actions</th><th>Feedbacks &amp; text</th></tr></thead>
@@ -144,14 +202,14 @@
                 <tr><td>Start / Pause / Resume (smart toggle), Start, Pause, Resume, Reset</td><td>Timer colour (green / amber / red / overrun)</td></tr>
                 <tr><td>Nudge (±10 s, ±30 s, ±1 min, ±5 min)</td><td>Timer is running / paused / stopped</td></tr>
                 <tr><td>Set duration (5–60 min)</td><td>Status: time + speaker</td></tr>
-                <tr><td>Programme: Previous, Next, Take, Go to slot</td><td>Up next: next speaker · Rundown position · Item is live</td></tr>
+                <tr><td>Running order: Previous, Next, Take, Go to slot</td><td>Up next: next speaker · Running order position · Item is live</td></tr>
             </tbody>
         </table></div>
-        <div class="tip"><b>Key changed?</b> If someone presses <b>Make a new key</b> on the laptop, paste the new key into Companion; the old one stops working at once.</div>
+        <div class="tip"><b>Key changed?</b> Pressing <b>Make a new key</b> stops the old key working at once, in either version. Paste the new key into every Companion connection that uses it.</div>
     </section>
 
     <section id="windows">
-        <h2>Foxy Timer for Windows</h2>
+        <h2>Foxy Timer for Windows <span class="ver win">Windows</span></h2>
         <h3>Start and stop</h3>
         <ul>
             <li><b>Start:</b> the <b>Foxy Timer</b> icon on the desktop or Start menu. It starts quietly in the background and opens the dashboard in your browser.</li>
@@ -167,7 +225,7 @@
     </section>
 
     <section id="control">
-        <h2>Control page tips</h2>
+        <h2>Control page tips <span class="ver both">Both</span></h2>
         <ul>
             <li><b>Duration or End at:</b> count down a length of time, or to a clock time. Type a value and press <b>Apply</b>; nothing changes on screen until you do.</li>
             <li><b>How it counts</b> (next to Timer / Clock): <b>Count down</b>; <b>Down, then up</b> (carries on counting the overrun); or <b>Count up</b> (a stopwatch from 0:00).</li>

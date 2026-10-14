@@ -11,6 +11,8 @@ const timerModes = require('./timerModes');
 const { sanitizeDeviceName, sanitizePanelId } = require('./deviceNames');
 const enquiries = require('./enquiries');
 const demoRooms = require('./demoRooms');
+const trials = require('./trials');
+const { createLicenceManager } = require('./licence');
 const QRCode = require('qrcode');
 const { selectLanAddresses } = require('./tools/local-server/lib/lan');
 const firewall = require('./tools/local-server/lib/firewall');
@@ -232,6 +234,8 @@ function isHexColor(v) {
   return typeof v === 'string' && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(v);
 }
 
+const BG_FITS = ['cover', 'contain', 'stretch'];
+
 function createDefaultTimerState() {
   return {
     mode: 'stopped', // 'stopped', 'running', 'paused'
@@ -261,10 +265,14 @@ function createDefaultTimerState() {
     timerColorRed: '#f44336',
     timerColorOver: '#9c27b0', // overrun: past zero, or past the set length when counting up
     displayBgColor: '#000000',
+    displayBgImage: null,  // version string of the room's uploaded background image (room_backgrounds), or null
+    displayBgFit: 'cover', // 'cover' (fill, crop edges) | 'contain' (whole image, may letterbox) | 'stretch'
     showSpeakerName: true,
     showUpNext: true,
     showTimeOfDay: false,  // display: "Now 14:32" line under the timer
     showFinishTime: false, // display: "Finish 14:55" line under the timer
+    showStatus: true,      // display: "Running" / "Paused" / "Ready" label under the timer
+    showRoomBadge: true,   // display: the small "Room: x" label, bottom right
     rundown: [],       // [{name, durationMs}] programme list
     rundownIndex: -1,  // -1 = not in rundown mode
     message: '',
@@ -325,7 +333,13 @@ io.on('connection', (socket) => {
   }
 
   const { roomId, role } = access; // role: 'control' | 'display', derived server-side
+  if (!licenceAllowsRoom(roomId)) {
+    socket.emit('authError', { reason: 'licence', message: LIMITED_ROOM_MESSAGE });
+    socket.disconnect(true);
+    return;
+  }
   socket.join(roomId);
+  if (licence) socket.emit('licenceInfo', { limited: licence.isLimited() });
   if (access.room.expires_at) socket.emit('demoInfo', { expiresAt: access.room.expires_at });
   socket.clientType = role;
   socket.roomId = roomId;
@@ -525,6 +539,9 @@ io.on('connection', (socket) => {
     if (data.showUpNext !== undefined) timerState.showUpNext = !!data.showUpNext;
     if (data.showTimeOfDay !== undefined) timerState.showTimeOfDay = !!data.showTimeOfDay;
     if (data.showFinishTime !== undefined) timerState.showFinishTime = !!data.showFinishTime;
+    if (data.showStatus !== undefined) timerState.showStatus = !!data.showStatus;
+    if (data.showRoomBadge !== undefined) timerState.showRoomBadge = !!data.showRoomBadge;
+    if (BG_FITS.includes(data.displayBgFit)) timerState.displayBgFit = data.displayBgFit;
 
     emitState(roomId, timerState);
     scheduleSave();
@@ -811,6 +828,85 @@ app.post('/api/auth/change-password', auth.requireSession, async (req, res) => {
 });
 
 // ============================================
+// Display background image - set from a Control page, shown by its Display
+// ============================================
+// Authenticated by the room's own link token, like the sockets: the control
+// token to change it, either token to fetch it. Changing it also needs the
+// caller's socket id to be the room's active controller (X-Socket-Id), the same
+// rule every socket mutation follows - an observer panel can't change the show.
+
+const BG_MAX_BYTES = 10 * 1024 * 1024;
+
+// The file's own first bytes decide what it is - never the declared type.
+function sniffImageMime(buf) {
+  if (buf.length >= 8 && buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return 'image/png';
+  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg';
+  if (buf.length >= 12 && buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP') return 'image/webp';
+  return null;
+}
+
+function roomFromToken(req) {
+  return auth.resolveSocketAccess(req.get('X-Room-Token') || req.query.token);
+}
+
+function requireBackgroundController(req, res, next) {
+  const access = roomFromToken(req);
+  if (!access) return res.status(401).json({ ok: false, error: 'Invalid or expired link.' });
+  if (access.role !== 'control') return res.status(403).json({ ok: false, error: 'Display links cannot change the display.' });
+  if (!timerRooms.get(access.roomId)) return res.status(404).json({ ok: false, error: 'Room not found.' });
+  if (roomControllers.get(access.roomId) !== req.get('X-Socket-Id')) {
+    return res.status(409).json({ ok: false, error: 'This panel is view only. Take over first.' });
+  }
+  req.roomId = access.roomId;
+  next();
+}
+
+app.put('/api/display-background', requireBackgroundController,
+  express.raw({ type: () => true, limit: BG_MAX_BYTES }), (req, res) => {
+    const data = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+    const mime = sniffImageMime(data);
+    if (!mime) return res.status(415).json({ ok: false, error: 'That file is not a PNG, JPEG or WebP image.' });
+    db.setRoomBackground(Number(req.roomId), mime, data);
+    const timerState = timerRooms.get(req.roomId);
+    timerState.displayBgImage = `${Date.now().toString(36)}-${crypto.randomBytes(3).toString('hex')}`;
+    emitState(req.roomId, timerState);
+    scheduleSave();
+    res.json({ ok: true, version: timerState.displayBgImage });
+  });
+
+app.delete('/api/display-background', requireBackgroundController, (req, res) => {
+  db.deleteRoomBackground(Number(req.roomId));
+  const timerState = timerRooms.get(req.roomId);
+  timerState.displayBgImage = null;
+  emitState(req.roomId, timerState);
+  scheduleSave();
+  res.json({ ok: true });
+});
+
+// ?token=<control or display token>&v=<version>. The version is in the URL, so a
+// given URL's bytes never change and can be cached for as long as the browser likes.
+app.get('/api/display-background', (req, res) => {
+  const access = roomFromToken(req);
+  if (!access) return res.status(401).end();
+  const bg = db.getRoomBackground(Number(access.roomId));
+  if (!bg) return res.status(404).end();
+  res.set({
+    'Content-Type': bg.mime,
+    'Cache-Control': 'private, max-age=31536000, immutable',
+    'X-Content-Type-Options': 'nosniff'
+  });
+  res.send(bg.data);
+});
+
+// Upload too big (express.raw's limit) - a JSON answer the Control page can show.
+app.use('/api/display-background', (err, req, res, next) => {
+  if (err && err.type === 'entity.too.large') {
+    return res.status(413).json({ ok: false, error: `Image is too big - the limit is ${BG_MAX_BYTES / 1024 / 1024} MB.` });
+  }
+  next(err);
+});
+
+// ============================================
 // REST API - client-authenticated room management (dashboard, provisioning)
 // ============================================
 
@@ -854,7 +950,8 @@ function summarizeRoom(row, req) {
     amberThresholdMs: state.amberThresholdMs,
     redThresholdMs: state.redThresholdMs,
     controlUrl: links.controlUrl,
-    displayUrl: links.displayUrl
+    displayUrl: links.displayUrl,
+    licenceLocked: !licenceAllowsRoom(roomId)
   };
 }
 
@@ -887,6 +984,9 @@ app.post('/api/rooms', auth.requireDashboardAuth, (req, res) => {
     return res.status(400).json({ ok: false, error: 'Missing or invalid "slug" in request body' });
   }
   const cleanSlug = slug.trim().slice(0, 100);
+  if (licence && licence.isLimited() && db.getRoomsForClient(req.client.id).length >= 1) {
+    return res.status(403).json({ ok: false, reason: 'licence', error: 'The free version of Foxy Timer for Windows runs one room.' });
+  }
 
   let room;
   try {
@@ -1301,7 +1401,12 @@ app.post('/api/admin/clients/:id/rotate-key', ...adminClientAuth, (req, res) => 
 // and the slug is resolved only within that client's own rooms.
 // ============================================
 
-const roomAuth = [auth.requireDashboardAuth, auth.resolveOwnedRoom, attachTimerState];
+function requireLicensedRoom(req, res, next) {
+  if (!licenceAllowsRoom(req.roomId)) return res.status(403).json({ ok: false, reason: 'licence', error: LIMITED_ROOM_MESSAGE });
+  next();
+}
+
+const roomAuth = [auth.requireDashboardAuth, auth.resolveOwnedRoom, requireLicensedRoom, attachTimerState];
 
 // GET pre-computed display values optimised for Companion button feedback
 app.get('/api/rooms/:roomId/companion', ...roomAuth, (req, res) => {
@@ -1504,7 +1609,7 @@ function loadRundownItem(s, index, autoStart) {
 app.post('/api/rooms/:roomId/rundown/prev', ...roomAuth, (req, res) => {
   const { roomId } = req;
   const s = req.timerState;
-  if (!s.rundown.length) return res.json({ ok: false, error: 'No rundown configured' });
+  if (!s.rundown.length) return res.json({ ok: false, error: 'No running order set up' });
   const idx = s.rundownIndex <= 0 ? 0 : s.rundownIndex - 1;
   if (idx === s.rundownIndex && s.rundownIndex === 0) return res.json({ ok: false, error: 'Already at first item' });
   loadRundownItem(s, idx, false);
@@ -1517,7 +1622,7 @@ app.post('/api/rooms/:roomId/rundown/prev', ...roomAuth, (req, res) => {
 app.post('/api/rooms/:roomId/rundown/next', ...roomAuth, (req, res) => {
   const { roomId } = req;
   const s = req.timerState;
-  if (!s.rundown.length) return res.json({ ok: false, error: 'No rundown configured' });
+  if (!s.rundown.length) return res.json({ ok: false, error: 'No running order set up' });
   const idx = s.rundownIndex < 0 ? 0 : s.rundownIndex + 1;
   if (idx >= s.rundown.length) return res.json({ ok: false, error: 'Already at last item' });
   loadRundownItem(s, idx, false);
@@ -1531,7 +1636,7 @@ app.post('/api/rooms/:roomId/rundown/next', ...roomAuth, (req, res) => {
 app.post('/api/rooms/:roomId/rundown/take', ...roomAuth, (req, res) => {
   const { roomId } = req;
   const s = req.timerState;
-  if (!s.rundown.length) return res.json({ ok: false, error: 'No rundown configured' });
+  if (!s.rundown.length) return res.json({ ok: false, error: 'No running order set up' });
   const idx = s.rundownIndex < 0 ? 0 : s.rundownIndex;
   loadRundownItem(s, idx, true);
   emitState(roomId, s);
@@ -1581,6 +1686,26 @@ app.post('/api/rooms/:roomId/message', ...roomAuth, (req, res) => {
 const STARTED_AT = Date.now();
 const STARTED_BUILD = buildInfo.getBuildInfo(__dirname);
 const LOCAL_MODE = process.env.FOXY_MODE === 'local'; // set only by the Local Show Server launcher
+
+// Foxy Timer for Windows trial (licence.js). Full or limited is decided at
+// startup; limited = the first room only, plus a small mark on displays.
+// Online has no licence (null) and is never limited.
+const licence = LOCAL_MODE ? createLicenceManager({
+  getMeta: db.getMeta,
+  setMeta: db.setMeta,
+  appVersion: STARTED_BUILD.label,
+  onChange: (info) => {
+    console.log('🔓 Foxy Timer for Windows: full version active');
+    io.emit('licenceInfo', { limited: info.limited });
+  }
+}) : null;
+const LIMITED_ROOM_MESSAGE = 'The free version of Foxy Timer for Windows runs one room. Open the dashboard on the show laptop to see your options.';
+
+function licenceAllowsRoom(roomId) {
+  if (!licence || !licence.isLimited()) return true;
+  const ids = db.getRoomsForClient(db.getOrCreateLocalClient().id).map((r) => r.id);
+  return ids.length > 0 && String(Math.min(...ids)) === String(roomId);
+}
 let diskFingerprintCache = { at: 0, value: STARTED_BUILD.fingerprint };
 
 function currentDiskFingerprint() {
@@ -1655,6 +1780,103 @@ app.post('/api/admin/enquiries/:id/handled', ...adminClientAuth, (req, res) => {
 });
 
 // ============================================
+// Foxy Timer for Windows: download link and trial licences (see trials.js).
+// The download itself is hosted elsewhere (too big for Railway); /download/windows
+// redirects to the admin-set link so the website never needs editing for a release.
+// ============================================
+const TRIAL_RATE_WINDOW_MS = 60 * 60 * 1000;
+const TRIAL_RATE_LIMIT = 20;
+const trialAttempts = new Map();
+
+function windowsTrialSettings() {
+  return db.getWindowsTrialSettings(trials.DEFAULT_TRIAL_DAYS);
+}
+
+app.get('/api/windows/info', onlineOnly, (req, res) => {
+  const { trialDays, downloadUrl } = windowsTrialSettings();
+  res.json({ ok: true, trialDays, downloadAvailable: Boolean(downloadUrl) });
+});
+
+app.get('/download/windows', onlineOnly, (req, res) => {
+  const { downloadUrl } = windowsTrialSettings();
+  if (!downloadUrl) return res.status(404).send('Foxy Timer for Windows is not available to download yet.');
+  res.redirect(302, downloadUrl);
+});
+
+// Called by the Windows app on first launch (and whenever it's online later,
+// to pick up an extension). Same machine always gets its original expiry.
+app.post('/api/windows/trial', onlineOnly, (req, res) => {
+  const now = Date.now();
+  const recent = (trialAttempts.get(req.ip) || []).filter((t) => now - t < TRIAL_RATE_WINDOW_MS);
+  if (recent.length >= TRIAL_RATE_LIMIT) {
+    trialAttempts.set(req.ip, recent);
+    return res.status(429).json({ ok: false, error: 'Too many requests. Please try again later.' });
+  }
+  recent.push(now);
+  trialAttempts.set(req.ip, recent);
+
+  const { machineId, appVersion } = req.body || {};
+  if (!trials.isValidMachineId(machineId)) return res.status(400).json({ ok: false, error: 'Invalid machine id' });
+  if (!trials.isConfigured()) return res.status(503).json({ ok: false, error: 'Trials are not set up on this server' });
+
+  const version = typeof appVersion === 'string' ? appVersion.slice(0, 40) : null;
+  const trial = db.getOrStartWindowsTrial(machineId, windowsTrialSettings().trialDays, version);
+  const licence = trials.signLicence({
+    id: trial.id, machine: trial.machine_id, issuedAt: trial.issued_at, expiresAt: trial.expires_at
+  });
+  res.json({ ok: true, licence, expiresAt: trial.expires_at, started: trial.started });
+});
+
+app.get('/api/admin/windows-trials', ...adminClientAuth, (req, res) => {
+  res.json({
+    ok: true,
+    settings: { ...windowsTrialSettings(), maxTrialDays: trials.MAX_TRIAL_DAYS, signingConfigured: trials.isConfigured() },
+    trials: db.listWindowsTrials()
+  });
+});
+
+app.post('/api/admin/windows-trials/settings', ...adminClientAuth, (req, res) => {
+  const body = req.body || {};
+  const update = {};
+  if (body.trialDays !== undefined) {
+    update.trialDays = trials.parseTrialDays(body.trialDays);
+    if (update.trialDays === null) return res.status(400).json({ ok: false, error: `Trial length must be 1-${trials.MAX_TRIAL_DAYS} days` });
+  }
+  if (body.downloadUrl !== undefined) {
+    update.downloadUrl = trials.parseDownloadUrl(body.downloadUrl);
+    if (update.downloadUrl === null) return res.status(400).json({ ok: false, error: 'Download link must start with https://' });
+  }
+  db.setWindowsTrialSettings(update);
+  const settings = windowsTrialSettings();
+  db.recordAuditLog({
+    actorUserId: req.user.id,
+    action: 'windows_trial.settings',
+    targetType: 'setting',
+    targetLabel: `${settings.trialDays} days`
+  });
+  res.json({ ok: true, settings });
+});
+
+// Adds days from whichever is later: now or the current expiry, so extending
+// an expired trial gives the full number of days from today.
+app.post('/api/admin/windows-trials/:id/extend', ...adminClientAuth, (req, res) => {
+  const id = Number(req.params.id);
+  const trial = Number.isInteger(id) ? db.getWindowsTrialById(id) : null;
+  if (!trial) return res.status(404).json({ ok: false, error: 'Trial not found' });
+  const days = trials.parseTrialDays(req.body && req.body.days);
+  if (days === null) return res.status(400).json({ ok: false, error: `Days must be 1-${trials.MAX_TRIAL_DAYS}` });
+  db.setWindowsTrialExpiry(id, Math.max(Date.now(), trial.expires_at) + days * trials.DAY_MS);
+  db.recordAuditLog({
+    actorUserId: req.user.id,
+    action: 'windows_trial.extended',
+    targetType: 'windows_trial',
+    targetId: id,
+    targetLabel: `+${days} days`
+  });
+  res.json({ ok: true, trial: db.getWindowsTrialById(id) });
+});
+
+// ============================================
 // Local Show Server: Companion (Stream Deck) setup details for the laptop's
 // dashboard - the server address other machines use, the local API key, and
 // the room names Companion's "Room IDs" field wants. Only for the operator at
@@ -1682,6 +1904,45 @@ app.get('/api/local/companion', auth.requireDashboardAuth, requireLocalOperator,
 
 app.post('/api/local/companion/new-key', auth.requireDashboardAuth, requireLocalOperator, (req, res) => {
   res.json(localCompanionDetails(req, db.newLocalCompanionKey()));
+});
+
+// Foxy Timer Online: the same Companion window for a logged-in customer. Keys
+// are stored only as a hash, so the current key can't be shown again - the
+// window says when it was made, and "Make a new key" shows the new one once.
+// Logged-in humans only: a Companion connection (Bearer key) must not be able
+// to replace the key it is using, and the laptop has its own routes above.
+function requireOnlineSession(req, res, next) {
+  if (req.authMethod !== 'session') {
+    return res.status(403).json({ ok: false, error: 'Log in to the dashboard to set up Companion' });
+  }
+  next();
+}
+
+function onlineCompanionDetails(req, apiKey) {
+  const client = db.getClientById(req.client.id);
+  return {
+    ok: true,
+    serverUrl: shareBaseUrl(req.protocol, req.get('host')),
+    apiKey: apiKey || null,
+    keyMadeAt: client.api_key_rotated_at || client.api_key_created_at || null,
+    rooms: db.getRoomsForClient(req.client.id).map((r) => r.slug)
+  };
+}
+
+app.get('/api/companion', auth.requireDashboardAuth, requireOnlineSession, (req, res) => {
+  res.json(onlineCompanionDetails(req));
+});
+
+app.post('/api/companion/new-key', auth.requireDashboardAuth, requireOnlineSession, (req, res) => {
+  const rotated = db.rotateClientApiKeyById(req.client.id);
+  db.recordAuditLog({
+    actorUserId: req.user.id,
+    action: 'client.rotate_api_key',
+    targetType: 'client',
+    targetId: req.client.id,
+    targetLabel: req.client.name
+  });
+  res.json(onlineCompanionDetails(req, rotated.apiKey));
 });
 
 // "This laptop" panel on the dashboard: status, network addresses, whether
@@ -1720,6 +1981,16 @@ async function laptopStatus(req, opts) {
 
 app.get('/api/local/status', auth.requireDashboardAuth, requireLocalOperator, async (req, res) => {
   res.json(await laptopStatus(req, { refresh: req.query.refresh === '1' }));
+});
+
+// Trial status for the dashboard's banner, and a "Check again" that asks
+// Foxy Timer Online straight away (e.g. after connecting to the internet).
+app.get('/api/local/licence', auth.requireDashboardAuth, requireLocalOperator, (req, res) => {
+  res.json({ ok: true, ...licence.info() });
+});
+
+app.post('/api/local/licence/check', auth.requireDashboardAuth, requireLocalOperator, async (req, res) => {
+  res.json({ ok: true, ...(await licence.checkIn()) });
 });
 
 app.post('/api/local/firewall/allow', auth.requireDashboardAuth, requireLocalOperator, async (req, res) => {
@@ -1877,6 +2148,20 @@ app.get('/dashboard', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
 });
 
+// The Companion module package, for Companion's "Import module package". A fixed
+// link that always serves whichever version is in public/downloads (keep just
+// one there), so Help and the dashboard never need editing for a new release.
+// Static file, so it works on a show laptop with no internet.
+app.get('/download/companion-module', (req, res) => {
+  const dir = path.join(__dirname, 'public', 'downloads');
+  let file = null;
+  try {
+    file = require('fs').readdirSync(dir).filter((f) => /^foxy-presentation-timer-[\d.]+\.tgz$/.test(f)).sort().pop() || null;
+  } catch { /* no downloads folder */ }
+  if (!file) return res.status(404).send('The Companion module is not included in this build.');
+  res.download(path.join(dir, file), file);
+});
+
 app.get('/help', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'help.html'));
 });
@@ -1927,6 +2212,13 @@ app.get('/admin/clients/:id', requirePlatformAdminPage, (req, res) => {
 loadRooms();
 sweepExpiredDemoRooms();
 if (LOCAL_MODE) ensureLocalStarterRoom();
+// Check in with Foxy Timer Online at startup and every few hours (picks up a
+// new trial or an extension; offline is fine), and keep the clock guard current.
+if (licence) {
+  licence.checkIn();
+  setInterval(() => licence.checkIn(), 6 * 60 * 60 * 1000).unref();
+  setInterval(() => licence.tickClock(), 60 * 60 * 1000).unref();
+}
 setInterval(sweepExpiredDemoRooms, demoConfig.sweepMs).unref();
 
 // Start server

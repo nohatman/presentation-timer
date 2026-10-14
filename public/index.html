@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>Foxy Timer - stage timing for live event crews</title>
-    <meta name="description" content="Browser-based stage timing for live event crews: one show clock on every display, confidence monitor, LED clock, phone and Stream Deck. Hosted, or on your own show network with no internet needed.">
+    <title>Foxy Timer - your presentation timer, centre stage</title>
+    <meta name="description" content="A presentation timer that shows who's on, time left and who's next, in sync on every screen. Run one room or many from your device's browser. Works with Companion.">
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <style>
         :root {
@@ -110,15 +110,18 @@
         @keyframes blink { 50% { opacity: 0.25; } }
 
         .phone {
-            position: absolute; right: -18px; bottom: -44px; width: 150px;
-            background: #0e0e10; border: 1px solid #2c2c31; border-radius: 22px; padding: 10px 9px 12px;
-            box-shadow: 0 20px 50px rgba(0,0,0,0.7), 0 0 0 4px #151517;
+            position: absolute; right: -18px; bottom: -64px; width: 132px; aspect-ratio: 9 / 19.5;
+            display: flex; flex-direction: column;
+            background: #0e0e10; border: 1px solid #3a3a40; border-radius: 26px; padding: 28px 9px 16px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.7), 0 0 0 4px #1b1b1e, 0 0 0 5px #2c2c31;
             font-size: 0.62rem; color: var(--muted);
         }
-        .phone .notch { width: 40px; height: 4px; background: #26262a; border-radius: 4px; margin: 0 auto 8px; }
+        /* Dynamic Island and home indicator */
+        .phone .notch { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); width: 38px; height: 11px; background: #000; border-radius: 8px; }
+        .phone::after { content: ''; position: absolute; bottom: 6px; left: 50%; transform: translateX(-50%); width: 40px; height: 3px; background: #3a3a40; border-radius: 3px; }
         .phone .chip { display: flex; align-items: center; gap: 5px; background: #17171a; border: 1px solid var(--line); border-radius: 20px; padding: 3px 7px; width: max-content; color: #d6d6da; }
         .phone .chip i { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
-        .phone .mini { margin: 8px 0; background: #000; border-radius: 6px; padding: 8px 0; text-align: center; font-family: var(--mono); font-weight: 700; font-size: 1.35rem; color: var(--green); transition: color 0.4s; }
+        .phone .mini { flex: 1; display: flex; align-items: center; justify-content: center; margin: 8px 0; background: #000; border-radius: 8px; text-align: center; font-family: var(--mono); font-weight: 700; font-size: 1.5rem; color: var(--green); transition: color 0.4s; }
         .phone .pbtn { background: var(--fox); color: #140800; font-weight: 700; text-align: center; border-radius: 7px; padding: 6px 0; margin-bottom: 5px; font-size: 0.7rem; }
         .phone .nudges { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
         .phone .nudges span { border: 1px solid var(--line); border-radius: 5px; text-align: center; padding: 3px 0; color: #c9c9ce; }
@@ -171,6 +174,9 @@
         .mode ul { margin: 0; padding: 0; list-style: none; color: var(--muted); font-size: 0.95rem; }
         .mode li { padding: 5px 0 5px 20px; position: relative; }
         .mode li::before { content: ''; position: absolute; left: 2px; top: 13px; width: 8px; height: 2px; background: var(--fox); }
+        .mode-download { margin-top: 20px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+        .mode-download[hidden] { display: none; }
+        .mode-download .note { color: var(--muted); font-size: 0.9rem; }
 
         /* Contact */
         .contact .wrap { display: grid; grid-template-columns: 0.9fr 1.1fr; gap: 56px; align-items: start; }
@@ -219,7 +225,8 @@
             .hero { padding: 40px 0 48px; }
             .lede { font-size: 1.03rem; }
             .cta-row .btn { flex: 1 1 100%; }
-            .phone { width: 118px; right: -4px; bottom: -40px; border-radius: 18px; }
+            .phone { width: 96px; right: -4px; bottom: -48px; border-radius: 20px; padding: 22px 7px 14px; }
+            .phone .notch { top: 6px; width: 30px; height: 9px; }
             .phone .mini { font-size: 1.05rem; }
             .phone .nudges, .phone .live { display: none; }
             section { padding: 64px 0; }
@@ -258,9 +265,9 @@
     <div class="hero">
         <div class="wrap">
             <div>
-                <span class="eyebrow">Stage timing for live event crews</span>
-                <h1>One show clock.<br><span class="soft">Every screen,<br>every room.</span></h1>
-                <p class="lede">Speaker countdowns, rundowns and messages that stay in sync on stage displays, confidence monitors, LED clocks and phones, all run from a browser or a Stream Deck. Use it hosted, or on a laptop on your own show network with no internet needed.</p>
+                <span class="eyebrow">Presentation timer</span>
+                <h1>Put your timer<br>centre stage.<br><span class="soft">Who's on, time left,<br>who's next.</span></h1>
+                <p class="lede">Your countdown, the speaker's name and what's coming up, live and in sync on every display and all your devices. Run one room or every room at once, from your device's browser. Works with Companion.</p>
                 <div class="cta-row">
                     <a class="btn btn-primary" href="/try">Try it now, no sign-up</a>
                     <a class="btn btn-ghost" href="#contact">Get a trial account</a>
@@ -289,7 +296,7 @@
         <div class="strip">
             <div class="wrap">
                 <span class="label">Plays well with</span>
-                <span><strong>Bitfocus Companion</strong> &amp; Stream Deck</span>
+                <span><strong>Bitfocus Companion</strong></span>
                 <span><strong>CDEther / Hive</strong> LED clocks</span>
                 <span>Any vision mixer, via <strong>chromakey</strong></span>
                 <span>Any screen with a <strong>browser</strong></span>
@@ -302,7 +309,7 @@
         <div class="wrap">
             <div class="section-head">
                 <h2>Built around what goes wrong on show day.</h2>
-                <p>You already know what a countdown does. These are the reasons to trust this one when a room is full.</p>
+                <p>Every screen runs from the same clock, one person is in control at a time, and nothing reaches the stage until you Apply it.</p>
             </div>
 
             <div class="cards">
@@ -317,15 +324,15 @@
                         Internet &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--faint)">not needed</span><br>
                         &nbsp;&#9500; Stage display&nbsp;&nbsp;&nbsp;<span class="ok tick">0:40</span><br>
                         &nbsp;&#9500; Confidence mon.&nbsp;<span class="ok tick">0:40</span><br>
-                        &nbsp;&#9500; Stream Deck&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="ok tick">0:40</span><br>
+                        &nbsp;&#9500; Companion&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="ok tick">0:40</span><br>
                         &nbsp;&#9492; Show caller's phone <span class="ok tick">0:40</span>
                     </div>
                 </div>
 
                 <div class="card">
                     <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></div>
-                    <h3>On the Stream Deck</h3>
-                    <p>A native Companion module with a start/pause toggle, nudges, set duration, rundown Prev / Take / Next, and live time and colour on the keys.</p>
+                    <h3>Works with Companion</h3>
+                    <p>A native Companion module with a start/pause toggle, nudges, set duration, running order Prev / Take / Next, and live time and colour on the keys. Works with Foxy Timer Online over the internet, or on your own network with Foxy Timer for Windows.</p>
                 </div>
 
                 <div class="card">
@@ -355,7 +362,7 @@
                 <div class="card wide">
                     <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
                     <h3>Talk to the stage, quietly</h3>
-                    <p>Send "Wrap up" or "Take questions" to the speaker, full screen or as a ticker, without touching the countdown. The display shows who's on and who's next from your rundown, so the speaker always knows where they are.</p>
+                    <p>Send "Wrap up" or "Take questions" to the speaker, full screen or as a ticker, without touching the countdown. The display shows who's on and who's next from your running order, so the speaker always knows where they are.</p>
                 </div>
             </div>
         </div>
@@ -365,17 +372,21 @@
     <section id="details" class="details">
         <div class="wrap">
             <div class="section-head">
-                <h2>The details operators ask about.</h2>
-                <p>What you'd want to know before trusting it with a keynote.</p>
+                <h2>The details.</h2>
+                <p>Everything the display can show, and how you run it.</p>
             </div>
             <dl class="spec">
+                <div><dt>On the display</dt><dd>The countdown, speaker or session name, "Up next", the time now ("Now 14:32"), the finish time ("Finish 14:55"), status and room label. Switch any of them off, down to digits only.</dd></div>
                 <div><dt>Duration or End at</dt><dd>Count down a length of time, or count to a clock time ("finish at 14:30"). The server keeps the time, so every screen agrees.</dd></div>
-                <div><dt>Rundown</dt><dd>Load a running order of speakers and session lengths, then use Prev / Take / Next. Speaker and "up next" lines appear on the display.</dd></div>
-                <div><dt>Warnings</dt><dd>Green, amber, red, then purple on overrun. You set the thresholds and colours per room.</dd></div>
+                <div><dt>Count modes</dt><dd>Count down and stop at 0:00, carry on counting the overrun, or count up as a stopwatch. H:MM:SS past an hour.</dd></div>
+                <div><dt>Clock mode</dt><dd>Switch the display to a time-of-day clock for breaks and changeovers.</dd></div>
+                <div><dt>Warnings</dt><dd>Green, amber, red, then purple on overrun, flashing at zero. You set the thresholds and colours per room, and can use them when counting up too.</dd></div>
                 <div><dt>Messages</dt><dd>Send "Wrap up" or "Take questions" to the stage, full screen or as a ticker. Clear it with one tap.</dd></div>
-                <div><dt>Clean output</dt><dd>Chromakey or any background colour, hide any element, and the timer fits to width on any screen, portrait or landscape.</dd></div>
-                <div><dt>Overrun & clock</dt><dd>Count up after zero, H:MM:SS past an hour, and a time-of-day clock mode for breaks.</dd></div>
-                <div><dt>Keyboard</dt><dd>Space to start or pause, R to reset, +/- to nudge, and arrows and Enter to work through the rundown.</dd></div>
+                <div><dt>Background</dt><dd>Black, chromakey green or blue, any colour, or your own image: fill the screen, fit it, or stretch it.</dd></div>
+                <div><dt>Size &amp; fit</dt><dd>Set the size of the digits. The timer fits to width on any screen, portrait or landscape, and goes full screen with one click.</dd></div>
+                <div><dt>Running order</dt><dd>Load your speakers and session lengths, or paste in your run of show as text, then step through with Prev / Take / Next.</dd></div>
+                <div><dt>Quick presets</dt><dd>Eight one-tap durations. Ctrl+click to save your own.</dd></div>
+                <div><dt>Keyboard</dt><dd>Space to start or pause, R to reset, +/- to nudge, and arrows and Enter to work through the running order.</dd></div>
                 <div><dt>Survives restarts</dt><dd>Rooms and timer state are saved, so a server restart picks up where it left off.</dd></div>
             </dl>
         </div>
@@ -396,7 +407,7 @@
                     <ul>
                         <li>Log in, create rooms, send out the links</li>
                         <li>Operate from anywhere with a connection</li>
-                        <li>Companion connects over the internet</li>
+                        <li>Companion works too, over the internet</li>
                     </ul>
                 </div>
                 <div class="mode">
@@ -404,10 +415,15 @@
                     <h3>Your laptop, your network</h3>
                     <p>Runs on your show laptop. For shows where you run the network, or where the internet can't be trusted.</p>
                     <ul>
-                        <li>Unzip and double-click: nothing to install, no admin rights</li>
-                        <li>Displays, phones and Stream Decks join over the venue network</li>
-                        <li>Needs no internet connection at all</li>
+                        <li>Install once on your show laptop</li>
+                        <li>Displays, phones and Companion join over the venue network</li>
+                        <li>Needs no internet connection during the show</li>
                     </ul>
+                    <!-- Shown once an admin has set a download link (/api/windows/info). -->
+                    <div class="mode-download" id="winDownload" hidden>
+                        <a class="btn btn-primary" href="/download/windows">Download for Windows</a>
+                        <span class="note" id="winTrialNote"></span>
+                    </div>
                 </div>
             </div>
         </div>
@@ -439,7 +455,7 @@
                     <div class="interest">
                         <label><input type="checkbox" name="interest" value="trial" checked> A free trial</label>
                         <label><input type="checkbox" name="interest" value="local"> Foxy Timer for Windows</label>
-                        <label><input type="checkbox" name="interest" value="companion"> Companion / Stream Deck</label>
+                        <label><input type="checkbox" name="interest" value="companion"> Companion</label>
                         <label><input type="checkbox" name="interest" value="call"> A quick call</label>
                     </div>
                 </div>
@@ -466,6 +482,13 @@
 
 <script>
     document.getElementById('year').textContent = new Date().getFullYear();
+
+    // Windows download button, with the current trial length.
+    fetch('/api/windows/info').then((r) => r.json()).then((info) => {
+        if (!info.ok || !info.downloadAvailable) return;
+        document.getElementById('winTrialNote').textContent = `Free for ${info.trialDays} ${info.trialDays === 1 ? 'day' : 'days'}, no sign-up`;
+        document.getElementById('winDownload').hidden = false;
+    }).catch(() => {});
 
     // Sticky nav gets a hairline once the page scrolls.
     const nav = document.getElementById('nav');

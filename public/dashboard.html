@@ -400,6 +400,10 @@
         .laptop-warning { margin-top: 0.9rem; background: #2a2010; border: 1px solid #5a4410; border-radius: 9px; padding: 0.8rem 1rem; color: #f3dfb5; font-size: 0.9rem; line-height: 1.5; }
         .laptop-warning b { color: #ffb300; }
         .laptop-warning .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 0.6rem; }
+        .laptop-warning a { color: #ffb74d; }
+        #licenceText.soon { color: #ffb300; }
+        .room-card.licence-locked { opacity: 0.6; }
+        .licence-locked-note { background: #1c1c1c; border: 1px dashed #444; border-radius: 8px; padding: 0.7rem 0.9rem; color: #bbb; font-size: 0.88rem; line-height: 1.45; }
     </style>
 </head>
 <body>
@@ -424,7 +428,7 @@
                     <a href="/" id="homeLink" class="nav-link">🏠 Home</a>
                     <a href="/admin/clients" id="manageClientsLink" class="nav-link" style="display:none;">🏢 Manage Clients</a>
                     <a href="/help" id="helpLink" class="nav-link" target="foxy-help">❓ Help</a>
-                    <button id="companionBtn" onclick="openCompanionSetup(this)" class="nav-link" style="display:none;cursor:pointer;">🎛️ Companion / Stream Deck</button>
+                    <button id="companionBtn" onclick="openCompanionSetup(this)" class="nav-link" style="display:none;cursor:pointer;">🎛️ Companion</button>
                     <button onclick="logout()" id="logoutBtn" class="nav-link" style="cursor:pointer;">🚪 Logout</button>
                 </div>
                 <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; justify-content: flex-end;">
@@ -457,8 +461,10 @@
             <div><span class="laptop-label">Status</span><span id="laptopStatusText">Running</span></div>
             <div><span class="laptop-label">Address for other devices</span><span id="laptopAddress">…</span></div>
             <div><span class="laptop-label">Firewall</span><span id="laptopFirewall">Checking…</span></div>
+            <div><span class="laptop-label">Version</span><span id="licenceText">…</span></div>
         </div>
         <div id="laptopWarning" class="laptop-warning" hidden></div>
+        <div id="licenceWarning" class="laptop-warning" hidden></div>
     </section>
 
     <div id="roomsContainer" class="rooms-grid">
@@ -485,6 +491,7 @@
         let draggedElement = null;
         const selectedRooms = new Set();
         let isPlatformAdmin = false; // set from GET /api/whoami - drives cross-client view
+        let isLocalOperator = false; // Foxy Timer for Windows laptop - picks which Companion window to show
 
         // ============================================================
         // Session authentication (Phase 6a) - the normal human workflow is
@@ -539,16 +546,19 @@
                 const data = await response.json();
                 if (data.ok) {
                     isPlatformAdmin = !!data.isPlatformAdmin;
+                    isLocalOperator = !!data.localOperator;
+                    document.getElementById('companionBtn').style.display = 'inline-block';
                     // On a Local Show Server laptop there's no account to log out
                     // of, and Home is this page.
                     if (data.localOperator) {
                         document.getElementById('logoutBtn').style.display = 'none';
                         document.getElementById('homeLink').style.display = 'none';
-                        document.getElementById('companionBtn').style.display = 'inline-block';
                         document.getElementById('dashboardSubtitle').textContent = 'Foxy Timer for Windows · running on this laptop';
                         document.getElementById('laptopPanel').hidden = false;
                         refreshLaptopPanel();
                         setInterval(refreshLaptopPanel, 30000);
+                        refreshLicence();
+                        setInterval(refreshLicence, 60000);
                         document.title = 'Foxy Timer for Windows - Dashboard';
                     }
                 }
@@ -843,14 +853,32 @@
         }
 
         async function openCompanionSetup(triggerEl, newKey = false) {
-            const response = await authFetch(newKey ? '/api/local/companion/new-key' : '/api/local/companion', { method: newKey ? 'POST' : 'GET' });
+            const base = isLocalOperator ? '/api/local/companion' : '/api/companion';
+            const response = await authFetch(newKey ? base + '/new-key' : base, { method: newKey ? 'POST' : 'GET' });
             const data = await response.json().catch(() => ({}));
             if (!data.ok) { uiNotice('Companion setup', data.error || 'Could not load the Companion details.'); return; }
+            const where = isLocalOperator
+                ? 'The Companion computer must be on the same network as this laptop.'
+                : 'Companion connects over the internet, so it can be anywhere with a connection.';
+            // Online keys are stored scrambled, so a key can only be shown once, when it is made.
+            let keyBlock;
+            if (data.apiKey) {
+                keyBlock = companionField('Client API key', 'companionApiKey', data.apiKey) + (isLocalOperator ? '' :
+                    '<p style="margin:-6px 0 14px 0;color:#ffb74d;font-size:0.82rem;line-height:1.5;">Copy this key now. It won’t be shown again.</p>');
+            } else {
+                const made = data.keyMadeAt ? ' Your current key was made on ' + new Date(data.keyMadeAt).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' }) + '.' : '';
+                keyBlock = `
+                <div style="margin-bottom:14px;">
+                    <label style="display:block;font-size:0.78rem;color:#999;text-transform:uppercase;margin-bottom:6px;">Client API key</label>
+                    <p style="margin:0;color:#ccc;font-size:0.85rem;line-height:1.5;">For security, a key is only shown once, when it is made.${made} Don’t have it? Press <b>Make a new key</b> below.</p>
+                </div>`;
+            }
             openModal(`
-                <h2 id="modalTitle" style="margin:0 0 6px 0;font-size:1.2rem;color:#fafafa;">Companion / Stream Deck</h2>
-                <p style="margin:0 0 18px 0;color:#999;font-size:0.85rem;line-height:1.5;">In Companion, add a <b>Foxy Presentation Timer</b> connection and copy these three into its settings. The Stream Deck PC must be on the same network as this laptop. <a href="/help#companion" target="foxy-help" style="color:#90caf9;">Step-by-step guide</a></p>
+                <h2 id="modalTitle" style="margin:0 0 6px 0;font-size:1.2rem;color:#fafafa;">Companion</h2>
+                <p style="margin:0 0 18px 0;color:#999;font-size:0.85rem;line-height:1.5;">In Companion, add a <b>Foxy Presentation Timer</b> connection and copy these three into its settings. ${where} <a href="/help#companion" target="foxy-help" style="color:#90caf9;">Step-by-step guide</a></p>
+                <p style="margin:-8px 0 18px 0;color:#999;font-size:0.85rem;line-height:1.5;">First time? <a href="/download/companion-module" download style="color:#90caf9;font-weight:600;">Download the Companion module</a>, then in Companion: <i>Modules → Import module package</i>.</p>
                 ${companionField('Server URL', 'companionServerUrl', data.serverUrl)}
-                ${companionField('Client API key', 'companionApiKey', data.apiKey)}
+                ${keyBlock}
                 ${companionField('Room IDs to monitor', 'companionRooms', data.rooms.join(','))}
                 <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:6px;">
                     <button onclick="makeNewCompanionKey(this)" style="padding:10px 14px;border-radius:8px;border:1px solid #444;background:transparent;color:#ccc;cursor:pointer;font-size:0.85rem;">🔄 Make a new key</button>
@@ -862,7 +890,7 @@
         async function makeNewCompanionKey(triggerEl) {
             const ok = await uiConfirm({
                 title: 'Make a new Companion key?',
-                body: 'The current key stops working straight away. Any Stream Deck using it needs the new key pasted into its Companion connection.',
+                body: 'The current key stops working straight away. Any Companion connection using it, including your colleagues’, needs the new key pasted in.',
                 okLabel: 'Make new key',
                 danger: true
             }, triggerEl);
@@ -902,6 +930,67 @@
             }
         }
 
+        // Free trial / free version (licence.js). The free version runs one
+        // room with a small "Foxy Timer" mark on displays.
+        const FREE_VERSION_LIMITS = 'one room, with a small "Foxy Timer" mark on displays';
+        function renderLicence(lic) {
+            const text = document.getElementById('licenceText');
+            const warn = document.getElementById('licenceWarning');
+            const contact = `<a href="${escapeHtml(lic.onlineUrl)}/#contact" target="_blank" rel="noopener">get in touch</a>`;
+            text.classList.toggle('soon', lic.status === 'active' && lic.daysLeft <= 3);
+            if (!lic.limited) {
+                text.textContent = `Free trial · ${lic.daysLeft} ${lic.daysLeft === 1 ? 'day' : 'days'} left`;
+                warn.hidden = true;
+                return;
+            }
+            text.textContent = 'Free version';
+            let msg;
+            if (lic.status === 'expired') {
+                msg = `<b>Your free trial has ended.</b> Foxy Timer keeps working as the free version: ${FREE_VERSION_LIMITS}. To keep using every room, ${contact}.`;
+            } else if (lic.status === 'clock') {
+                msg = `<b>This laptop's date or time looks wrong</b> (it's earlier than the last time Foxy Timer ran), so it's running as the free version: ${FREE_VERSION_LIMITS}. Set the correct date and time, then press Restart.`;
+            } else {
+                msg = `<b>Start your free trial:</b> connect this laptop to the internet once, then press Check again. Until then it runs as the free version: ${FREE_VERSION_LIMITS}.`;
+            }
+            const failed = lic.lastCheckIn && !lic.lastCheckIn.ok && lic.status !== 'clock'
+                ? `<div style="margin-top:0.4rem;color:#bfa77a;">Last check: ${escapeHtml(lic.lastCheckIn.error === 'Offline' || lic.lastCheckIn.error === 'No reply' ? "couldn't reach Foxy Timer Online" : lic.lastCheckIn.error)}.</div>`
+                : '';
+            const button = lic.status === 'clock' ? '' : '<div class="row"><button type="button" class="laptop-btn" onclick="checkLicenceNow(this)">Check again</button></div>';
+            warn.innerHTML = msg + failed + button;
+            warn.hidden = false;
+        }
+
+        let licenceLimited = null;
+        async function refreshLicence() {
+            try {
+                const response = await authFetch('/api/local/licence');
+                const data = await response.json();
+                if (!data.ok) return;
+                renderLicence(data);
+                // The first check-in at startup may still be on its way.
+                if (data.limited && !data.lastCheckIn) setTimeout(refreshLicence, 3000);
+                if (licenceLimited !== null && licenceLimited !== data.limited) fetchRooms();
+                licenceLimited = data.limited;
+            } catch (err) { /* keep the last reading */ }
+        }
+
+        async function checkLicenceNow(btn) {
+            btn.disabled = true;
+            btn.textContent = 'Checking…';
+            try {
+                const response = await authFetch('/api/local/licence/check', { method: 'POST' });
+                const data = await response.json();
+                if (data.ok) {
+                    renderLicence(data);
+                    if (licenceLimited !== data.limited) fetchRooms();
+                    licenceLimited = data.limited;
+                }
+            } catch (err) {
+                btn.disabled = false;
+                btn.textContent = 'Check again';
+            }
+        }
+
         async function refreshLaptopPanel(force) {
             try {
                 const response = await authFetch('/api/local/status' + (force ? '?refresh=1' : ''));
@@ -929,7 +1018,7 @@
         async function stopLaptopServer(triggerEl) {
             const ok = await uiConfirm({
                 title: 'Stop Foxy Timer?',
-                body: 'Every display, control page and Stream Deck connected to this laptop disconnects. Timers are saved and carry on where they were when you start again (from the Foxy Timer icon).',
+                body: 'Every display, control page and Companion connection to this laptop disconnects. Timers are saved and carry on where they were when you start again (from the Foxy Timer icon).',
                 okLabel: 'Stop Foxy Timer',
                 danger: true
             }, triggerEl);
@@ -1098,6 +1187,20 @@
                     : room.mode === 'paused'
                         ? `<button onclick="toggleRoomTimer('${escapeHtml(room.id)}', 'paused')" class="action-btn primary-action" style="background:#4caf50;border-color:#4caf50;color:white;">▶️ Resume</button>`
                         : `<button onclick="toggleRoomTimer('${escapeHtml(room.id)}', 'stopped')" class="action-btn primary-action" style="background:#4caf50;border-color:#4caf50;color:white;">▶️ Start</button>`;
+
+                if (room.licenceLocked) {
+                    return `
+                    <div class="room-card licence-locked" data-room-id="${escapeHtml(room.id)}">
+                        <div class="room-header">
+                            <div class="room-name">${escapeHtml(room.slug)}</div>
+                            <div class="room-status">free version</div>
+                        </div>
+                        <div class="licence-locked-note">The free version runs one room, so this room is switched off. Its links will work again with the full version.</div>
+                        <div class="room-actions" style="margin-top:0.8rem;">
+                            <button onclick="deleteRoom('${escapeHtml(room.id)}')" class="action-btn danger secondary-action">🗑️ Delete</button>
+                        </div>
+                    </div>`;
+                }
 
                 return `
                     <div class="room-card ${room.mode}"
