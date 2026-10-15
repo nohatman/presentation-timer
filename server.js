@@ -236,6 +236,9 @@ function isHexColor(v) {
 }
 
 const BG_FITS = ['cover', 'contain', 'stretch'];
+// Display digits: font (files in public/fonts) and glow strength.
+const DISPLAY_FONTS = ['standard', 'condensed', 'hyperlegible', 'mono', 'led'];
+const DISPLAY_GLOWS = ['full', 'soft', 'off'];
 
 function createDefaultTimerState() {
   return {
@@ -268,6 +271,10 @@ function createDefaultTimerState() {
     displayBgColor: '#000000',
     displayBgImage: null,  // version string of the room's uploaded background image (room_backgrounds), or null
     displayBgFit: 'cover', // 'cover' (fill, crop edges) | 'contain' (whole image, may letterbox) | 'stretch'
+    displayFont: 'standard', // digits font, one of DISPLAY_FONTS
+    displayGlow: 'full',     // glow round the digits: 'full' (as always) | 'soft' | 'off'
+    displayRedPulse: true,   // digits pulse once in the red
+    displayZeroFlash: true,  // digits flash at zero
     showSpeakerName: true,
     showUpNext: true,
     showTimeOfDay: false,  // display: "Now 14:32" line under the timer
@@ -544,6 +551,10 @@ io.on('connection', (socket) => {
     if (data.showStatus !== undefined) timerState.showStatus = !!data.showStatus;
     if (data.showRoomBadge !== undefined) timerState.showRoomBadge = !!data.showRoomBadge;
     if (BG_FITS.includes(data.displayBgFit)) timerState.displayBgFit = data.displayBgFit;
+    if (DISPLAY_FONTS.includes(data.displayFont)) timerState.displayFont = data.displayFont;
+    if (DISPLAY_GLOWS.includes(data.displayGlow)) timerState.displayGlow = data.displayGlow;
+    if (data.displayRedPulse !== undefined) timerState.displayRedPulse = !!data.displayRedPulse;
+    if (data.displayZeroFlash !== undefined) timerState.displayZeroFlash = !!data.displayZeroFlash;
 
     emitState(roomId, timerState);
     scheduleSave();

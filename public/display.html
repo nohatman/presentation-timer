@@ -93,6 +93,22 @@
             display: inline-block;
             white-space: nowrap;
         }
+        /* Digits font (Display Appearance). Files in /fonts hold digits only, and
+           ship with the app so a display needs no internet to get them. */
+        @font-face { font-family: 'Foxy Condensed'; src: url('/fonts/barlow-condensed-700.woff2') format('woff2'); font-weight: 700; font-display: swap; }
+        @font-face { font-family: 'Foxy Hyperlegible'; src: url('/fonts/atkinson-hyperlegible-700.woff2') format('woff2'); font-weight: 700; font-display: swap; }
+        @font-face { font-family: 'Foxy Mono'; src: url('/fonts/jetbrains-mono-700.woff2') format('woff2'); font-weight: 700; font-display: swap; }
+        @font-face { font-family: 'Foxy LED'; src: url('/fonts/dseg7-classic-bold.woff2') format('woff2'); font-weight: 700; font-display: swap; }
+        body.digits-condensed #timerDisplayText, body.digits-condensed #clockDisplayText { font-family: 'Foxy Condensed', 'Bahnschrift', 'Arial Narrow', sans-serif; letter-spacing: 0.01em; }
+        body.digits-hyperlegible #timerDisplayText, body.digits-hyperlegible #clockDisplayText { font-family: 'Foxy Hyperlegible', sans-serif; letter-spacing: 0; }
+        body.digits-mono #timerDisplayText, body.digits-mono #clockDisplayText { font-family: 'Foxy Mono', ui-monospace, Consolas, monospace; letter-spacing: -0.02em; }
+        body.digits-led #timerDisplayText, body.digits-led #clockDisplayText { font-family: 'Foxy LED', ui-monospace, monospace; letter-spacing: 0; font-weight: 700; }
+        /* LED glyphs are taller than the box the tight 0.9 line-height gives them. */
+        body.digits-led .timer-display, body.digits-led .clock-display { line-height: 1.15; }
+        /* Glow and warning motion (Display Appearance). The timer's own glow is set
+           inline by updateTimerColor; these cover the clock and the red pulse. */
+        body.glow-off .clock-display, body.glow-off .timer-display { text-shadow: none; }
+        body.no-red-pulse .color-red { animation: none; }
         .clock-display {
             font-size: 18vmin;
             font-weight: normal;
@@ -374,7 +390,6 @@
         });
 
         let currentState = {};
-        let blinkInterval = null;
         let displaySeconds = null; // smoothed displayed seconds
         let lastFrameTime = performance.now();
         let clockOffset = 0;        // ms to add to Date.now() to match server clock
@@ -533,6 +548,7 @@
             document.getElementById('status').style.display = state.showStatus === false ? 'none' : '';
             document.getElementById('roomBadge').style.display = state.showRoomBadge === false ? 'none' : '';
             document.body.classList.toggle('no-room-badge', state.showRoomBadge === false);
+            applyDigitsStyle(state);
             const speakerAllowed = state.showSpeakerName !== false;
             const upNextAllowed  = state.showUpNext !== false;
 
@@ -556,6 +572,29 @@
                 upNextEl.style.display  = 'none';
             }
         });
+
+        // Digits font, glow and red pulse. A new font changes the digits' width, so
+        // the fit-to-width cache is cleared once it has loaded (and straight away,
+        // for the fallback font shown meanwhile).
+        const DIGIT_FONTS = { condensed: 'Foxy Condensed', hyperlegible: 'Foxy Hyperlegible', mono: 'Foxy Mono', led: 'Foxy LED' };
+        let appliedDigitsFont = null;
+        function applyDigitsStyle(state) {
+            const body = document.body;
+            const font = DIGIT_FONTS[state.displayFont] ? state.displayFont : 'standard';
+            const glow = ['soft', 'off'].includes(state.displayGlow) ? state.displayGlow : 'full';
+            body.classList.toggle('glow-soft', glow === 'soft');
+            body.classList.toggle('glow-off', glow === 'off');
+            body.classList.toggle('no-red-pulse', state.displayRedPulse === false);
+            if (font === appliedDigitsFont) return;
+            appliedDigitsFont = font;
+            Object.keys(DIGIT_FONTS).forEach((f) => body.classList.toggle(`digits-${f}`, f === font));
+            lastFitted.timer = lastFitted.clock = null;
+            if (font !== 'standard' && document.fonts) {
+                document.fonts.load(`700 1em '${DIGIT_FONTS[font]}'`, '0123456789:').then(() => {
+                    lastFitted.timer = lastFitted.clock = null;
+                }).catch(() => {});
+            }
+        }
 
         // Uploaded background image: fetched by version, so a new upload is a new
         // URL (and the old one can stay cached). Only touched when something changed.
@@ -713,20 +752,9 @@
             document.getElementById('timerDisplayText').textContent = timeStr;
             fitToWidth('timer', timerEl, document.getElementById('timerDisplayText'), baseTimerFontSize);
 
-            // Handle blinking for finished state (a stopwatch never "finishes")
-            if (isFinished && !countUp && !countingUp) {
-                if (!blinkInterval) {
-                    blinkInterval = setInterval(() => {
-                        timerEl.classList.toggle('blinking');
-                    }, 1000);
-                }
-            } else {
-                if (blinkInterval) {
-                    clearInterval(blinkInterval);
-                    blinkInterval = null;
-                }
-                timerEl.classList.remove('blinking');
-            }
+            // Flash at zero (a stopwatch never "finishes"). The .blinking animation
+            // does the flashing; updateTimerColor keeps the class across its resets.
+            timerEl.classList.toggle('blinking', isFinished && !countUp && !countingUp && currentState.displayZeroFlash !== false);
         }
 
         // "Now 14:32 · Finish 14:55" under the timer, each part optional. Both
@@ -789,7 +817,8 @@
         }
 
         function updateTimerColor(element, remainingMs, totalMs, amberThresholdMs, redThresholdMs, isFinished) {
-            element.className = 'timer-display';
+            // Runs every frame: keep .blinking (flash at zero) or its animation restarts and never shows.
+            element.className = element.classList.contains('blinking') ? 'timer-display blinking' : 'timer-display';
 
             let stateClass = 'color-normal';
             if (isFinished) {
@@ -814,7 +843,10 @@
             }[stateClass];
             if (customHex) {
                 element.style.color = customHex;
-                element.style.textShadow = `0 0 40px ${hexToRgba(customHex, 0.6) || customHex}`;
+                const glow = currentState.displayGlow;
+                element.style.textShadow = glow === 'off' ? 'none'
+                    : glow === 'soft' ? `0 0 24px ${hexToRgba(customHex, 0.3) || customHex}`
+                    : `0 0 40px ${hexToRgba(customHex, 0.6) || customHex}`;
             } else {
                 element.style.color = '';
                 element.style.textShadow = '';

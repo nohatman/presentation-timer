@@ -1784,6 +1784,34 @@
                     <button onclick="applySpeed()" class="button" style="width:100%;background:#4caf50;color:white;padding:8px;font-size:0.85rem;font-weight:bold;">Apply Speed</button>
                 </div>
                 <div>
+                    <div style="font-size:0.8rem;color:#999;margin-bottom:8px;font-weight:500;text-transform:uppercase;letter-spacing:0.05em;">Digits</div>
+                    <label style="display:grid;gap:4px;font-size:0.85rem;color:#cfcfcf;margin-bottom:8px;">Font
+                        <select id="displayFont" onchange="emitSettings()" style="padding:7px 8px;font-size:0.85rem;background:#101010;color:#cfcfcf;border:1px solid #333;border-radius:4px;width:100%;">
+                            <option value="standard">Standard</option>
+                            <option value="condensed">Condensed</option>
+                            <option value="hyperlegible">Hyperlegible</option>
+                            <option value="mono">Monospace</option>
+                            <option value="led">LED segments</option>
+                        </select>
+                    </label>
+                    <label style="display:grid;gap:4px;font-size:0.85rem;color:#cfcfcf;margin-bottom:4px;">Glow
+                        <select id="displayGlow" onchange="emitSettings()" style="padding:7px 8px;font-size:0.85rem;background:#101010;color:#cfcfcf;border:1px solid #333;border-radius:4px;width:100%;">
+                            <option value="full">Full</option>
+                            <option value="soft">Soft</option>
+                            <option value="off">Off</option>
+                        </select>
+                    </label>
+                    <div style="font-size:0.78rem;color:#888;margin-bottom:10px;">Keying green or blue? Glow can leave a halo round the digits, so Off keys cleanest.</div>
+                    <label class="checkbox-label" style="margin-bottom:8px;">
+                        <input type="checkbox" id="displayRedPulse" checked>
+                        <span>Pulse in the red</span>
+                    </label>
+                    <label class="checkbox-label" style="margin-bottom:0;">
+                        <input type="checkbox" id="displayZeroFlash" checked>
+                        <span>Flash at zero</span>
+                    </label>
+                </div>
+                <div>
                     <div style="font-size:0.8rem;color:#999;margin-bottom:8px;font-weight:500;text-transform:uppercase;letter-spacing:0.05em;">Timer text color</div>
                     <div style="display:flex;flex-direction:column;gap:8px;">
                         <label style="display:flex;align-items:center;gap:8px;font-weight:400;color:#cfcfcf;">
@@ -2683,6 +2711,7 @@
 
             // Background image isn't a draft-able field - always mirror the server.
             renderBackgroundImage(state);
+            renderDigitsSettings(state);
 
             // Update message UI to reflect current server state
             updateMessageUI(state);
@@ -3716,7 +3745,11 @@
                 showFinishTime: document.getElementById('showFinishTime').checked,
                 showStatus: document.getElementById('showStatus').checked,
                 showRoomBadge: document.getElementById('showRoomBadge').checked,
-                displayBgFit: document.getElementById('displayBgFit').value
+                displayBgFit: document.getElementById('displayBgFit').value,
+                displayFont: document.getElementById('displayFont').value,
+                displayGlow: document.getElementById('displayGlow').value,
+                displayRedPulse: document.getElementById('displayRedPulse').checked,
+                displayZeroFlash: document.getElementById('displayZeroFlash').checked
             });
         }
 
@@ -3741,6 +3774,17 @@
             syncHexFields();
             saveSettings();
             emitSettings();
+        }
+
+        // Digits font / glow / pulse: always mirror the server (another panel may
+        // have changed them), except a dropdown that's open in this browser.
+        function renderDigitsSettings(state) {
+            const font = document.getElementById('displayFont');
+            const glow = document.getElementById('displayGlow');
+            if (document.activeElement !== font) font.value = state.displayFont || 'standard';
+            if (document.activeElement !== glow) glow.value = state.displayGlow || 'full';
+            document.getElementById('displayRedPulse').checked = state.displayRedPulse !== false;
+            document.getElementById('displayZeroFlash').checked = state.displayZeroFlash !== false;
         }
 
         // Background image: the server holds the image; state.displayBgImage is its

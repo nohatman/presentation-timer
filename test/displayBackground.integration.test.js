@@ -144,3 +144,24 @@ test('display toggles and image fit are validated settings', async () => {
   assert.equal(scr.state.displayBgFit, 'contain');
   ctl.socket.close(); scr.socket.close();
 });
+
+test('digits font, glow, red pulse and zero flash are validated settings', async () => {
+  const { control, display } = await createRoom();
+  const ctl = await open(control);
+  const scr = await open(display);
+  assert.equal(scr.state.displayFont, 'standard');
+  assert.equal(scr.state.displayGlow, 'full');
+  assert.equal(scr.state.displayRedPulse, true);
+  assert.equal(scr.state.displayZeroFlash, true);
+  ctl.socket.emit('updateSettings', { displayFont: 'led', displayGlow: 'off', displayRedPulse: false, displayZeroFlash: false });
+  await sleep(150);
+  assert.equal(scr.state.displayFont, 'led');
+  assert.equal(scr.state.displayGlow, 'off');
+  assert.equal(scr.state.displayRedPulse, false);
+  assert.equal(scr.state.displayZeroFlash, false);
+  ctl.socket.emit('updateSettings', { displayFont: "x'; } body { display:none", displayGlow: 'neon' });
+  await sleep(150);
+  assert.equal(scr.state.displayFont, 'led');
+  assert.equal(scr.state.displayGlow, 'off');
+  ctl.socket.close(); scr.socket.close();
+});
