@@ -3,564 +3,219 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Foxy's Presentation Timer - Master Dashboard</title>
+    <title>Foxy Timer - Dashboard</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="stylesheet" href="/foxy.css">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #0a0a0a;
-            color: #e5e5e5;
-            padding: 20px;
-            min-height: 100vh;
-        }
-        .header {
-            background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
-            padding: 1.1rem 1.5rem;
-            border-radius: 12px;
-            margin-bottom: 1rem;
-            border: 1px solid #333;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 1rem;
-        }
-        .header h1 {
-            font-size: 1.6rem;
-            color: #fafafa;
-        }
-        .header-info {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 2rem;
-            align-items: center;
-        }
-        .header-actions {
-            display: flex;
-            flex-direction: column;
-            gap: 0.75rem;
-            align-items: flex-end;
-        }
-        .stat {
-            text-align: center;
-        }
-        .stat-value {
-            font-size: 1.5rem;
-            font-weight: bold;
-            color: #4caf50;
-        }
-        .stat-label {
-            font-size: 0.85rem;
-            color: #999;
-            text-transform: uppercase;
-        }
-        .rooms-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
-            gap: 1.5rem;
-        }
-        .room-card {
-            background: linear-gradient(135deg, #1a1a1a 0%, #252525 100%);
-            border: 2px solid #333;
-            border-radius: 12px;
-            padding: 1.5rem;
-            transition: border-color 0.3s, box-shadow 0.3s;
-            cursor: move;
-            position: relative;
-        }
-        .room-card.dragging {
-            opacity: 0.5;
-            transform: scale(0.95);
-        }
-        .room-row.drag-over, .room-row.dragging { border-color: #4caf50; }
-        .room-row.dragging { opacity: 0.5; }
-        .room-card.drag-over {
-            border-color: #4caf50;
-            box-shadow: 0 4px 20px rgba(76, 175, 80, 0.4);
-        }
-        .room-card.running {
-            border-color: #4caf50;
-            box-shadow: 0 4px 20px rgba(76, 175, 80, 0.2);
-        }
-        .room-card.paused {
-            border-color: #ff9800;
-            box-shadow: 0 4px 20px rgba(255, 152, 0, 0.2);
-        }
-        .room-card.stopped {
-            border-color: #666;
-        }
-        .drag-handle {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            font-size: 1.2rem;
-            color: #666;
-            user-select: none;
-        }
-        .room-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 1rem;
-            padding-bottom: 1rem;
-            border-bottom: 1px solid #333;
-        }
-        .room-name {
-            font-size: 1.4rem;
-            font-weight: 600;
-            color: #f5f5f5;
-            word-break: break-word;
-        }
-        .room-status {
-            display: inline-block;
-            padding: 6px 12px;
-            border-radius: 6px;
-            font-size: 0.75rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        .room-status.running {
-            background: #4caf50;
-            color: white;
-        }
-        .room-status.paused {
-            background: #ff9800;
-            color: white;
-        }
-        .room-status.stopped {
-            background: #666;
-            color: white;
-        }
-        .room-timer {
-            text-align: center;
-            margin: 1.5rem 0;
-        }
-        .timer-display {
-            font-size: 3.5rem;
-            font-weight: 700;
-            font-family: 'Courier New', monospace;
-            color: #4caf50;
-            text-shadow: 0 0 20px rgba(76, 175, 80, 0.3);
-        }
-        .timer-display.amber {
-            color: #ffb300;
-            text-shadow: 0 0 20px rgba(255, 179, 0, 0.3);
-        }
-        .timer-display.red {
-            color: #f44336;
-            text-shadow: 0 0 20px rgba(244, 67, 54, 0.3);
-            animation: urgentPulse 1s ease-in-out infinite;
-        }
-        .timer-display.clock {
-            color: #e5e5e5;
-            text-shadow: 0 0 20px rgba(229, 229, 229, 0.2);
-        }
-        @keyframes urgentPulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.7; }
-        }
-        .timer-mode {
-            font-size: 0.9rem;
-            color: #999;
-            margin-top: 0.5rem;
-        }
-        .room-info {
-            display: flex;
-            justify-content: space-around;
-            gap: 1rem;
-            margin: 1rem 0;
-            padding: 1rem;
-            background: #0a0a0a;
-            border-radius: 8px;
-        }
-        .info-item {
-            text-align: center;
-        }
-        .info-label {
-            font-size: 0.75rem;
-            color: #999;
-            text-transform: uppercase;
-            margin-bottom: 0.25rem;
-        }
-        .info-value {
-            font-size: 1.1rem;
-            font-weight: 600;
-            color: #e5e5e5;
-        }
-        /* Phase 6b: three-tier visual hierarchy for room-card actions, per explicit
-           decision - every action stays visible and reachable (no menu, nothing
-           hidden), just sized/weighted differently:
-             1. Primary timer action (Start/Pause/Resume) - full width, boldest.
-             2. Open/view actions (Control Panel, Display) - own row, easy to reach,
-                keep their existing distinct colours.
-             3. Secondary/destructive (New Links, Delete) - smaller, muted; Delete
-                keeps its red .danger colour so it still reads as destructive. */
-        .room-actions {
-            margin-top: 1rem;
-            display: flex;
-            flex-direction: column;
-            gap: 0.6rem;
-        }
-        .room-actions-row {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 0.6rem;
-        }
-        .action-btn.primary-action {
-            padding: 14px 16px;
-            font-size: 1rem;
-            font-weight: 700;
-        }
-        .action-btn.secondary-action {
-            padding: 7px 10px;
-            font-size: 0.78rem;
-            font-weight: 500;
-            opacity: 0.9;
-        }
-        .action-btn.secondary-action:hover {
-            opacity: 1;
-        }
-        .action-btn {
-            padding: 10px 16px;
-            border: 1px solid #333;
-            border-radius: 6px;
-            background: #1a1a1a;
-            color: #e5e5e5;
-            text-decoration: none;
-            text-align: center;
-            font-size: 0.9rem;
-            font-weight: 500;
-            transition: background 0.2s, border-color 0.2s, transform 0.2s;
-            cursor: pointer;
-        }
-        .action-btn:hover {
-            background: #252525;
-            border-color: #4caf50;
-            transform: translateY(-2px);
-            animation: none !important;
-        }
-        .action-btn.control {
-            background: #1976d2;
-            border-color: #1976d2;
-            color: white;
-        }
-        .action-btn.control:hover {
-            background: #1565c0;
-            border-color: #1565c0;
-        }
-        .action-btn.display {
-            background: #2e7d32;
-            border-color: #2e7d32;
-            color: white;
-        }
-        .action-btn.display:hover {
-            background: #256628;
-            border-color: #256628;
-        }
-        .action-btn.danger {
-            background: #b71c1c;
-            border-color: #b71c1c;
-            color: white;
-        }
-        .action-btn.danger:hover {
-            background: #941616;
-            border-color: #941616;
-        }
-        .action-btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none !important;
-        }
-        .action-btn:disabled:hover {
-            background: #4caf50;
-            border-color: #4caf50;
-        }
-        .empty-state {
-            text-align: center;
-            padding: 4rem 2rem;
-            color: #666;
-        }
-        .empty-state-icon {
-            font-size: 4rem;
-            margin-bottom: 1rem;
-        }
-        .empty-state-text {
-            font-size: 1.2rem;
-            margin-bottom: 0.5rem;
-        }
-        .empty-state-hint {
-            font-size: 0.9rem;
-            color: #999;
-        }
-        .loading {
-            text-align: center;
-            padding: 2rem;
-            color: #999;
-        }
-        .nav-links {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 1rem;
-        }
-        .create-room-row {
-            display: flex;
-            gap: 0.5rem;
-            margin-top: 0.25rem;
-        }
-        .create-room-row input {
-            flex: 1;
-            max-width: 320px;
-            padding: 8px 12px;
-            border-radius: 6px;
-            border: 1px solid #333;
-            background: #101010;
-            color: #e5e5e5;
-        }
-        .nav-link {
-            padding: 8px 16px;
-            border: 1px solid #333;
-            border-radius: 6px;
-            background: #1a1a1a;
-            color: #e5e5e5;
-            text-decoration: none;
-            font-size: 0.9rem;
-            transition: background 0.2s, border-color 0.2s;
-        }
-        .nav-link:hover {
-            background: #252525;
-            border-color: #4caf50;
-        }
+        /* Dashboard. Colours and controls come from /foxy.css. */
+        body { padding: 16px; min-height: 100vh; }
 
-        /* Phase 6b mobile fix. Root causes found by inspection (not guesswork,
-           same method as the Phase 4 control.html fix):
-             1. .rooms-grid used minmax(400px, 1fr) - a hard per-card minimum
-                width that never shrank regardless of viewport.
-             2. body had a flat 20px padding on every side, eating into the
-                already-scarce width on a narrow phone.
-             3. .header-info and .nav-links were flex with no flex-wrap of their
-                own - the outer .header could wrap them as a unit, but nothing
-                inside could wrap further once it landed on its own line.
-           Desktop rules above this block are untouched. */
-        @media (max-width: 700px) {
-            body {
-                padding: 10px;
-            }
-            .header {
-                padding: 1.1rem;
-                margin-bottom: 1rem;
-                gap: 0.75rem;
-            }
-            .header h1 {
-                font-size: 1.3rem;
-            }
-            .header-info {
-                gap: 1rem;
-                width: 100%;
-                justify-content: space-between;
-            }
-            .header-actions {
-                align-items: flex-start;
-                width: 100%;
-            }
-            .nav-link {
-                padding: 6px 12px;
-                font-size: 0.8rem;
-            }
-            .rooms-grid {
-                grid-template-columns: 1fr;
-                gap: 1rem;
-            }
-            .room-card {
-                padding: 1rem;
-            }
-            .create-room-row {
-                flex-direction: column;
-            }
-            .create-room-row input {
-                max-width: 100%;
-            }
-        }
-        .laptop-panel { background: #141816; border: 1px solid #2c3a30; border-radius: 12px; padding: 0.8rem 1.25rem; margin-bottom: 1rem; }
-        /* Collapsed "This laptop": one summary line; warnings still show below it. */
-        .laptop-summary { color: #aaa; font-size: 0.85rem; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .laptop-summary .ok { color: #81c784; }
+        /* ---- Top bar ---- */
+        .topbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; padding: 12px 14px; margin-bottom: 10px; }
+        .topbar .title { display: flex; flex-direction: column; gap: 2px; min-width: 0; margin-right: auto; }
+        .topbar h1 { margin: 0; font-size: 1.15rem; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .topbar .sub { font-size: 0.92rem; color: var(--ink-2); }
+        .admin-tag { font-size: 0.78rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #e0b3ff; border: 1px solid #6a3d8f; border-radius: 2px; padding: 1px 6px; }
+        .readouts { display: flex; gap: 6px; }
+        .stat { display: flex; align-items: baseline; gap: 6px; padding: 6px 10px; }
+        .stat-value { font-family: var(--digits); font-weight: 700; font-size: 1.5rem; line-height: 1; color: var(--ink); font-variant-numeric: tabular-nums; }
+        .stat-label { font-size: 0.88rem; color: var(--ink-2); }
+        .nav-links { display: flex; flex-wrap: wrap; gap: 6px; }
+
+        /* ---- Toolbar: all-room keys + new room ---- */
+        .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
+        .toolbar .group { display: flex; flex-wrap: wrap; gap: 6px; }
+        .create-room-row { display: flex; gap: 6px; margin-left: auto; flex: 0 1 420px; }
+        .create-room-row .field { flex: 1; min-width: 0; }
+
+        /* ---- This laptop (Foxy Timer for Windows) ---- */
+        .laptop-panel { padding: 10px 14px; margin-bottom: 10px; }
+        .laptop-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+        .laptop-head h2 { font-size: 1.05rem; margin: 0; display: flex; align-items: center; gap: 10px; }
+        .laptop-summary { color: var(--ink-2); font-size: 0.92rem; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .laptop-summary .ok { color: var(--go); }
         .laptop-panel:not(.collapsed) .laptop-summary { display: none; }
         .laptop-panel.collapsed .laptop-body, .laptop-panel.collapsed .laptop-check { display: none; }
+        .laptop-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+        .laptop-body { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px 24px; margin-top: 12px; font-size: 0.95rem; }
+        .laptop-label { display: block; font-size: 0.85rem; color: var(--ink-2); margin-bottom: 1px; }
+        #laptopAddress { font-family: var(--mono); font-size: 0.88rem; color: var(--info); overflow-wrap: anywhere; }
+        .laptop-warning { margin-top: 12px; background: #2b2412; border: 1px solid #5a4410; border-radius: var(--radius); padding: 10px 12px; color: #f3dfb5; font-size: 0.95rem; line-height: 1.5; }
+        .laptop-warning b { color: var(--warn); }
+        .laptop-warning .row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+        .laptop-warning a { color: #ffc46b; }
+        .laptop-check { margin-top: 12px; padding: 12px; color: var(--ink); font-size: 0.95rem; line-height: 1.5; display: flex; gap: 14px; align-items: flex-start; }
+        .laptop-check[hidden] { display: none; }
+        .laptop-check .qr { flex: 0 0 120px; width: 120px; height: 120px; background: #fff; border-radius: 2px; padding: 4px; }
+        .laptop-check p { margin: 0 0 6px; }
+        .laptop-check p:last-child { margin-bottom: 0; }
+        #laptopReach.ok { color: var(--go); }
+        #licenceText.soon { color: var(--warn); }
+        @media (max-width: 560px) { .laptop-check { flex-direction: column; } }
 
-        /* Room layout switch (List / Mini / Full), remembered per browser */
-        .rooms-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
-        .rooms-toolbar h2 { font-size: 0.8rem; color: #8a8a8a; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
-        .layout-switch { display: inline-flex; border: 1px solid #333; border-radius: 8px; overflow: hidden; }
-        .layout-switch button { background: #161616; color: #bbb; border: 0; padding: 6px 14px; font-size: 0.85rem; cursor: pointer; }
-        .layout-switch button + button { border-left: 1px solid #333; }
-        .layout-switch button[aria-pressed="true"] { background: #2e7d32; color: #fff; font-weight: 600; }
-        .rooms-grid.layout-mini { grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 0.75rem; }
-        .rooms-grid.layout-list { display: flex; flex-direction: column; gap: 6px; }
+        /* ---- Rooms toolbar ---- */
+        .rooms-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin: 16px 0 8px; flex-wrap: wrap; }
+        .rooms-toolbar h2 { margin: 0; font-size: 1.05rem; font-weight: 700; color: var(--ink-2); }
 
+        /* ---- Rooms ---- */
+        .rooms-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 8px; }
+        .rooms-grid.layout-mini { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+        .rooms-grid.layout-list { display: flex; flex-direction: column; gap: 4px; }
+
+        .room-card { display: flex; flex-direction: column; position: relative; cursor: grab; }
+        .room-card.dragging, .room-row.dragging { opacity: 0.5; }
+        .room-card.drag-over, .room-row.drag-over { outline: 2px solid var(--info); outline-offset: -1px; }
+        .card-top { display: flex; align-items: center; gap: 9px; padding: 9px 12px; border-bottom: 1px solid var(--seam); min-width: 0; }
+        .card-top .name-wrap { flex: 1; min-width: 0; }
+        .room-name { font-weight: 700; font-size: 1.12rem; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .client-tag { font-size: 0.82rem; color: #d1a6f0; }
+        .state { font-size: 0.92rem; font-weight: 600; color: var(--ink-2); white-space: nowrap; }
+        .drag-handle { color: var(--ink-3); font-size: 1rem; user-select: none; letter-spacing: -2px; }
+        .room-checkbox { width: 17px; height: 17px; accent-color: var(--go); cursor: pointer; flex: none; margin: 0; }
+
+        .room-card .well { margin: 10px 12px 0; padding: 10px 12px; display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; }
+        .timer-display { font-family: var(--digits); font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; font-size: 3.6rem; color: var(--ink-2); white-space: nowrap; }
+        .running .timer-display, .paused .timer-display { color: var(--go); }
+        .running .timer-display.amber, .paused .timer-display.amber { color: var(--warn); }
+        .running .timer-display.red, .paused .timer-display.red { color: var(--stop); }
+        .timer-display.clock { color: var(--ink); }
+        .well-meta { text-align: right; font-size: 0.92rem; color: var(--ink-2); line-height: 1.35; white-space: nowrap; }
+
+        .room-info { display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 10px 12px 0; font-size: 0.95rem; color: var(--ink-2); align-items: center; }
+        .room-info b { color: var(--ink); font-weight: 600; }
+
+        .room-actions { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px 12px; margin-top: auto; }
+        .room-actions-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+
+        /* Mini */
+        .room-card.mini .well { margin-top: 8px; padding: 8px 10px; }
+        .room-card.mini .timer-display { font-size: 2.6rem; }
+        .mini-actions { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr) 40px; gap: 5px; padding: 8px 10px 10px; margin-top: auto; }
+        .mini-actions .key, .row-actions .key { padding-left: 4px; padding-right: 4px; overflow: hidden; }
+        .mini-actions .key { font-size: 0.86rem; letter-spacing: 0.01em; }
+        .room-card.mini .room-info { padding: 8px 10px 0; }
+
+        /* List */
         .room-row {
-            display: grid; align-items: center; gap: 0.75rem;
-            grid-template-columns: auto minmax(120px, 1fr) 88px 100px 104px 46px 292px;
-            background: #161616; border: 1px solid #2a2a2a; border-left: 4px solid #555; border-radius: 8px;
-            padding: 6px 10px; cursor: move;
+            display: grid; align-items: center; gap: 10px;
+            grid-template-columns: auto 20px minmax(120px, 1fr) 76px 110px 96px 96px 300px;
+            padding: 6px 10px; cursor: grab;
         }
-        .room-row.running { border-left-color: #4caf50; }
-        .room-row.paused { border-left-color: #ff9800; }
-        .room-row .room-name { font-size: 1rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .room-row .room-status { padding: 3px 8px; font-size: 0.68rem; text-align: center; }
-        .room-row .timer-display { font-size: 1.35rem; text-shadow: none; }
-        .row-meta { color: #999; font-size: 0.8rem; white-space: nowrap; }
-        .row-actions { display: flex; gap: 6px; justify-content: flex-end; }
-        .row-actions .action-btn, .mini-actions .action-btn { padding: 6px 10px; font-size: 0.8rem; white-space: nowrap; }
-        .row-actions .action-btn:hover, .mini-actions .action-btn:hover { transform: none; }
-        .action-btn.go { background: #4caf50; border-color: #4caf50; color: #fff; font-weight: 700; }
-        .action-btn.hold { background: #ff9800; border-color: #ff9800; color: #fff; font-weight: 700; }
-        .action-btn.more { min-width: 34px; flex: 0 0 auto; font-weight: 700; letter-spacing: 1px; }
-        .row-actions .action-btn.go, .row-actions .action-btn.hold { min-width: 88px; }
+        .rooms-grid.layout-list.has-screens .room-row { grid-template-columns: auto 20px minmax(120px, 1fr) 76px 110px 96px 96px 120px 300px; }
+        .room-row .room-name { font-size: 1.05rem; }
+        .room-row .timer-display { font-size: 1.7rem; }
+        .row-meta { color: var(--ink-2); font-size: 0.92rem; white-space: nowrap; }
+        .row-actions { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr) 40px; gap: 5px; }
 
-        .room-card.mini { padding: 0.8rem 0.9rem; border-width: 1px; border-left-width: 4px; }
-        .room-card.mini .room-header { margin-bottom: 0.4rem; padding-bottom: 0.4rem; }
-        .room-card.mini .room-name { font-size: 1.02rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .room-card.mini .room-status { padding: 3px 8px; font-size: 0.66rem; }
-        .room-card.mini .timer-display { font-size: 2.1rem; text-shadow: none; text-align: center; margin: 0.2rem 0; }
-        .mini-meta { display: flex; justify-content: space-between; color: #999; font-size: 0.78rem; margin-bottom: 0.6rem; }
-        .mini-actions { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, 1fr) 34px; gap: 6px; }
-        .mini-actions .action-btn { padding: 7px 4px; text-align: center; overflow: hidden; text-overflow: ellipsis; }
-        .room-card.mini.licence-locked .licence-locked-note, .room-row .licence-locked-note { padding: 0.4rem 0.6rem; font-size: 0.8rem; }
+        /* Which screen a room is on (Windows app) */
+        .screen-chip { font: inherit; font-size: 0.9rem; font-weight: 600; background: transparent; border: 1px dashed #4a4d52; color: var(--ink-2); border-radius: var(--radius); padding: 3px 8px; cursor: pointer; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; display: inline-flex; align-items: center; gap: 6px; }
+        .screen-chip:hover { border-color: var(--ink-2); color: var(--ink); }
+        .screen-chip.on { border-style: solid; border-color: var(--seam); background: var(--well); color: var(--ink); }
+        .screen-chip.on::before { content: ''; width: 8px; height: 8px; border-radius: 1px; background: var(--go); }
 
-        /* Which screen a room is on (Foxy Timer for Windows app only) */
-        .rooms-grid.layout-list.has-screens .room-row { grid-template-columns: auto minmax(120px, 1fr) 88px 100px 104px 46px 124px 292px; }
-        .screen-chip { background: transparent; border: 1px dashed #444; color: #888; border-radius: 6px; padding: 4px 8px; font-size: 0.78rem; cursor: pointer; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
-        .screen-chip:hover { border-color: #90caf9; color: #cfe6fb; }
-        .screen-chip.on { border: 1px solid #1f4a66; background: #10202c; color: #90caf9; font-weight: 600; }
-        .room-menu .menu-note { color: #999; font-size: 0.78rem; padding: 6px 12px 4px; max-width: 260px; line-height: 1.4; }
-        .room-menu .sub { display: block; color: #888; font-size: 0.75rem; font-weight: 400; }
-        .room-menu .screen-option { display: flex; gap: 10px; align-items: flex-start; }
-        .room-menu .tick { flex: 0 0 18px; height: 18px; margin-top: 1px; border: 2px solid #666; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; color: #fff; }
-        .room-menu .screen-option[aria-checked="true"] .tick { background: #2e7d32; border-color: #2e7d32; }
-        .room-menu hr { border: 0; border-top: 1px solid #333; margin: 4px 0; }
+        /* Menus (screen picker, more) - base styles in foxy.css */
+        .menu .menu-note { color: var(--ink-2); font-size: 0.92rem; padding: 6px 12px 4px; max-width: 280px; line-height: 1.4; }
+        .menu .sub { display: block; color: var(--ink-2); font-size: 0.86rem; font-weight: 500; }
+        .menu .screen-option { display: flex; gap: 10px; align-items: flex-start; }
+        .menu .tick { flex: 0 0 18px; height: 18px; margin-top: 2px; border: 2px solid #6a6d72; border-radius: 2px; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; color: #fff; }
+        .menu .screen-option[aria-checked="true"] .tick { background: var(--go-key); border-color: var(--go-key); }
 
         /* The Windows app's own questions (close, restart...) - see appDialog in desktop/main.js */
-        .app-dialog { position: fixed; inset: 0; z-index: 2000; background: rgba(0,0,0,0.65); display: flex; align-items: center; justify-content: center; padding: 16px; }
-        .app-dialog[hidden] { display: none; }
-        .app-dialog-box { background: #1a1a1a; border: 1px solid #333; border-radius: 14px; box-shadow: 0 16px 48px rgba(0,0,0,0.6); width: 100%; max-width: 460px; padding: 22px; outline: none; }
-        .app-dialog-box h2 { margin: 0 0 6px; font-size: 1.25rem; color: #fafafa; display: flex; align-items: center; gap: 10px; }
-        .app-dialog-box .msg { color: #bbb; font-size: 0.92rem; line-height: 1.5; margin: 0 0 14px; }
-        .app-options { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
-        .app-option { text-align: left; border-radius: 10px; padding: 12px 14px; cursor: pointer; border: 1px solid #3a3a3a; background: #222; color: #eee; font-size: 0.98rem; font-weight: 700; }
-        .app-option .detail { display: block; font-weight: 400; font-size: 0.84rem; color: #bbb; margin-top: 3px; line-height: 1.45; }
-        .app-option.primary { background: #1f3a24; border-color: #2e7d32; }
-        .app-option.primary:hover, .app-option.primary:focus-visible { background: #24472b; outline: 2px solid #4caf50; outline-offset: 1px; }
-        .app-option.danger { background: #2a1616; border-color: #7a2323; }
-        .app-option.danger:hover, .app-option.danger:focus-visible { background: #351a1a; outline: 2px solid #e57373; outline-offset: 1px; }
-        .app-option.plain { background: transparent; border-color: transparent; color: #aaa; font-weight: 500; text-align: center; padding: 8px; }
-        .app-option.plain:hover, .app-option.plain:focus-visible { color: #fff; outline: 1px solid #444; }
+        .app-dialog h2 { display: flex; align-items: center; gap: 10px; }
+        .app-dialog .msg { color: var(--ink-2); line-height: 1.5; margin: 0 0 6px; }
+        .app-options { display: flex; flex-direction: column; gap: 6px; margin-top: 14px; }
+        .app-option { font: inherit; text-align: left; border-radius: var(--radius); padding: 11px 14px; cursor: pointer; border: 1px solid var(--seam); background: var(--key); color: var(--ink); font-size: 1.02rem; font-weight: 700; box-shadow: inset 0 1px 0 rgba(255,255,255,0.07), inset 0 -2px 0 rgba(0,0,0,0.25); }
+        .app-option:hover { background: var(--key-hi); }
+        .app-option .detail { display: block; font-weight: 500; font-size: 0.92rem; color: var(--ink-2); margin-top: 2px; line-height: 1.4; }
+        .app-option.primary { border-left: 4px solid var(--go); }
+        .app-option.danger { border-left: 4px solid var(--stop); }
+        .app-option.plain { background: transparent; box-shadow: none; border-color: transparent; color: var(--ink-2); font-weight: 600; text-align: center; padding: 8px; }
+        .app-option.plain:hover { color: var(--ink); background: var(--panel-hi); }
         .app-option:disabled { cursor: progress; opacity: 0.7; }
 
-        /* The ⋯ menu lives outside the rooms (they redraw every second). */
-        .room-menu { position: fixed; z-index: 900; background: #1c1c1c; border: 1px solid #3a3a3a; border-radius: 8px; box-shadow: 0 8px 28px rgba(0,0,0,0.5); padding: 4px; min-width: 190px; }
-        .room-menu[hidden] { display: none; }
-        .room-menu button { display: block; width: 100%; text-align: left; background: none; border: 0; color: #e5e5e5; padding: 9px 12px; border-radius: 6px; font-size: 0.88rem; cursor: pointer; }
-        .room-menu button:hover, .room-menu button:focus { background: #2a2a2a; outline: none; }
-        .room-menu button.danger { color: #ef9a9a; }
+        /* Link / Companion dialogs */
+        .link-field { margin-bottom: 14px; }
+        .link-field .label { display: block; margin-bottom: 5px; }
+        .link-field .row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+        .link-field .field { flex: 1; min-width: 0; }
+        .link-field .qrbox { margin-top: 10px; width: 180px; height: 180px; background: #fff; border-radius: 2px; padding: 6px; }
+        .dialog .room-title { margin: -4px 0 12px; font-weight: 700; color: var(--ink); font-size: 1.05rem; }
+
+        .empty-state { grid-column: 1 / -1; padding: 40px 20px; text-align: center; color: var(--ink-2); }
+        .empty-state-text { font-size: 1.2rem; font-weight: 700; color: var(--ink); margin-bottom: 4px; }
+        .loading { padding: 24px; color: var(--ink-2); }
+
+        .room-card.licence-locked, .room-row.licence-locked { opacity: 0.65; }
+        .licence-locked-note { border: 1px dashed #4a4d52; border-radius: var(--radius); padding: 8px 10px; color: var(--ink-2); font-size: 0.92rem; line-height: 1.45; margin: 10px 12px 0; }
+        .room-row .licence-locked-note { margin: 0; padding: 4px 8px; }
 
         @media (max-width: 760px) {
-            .room-row { grid-template-columns: auto 1fr auto; grid-template-areas: "sel name status" "time time meta" "act act act"; row-gap: 6px; }
-            .room-row > .sel { grid-area: sel; } .room-row > .name { grid-area: name; } .room-row > .room-status { grid-area: status; }
+            .room-row { grid-template-columns: auto 20px 1fr auto; grid-template-areas: "sel tally name status" "time time time meta" "act act act act"; row-gap: 6px; }
+            .room-row > .sel { grid-area: sel; } .room-row > .tally { grid-area: tally; } .room-row > .name { grid-area: name; } .room-row > .state { grid-area: status; }
             .room-row > .timer-display { grid-area: time; } .room-row > .ends { display: none; } .room-row > .conns { grid-area: meta; }
-            .room-row > .row-actions { grid-area: act; justify-content: stretch; }
+            .room-row > .row-actions { grid-area: act; }
             .room-row > .screen-cell { display: none; }
-            .room-row > .row-actions .action-btn:not(.more) { flex: 1; text-align: center; }
             .rooms-grid.layout-mini { grid-template-columns: 1fr 1fr; }
+            .create-room-row { flex-basis: 100%; margin-left: 0; }
         }
-        @media (max-width: 420px) { .rooms-grid.layout-mini { grid-template-columns: 1fr; } }
-        .laptop-head { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; }
-        .laptop-head h2 { font-size: 1.05rem; color: #fafafa; margin: 0; display: flex; align-items: center; gap: 10px; }
-        .laptop-dot { width: 10px; height: 10px; border-radius: 50%; background: #4caf50; box-shadow: 0 0 0 4px rgba(76,175,80,0.18); }
-        .laptop-dot.warn { background: #ffb300; box-shadow: 0 0 0 4px rgba(255,179,0,0.18); }
-        .laptop-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-        .laptop-btn { padding: 7px 12px; border-radius: 7px; border: 1px solid #3a3a3a; background: #1a1a1a; color: #ddd; font-size: 0.85rem; cursor: pointer; text-decoration: none; }
-        .laptop-btn:hover { border-color: #4caf50; }
-        .laptop-btn.danger:hover { border-color: #f44336; }
-        .laptop-btn.primary { background: #ff6a1a; border-color: #ff6a1a; color: #140800; font-weight: 700; }
-        .laptop-body { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.75rem 1.5rem; margin-top: 0.85rem; font-size: 0.92rem; }
-        .laptop-label { display: block; font-size: 0.72rem; color: #8a8a8a; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px; }
-        #laptopAddress { font-family: 'Courier New', monospace; color: #90caf9; overflow-wrap: anywhere; }
-        .laptop-warning { margin-top: 0.9rem; background: #2a2010; border: 1px solid #5a4410; border-radius: 9px; padding: 0.8rem 1rem; color: #f3dfb5; font-size: 0.9rem; line-height: 1.5; }
-        .laptop-warning b { color: #ffb300; }
-        .laptop-warning .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 0.6rem; }
-        .laptop-warning a { color: #ffb74d; }
-        /* "Can a phone reach this laptop?" check, with a QR to scan */
-        .laptop-check { margin-top: 0.9rem; background: #10202c; border: 1px solid #1f4a66; border-radius: 9px; padding: 0.9rem 1rem; color: #d6e8f5; font-size: 0.9rem; line-height: 1.5; display: flex; gap: 1rem; align-items: flex-start; }
-        .laptop-check[hidden] { display: none; }
-        .laptop-check b { color: #90caf9; }
-        .laptop-check a { color: #90caf9; }
-        .laptop-check .qr { flex: 0 0 120px; width: 120px; height: 120px; background: #fff; border-radius: 6px; padding: 4px; box-sizing: border-box; }
-        .laptop-check p { margin: 0 0 0.5rem; }
-        .laptop-check p:last-child { margin-bottom: 0; }
-        #laptopReach.ok { color: #81c784; }
-        @media (max-width: 560px) { .laptop-check { flex-direction: column; } }
-        #licenceText.soon { color: #ffb300; }
-        .room-card.licence-locked { opacity: 0.6; }
-        .licence-locked-note { background: #1c1c1c; border: 1px dashed #444; border-radius: 8px; padding: 0.7rem 0.9rem; color: #bbb; font-size: 0.88rem; line-height: 1.45; }
+        @media (max-width: 700px) {
+            body { padding: 10px; }
+            .rooms-grid { grid-template-columns: 1fr; }
+            .room-card .timer-display { font-size: 3.2rem; }
+        }
+        @media (max-width: 440px) {
+            .rooms-grid.layout-mini { grid-template-columns: 1fr; }
+            .readouts { width: 100%; }
+            .readouts .stat { flex: 1; }
+        }
     </style>
 </head>
-<body>
-    <div class="header">
-        <div>
-            <h1>🎯 Master Dashboard
-                <span id="platformAdminBadge" style="display:none;font-size:0.8rem;font-weight:700;background:#6a1b9a;color:white;padding:3px 10px;border-radius:5px;vertical-align:middle;margin-left:8px;">PLATFORM ADMIN — ALL CLIENTS</span>
+<body class="foxy">
+    <header class="topbar panel">
+        <div class="title">
+            <h1><span class="brand"><span class="brand-mark"></span>Foxy Timer</span>
+                <span id="platformAdminBadge" class="admin-tag" style="display:none;">Platform admin · all clients</span>
             </h1>
-            <p id="dashboardSubtitle" style="color: #999; margin-top: 0.5rem;">Monitor all active presentation timers</p>
+            <span id="dashboardSubtitle" class="sub">Dashboard</span>
         </div>
-        <div class="header-info">
-            <div class="stat">
-                <div class="stat-value" id="totalRooms">0</div>
-                <div class="stat-label">Active Rooms</div>
-            </div>
-            <div class="stat">
-                <div class="stat-value" id="totalConnections">0</div>
-                <div class="stat-label">Connections</div>
-            </div>
-            <div class="header-actions">
-                <div class="nav-links">
-                    <a href="/" id="homeLink" class="nav-link">🏠 Home</a>
-                    <a href="/admin/clients" id="manageClientsLink" class="nav-link" style="display:none;">🏢 Manage Clients</a>
-                    <a href="/help" id="helpLink" class="nav-link" target="foxy-help">❓ Help</a>
-                    <button id="companionBtn" onclick="openCompanionSetup(this)" class="nav-link" style="display:none;cursor:pointer;">🎛️ Companion</button>
-                    <button onclick="logout()" id="logoutBtn" class="nav-link" style="cursor:pointer;">🚪 Logout</button>
-                </div>
-                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; justify-content: flex-end;">
-                    <button id="startAllBtn" onclick="startAllRooms()" class="nav-link" style="background:#2e7d32;border-color:#2e7d32;color:white;cursor:pointer;">▶ Start All</button>
-                    <button onclick="stopAllRooms()" class="nav-link" style="background:#b71c1c;border-color:#b71c1c;color:white;cursor:pointer;">⏹ Stop All</button>
-                    <button id="startSelectedBtn" onclick="startSelectedRooms()" class="nav-link" style="display:none;background:#1976d2;border-color:#1976d2;color:white;cursor:pointer;">▶ Start Selected (0)</button>
-                </div>
-            </div>
+        <div class="readouts">
+            <div class="stat well"><span class="stat-value" id="totalRooms">0</span><span class="stat-label">rooms</span></div>
+            <div class="stat well"><span class="stat-value" id="totalConnections">0</span><span class="stat-label">connected</span></div>
+        </div>
+        <nav class="nav-links">
+            <a href="/" id="homeLink" class="key small">Home</a>
+            <a href="/admin/clients" id="manageClientsLink" class="key small" style="display:none;">Clients</a>
+            <a href="/help" id="helpLink" class="key small" target="foxy-help">Help</a>
+            <button id="companionBtn" onclick="openCompanionSetup(this)" class="key small" style="display:none;">Companion</button>
+            <button onclick="logout()" id="logoutBtn" class="key small">Log out</button>
+        </nav>
+    </header>
+
+    <div class="toolbar">
+        <div class="group">
+            <button id="startAllBtn" onclick="startAllRooms()" class="key ready">Start all</button>
+            <button onclick="stopAllRooms()" class="key danger">Stop all</button>
+            <button id="startSelectedBtn" onclick="startSelectedRooms()" class="key ready" style="display:none;">Start selected (0)</button>
         </div>
         <div id="createRoomRow" class="create-room-row">
-            <input type="text" id="newRoomSlug" placeholder="New room name (e.g. main-stage)"
+            <input type="text" id="newRoomSlug" class="field" placeholder="New room name, e.g. Main stage" aria-label="New room name"
                    onkeypress="if(event.key==='Enter') createRoom()">
-            <button onclick="createRoom(this)" class="nav-link" style="background:#2e7d32;border-color:#2e7d32;color:white;cursor:pointer;">➕ Create Room</button>
+            <button onclick="createRoom(this)" class="key">+ Create room</button>
         </div>
     </div>
 
     <!-- "This laptop" (Foxy Timer for Windows only, opened on the laptop itself):
          is it running, the address other devices use, whether Windows Firewall
          lets them in (with a one-click fix), Stop / Restart, help. -->
-    <section id="laptopPanel" class="laptop-panel collapsed" hidden aria-labelledby="laptopPanelTitle">
+    <section id="laptopPanel" class="laptop-panel panel collapsed" hidden aria-labelledby="laptopPanelTitle">
         <div class="laptop-head">
-            <h2 id="laptopPanelTitle"><span class="laptop-dot" id="laptopDot"></span>This laptop</h2>
+            <h2 id="laptopPanelTitle"><span class="tally go" id="laptopDot"></span>This laptop</h2>
             <span class="laptop-summary" id="laptopSummary"></span>
             <div class="laptop-actions">
-                <button type="button" class="laptop-btn" id="laptopToggle" onclick="toggleLaptopPanel()" aria-expanded="false" aria-controls="laptopPanel">Details ▾</button>
-                <a href="/help#connect" target="foxy-help" class="laptop-btn">❓ Connecting devices</a>
-                <button type="button" class="laptop-btn" onclick="restartLaptopServer(this)">🔄 Restart</button>
-                <button type="button" class="laptop-btn danger" onclick="stopLaptopServer(this)">⏹ Stop Foxy Timer</button>
+                <button type="button" class="key small" id="laptopToggle" onclick="toggleLaptopPanel()" aria-expanded="false" aria-controls="laptopPanel">Details ▾</button>
+                <a href="/help#connect" target="foxy-help" class="key small">Connecting devices</a>
+                <button type="button" class="key small" onclick="restartLaptopServer(this)">Restart</button>
+                <button type="button" class="key small danger" onclick="stopLaptopServer(this)">Stop Foxy Timer</button>
             </div>
         </div>
         <div class="laptop-body">
@@ -571,7 +226,7 @@
             <div><span class="laptop-label">Version</span><span id="licenceText">…</span></div>
         </div>
         <div id="laptopWarning" class="laptop-warning" hidden></div>
-        <div id="laptopCheck" class="laptop-check" hidden>
+        <div id="laptopCheck" class="laptop-check well" hidden>
             <div class="qr" id="laptopCheckQr"></div>
             <div>
                 <p><b>Check a phone can reach this laptop.</b> On a phone connected to <span id="laptopCheckNet">the same Wi-Fi</span>, scan this code. A green tick means phones and screens will work.</p>
@@ -583,10 +238,10 @@
 
     <div class="rooms-toolbar">
         <h2>Rooms</h2>
-        <div class="layout-switch" role="group" aria-label="Room layout">
-            <button type="button" data-layout="list" onclick="setRoomLayout('list')">List</button>
-            <button type="button" data-layout="mini" onclick="setRoomLayout('mini')">Mini</button>
-            <button type="button" data-layout="full" onclick="setRoomLayout('full')">Full</button>
+        <div class="seg layout-switch" role="group" aria-label="Room layout">
+            <button type="button" class="key small" data-layout="list" onclick="setRoomLayout('list')">List</button>
+            <button type="button" class="key small" data-layout="mini" onclick="setRoomLayout('mini')">Mini</button>
+            <button type="button" class="key small" data-layout="full" onclick="setRoomLayout('full')">Full</button>
         </div>
     </div>
     <div id="roomsContainer" class="rooms-grid">
@@ -595,14 +250,15 @@
 
     <!-- One shared ⋯ menu for List and Mini layouts: kept outside
          #roomsContainer, which is redrawn every second. -->
-    <div id="screenMenu" class="room-menu" role="menu" hidden></div>
-    <div id="appDialog" class="app-dialog" hidden>
-        <div class="app-dialog-box" role="alertdialog" aria-modal="true" aria-labelledby="appDialogTitle" tabindex="-1"></div>
+    <div id="screenMenu" class="menu" role="menu" hidden></div>
+    <div id="appDialog" class="dialog-overlay app-dialog" hidden>
+        <div class="dialog app-dialog-box" role="alertdialog" aria-modal="true" aria-labelledby="appDialogTitle" tabindex="-1"></div>
     </div>
-    <div id="roomMenu" class="room-menu" role="menu" hidden>
-        <button type="button" role="menuitem" onclick="roomMenuAction('share', this)">🔗 Share links &amp; QR</button>
-        <button type="button" role="menuitem" onclick="roomMenuAction('links', this)">🔄 New links</button>
-        <button type="button" role="menuitem" class="danger" onclick="roomMenuAction('delete', this)">🗑️ Delete room</button>
+    <div id="roomMenu" class="menu" role="menu" hidden>
+        <button type="button" role="menuitem" onclick="roomMenuAction('share', this)">Share links &amp; QR</button>
+        <button type="button" role="menuitem" onclick="roomMenuAction('links', this)">New links</button>
+        <hr>
+        <button type="button" role="menuitem" class="danger" onclick="roomMenuAction('delete', this)">Delete room</button>
     </div>
 
     <!-- Generic modal shell (dashboard UX fix), same pattern as control.html's
@@ -613,8 +269,8 @@
          Links) and its regenerate-confirmation step. max-height/overflow-y
          so the link fields never force the page itself to scroll/overflow
          on a short mobile viewport. -->
-    <div id="modalOverlay" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 1000; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box;" onclick="if (event.target === this) closeModal();">
-        <div id="modalBox" role="dialog" aria-modal="true" aria-labelledby="modalTitle" tabindex="-1" style="background: #1a1a1a; border: 1px solid #333; border-radius: 12px; padding: 24px; max-width: 480px; width: 100%; box-sizing: border-box; box-shadow: 0 8px 32px rgba(0,0,0,0.5); outline: none; max-height: 90vh; overflow-y: auto;">
+    <div id="modalOverlay" class="dialog-overlay" style="display: none;" onclick="if (event.target === this) closeModal();">
+        <div id="modalBox" class="dialog" role="dialog" aria-modal="true" aria-labelledby="modalTitle" tabindex="-1">
             <div id="modalContent"></div>
         </div>
     </div>
@@ -681,7 +337,7 @@
                 if (data.ok) {
                     isPlatformAdmin = !!data.isPlatformAdmin;
                     isLocalOperator = !!data.localOperator;
-                    document.getElementById('companionBtn').style.display = 'inline-block';
+                    document.getElementById('companionBtn').style.display = '';
                     // On a Local Show Server laptop there's no account to log out
                     // of, and Home is this page.
                     if (data.localOperator) {
@@ -699,11 +355,11 @@
             } catch (error) {
                 console.error('Error fetching whoami:', error);
             }
-            document.getElementById('platformAdminBadge').style.display = isPlatformAdmin ? 'inline-block' : 'none';
-            document.getElementById('manageClientsLink').style.display = isPlatformAdmin ? 'inline-block' : 'none';
+            document.getElementById('platformAdminBadge').style.display = isPlatformAdmin ? '' : 'none';
+            document.getElementById('manageClientsLink').style.display = isPlatformAdmin ? '' : 'none';
             // Platform-wide Start All doesn't exist - see Phase 3 notes. Client-scoped
             // Start All (the normal case) is completely unaffected.
-            document.getElementById('startAllBtn').style.display = isPlatformAdmin ? 'none' : 'inline-block';
+            document.getElementById('startAllBtn').style.display = isPlatformAdmin ? 'none' : '';
             // Room creation is a Client Administrator action; a platform admin has no
             // single client to create the room under, so this stays CLI-only for now.
             document.getElementById('createRoomRow').style.display = isPlatformAdmin ? 'none' : 'flex';
@@ -745,11 +401,11 @@
                 ? `Regenerate links for "${escapeHtml(room.slug)}" belonging to client "${escapeHtml(room.clientName)}"? The old control/display links will stop working immediately.`
                 : `Regenerate links for "${escapeHtml(room.slug)}"? The old control/display links will stop working immediately.`;
             return `
-                <h2 id="modalTitle" style="margin:0 0 12px 0;font-size:1.2rem;color:#fafafa;">Regenerate links?</h2>
-                <p style="margin:0 0 20px 0;color:#ccc;font-size:0.9rem;line-height:1.5;">${message}</p>
-                <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;">
-                    <button onclick="closeModal()" style="padding:10px 18px;border-radius:8px;border:1px solid #444;background:transparent;color:#ccc;cursor:pointer;font-size:0.9rem;">Cancel</button>
-                    <button onclick="confirmRegenerateLinks('${escapeHtml(room.id)}')" style="padding:10px 18px;border-radius:8px;border:none;background:#455a64;color:#fff;cursor:pointer;font-weight:600;font-size:0.9rem;">Regenerate</button>
+                <h2 id="modalTitle">Regenerate links?</h2>
+                <p>${message}</p>
+                <div class="actions">
+                    <button onclick="closeModal()" class="key flat">Cancel</button>
+                    <button onclick="confirmRegenerateLinks('${escapeHtml(room.id)}')" class="key">Regenerate</button>
                 </div>
             `;
         }
@@ -816,11 +472,11 @@
             closeModal(); // settle anything already open first
             const text = escapeHtml(body || '');
             openModal(`
-                <h2 id="modalTitle" style="margin:0 0 12px 0;font-size:1.2rem;color:#fafafa;">${escapeHtml(title)}</h2>
-                <p style="margin:0 0 20px 0;color:#ccc;font-size:0.9rem;line-height:1.5;white-space:pre-line;">${text}</p>
-                <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;">
-                    ${notice ? '' : '<button onclick="closeModal()" style="padding:10px 18px;border-radius:8px;border:1px solid #444;background:transparent;color:#ccc;cursor:pointer;font-size:0.9rem;">Cancel</button>'}
-                    <button onclick="confirmModal()" style="padding:10px 18px;border-radius:8px;border:none;background:${danger ? '#c62828' : '#1976d2'};color:#fff;cursor:pointer;font-weight:600;font-size:0.9rem;">${escapeHtml(okLabel)}</button>
+                <h2 id="modalTitle">${escapeHtml(title)}</h2>
+                <p style="white-space:pre-line;">${text}</p>
+                <div class="actions">
+                    ${notice ? '' : '<button onclick="closeModal()" class="key flat">Cancel</button>'}
+                    <button onclick="confirmModal()" class="key ${danger ? 'lit-stop' : 'lit'}">${escapeHtml(okLabel)}</button>
                 </div>
             `, triggerEl || document.activeElement);
             return new Promise(resolve => { modalResolve = resolve; });
@@ -843,18 +499,19 @@
                 el = document.createElement('div');
                 el.id = 'dashToast';
                 el.setAttribute('role', 'status');
-                el.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:1001;background:#2e7d32;color:#fff;padding:10px 18px;border-radius:8px;font-weight:600;box-shadow:0 6px 20px rgba(0,0,0,0.5);max-width:calc(100vw - 32px);box-sizing:border-box;';
+                el.className = 'toast';
+                el.innerHTML = '<span class="tally go"></span><span></span>';
                 document.body.appendChild(el);
             }
-            el.textContent = message;
-            el.style.display = 'block';
+            el.lastChild.textContent = message;
+            el.style.display = 'flex';
             clearTimeout(el._hide);
             el._hide = setTimeout(() => { el.style.display = 'none'; }, 2500);
         }
 
         function flashCopied(buttonEl) {
             const original = buttonEl.textContent;
-            buttonEl.textContent = '✅ Copied';
+            buttonEl.textContent = 'Copied';
             setTimeout(() => { buttonEl.textContent = original; }, 1500);
         }
 
@@ -907,22 +564,18 @@
             }
         }
 
-        const LINK_BTN_STYLE = 'padding:8px 12px;border-radius:6px;border:1px solid #444;background:#1a1a1a;color:#ccc;cursor:pointer;font-size:0.8rem;white-space:nowrap;';
-        const LINK_SECONDARY_ROW_BTN_STYLE = 'padding:8px 14px;border-radius:6px;border:1px solid #444;background:transparent;color:#ccc;cursor:pointer;font-size:0.82rem;white-space:nowrap;';
 
         function renderLinkField(labelText, inputId, url, shareTitle, canShare) {
             return `
-                <div style="margin-bottom:16px;">
-                    <label style="display:block;font-size:0.78rem;color:#999;text-transform:uppercase;margin-bottom:6px;">${escapeHtml(labelText)}</label>
-                    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-                        <input id="${inputId}" type="text" readonly value="${escapeHtml(url)}" onclick="this.select()" style="flex:1;min-width:0;padding:10px 12px;border-radius:6px;border:1px solid #333;background:#0a0a0a;color:#e5e5e5;font-family:'Courier New',monospace;font-size:0.78rem;box-sizing:border-box;overflow-x:auto;">
-                        <div style="display:flex;gap:6px;flex-wrap:wrap;">
-                            <button onclick="copyLink('${inputId}', this)" style="${LINK_BTN_STYLE}">📋 Copy</button>
-                            ${canShare ? `<button onclick="shareLink('${escapeHtml(shareTitle)}', '${inputId}', this)" style="${LINK_BTN_STYLE}">📤 Share</button>` : ''}
-                            <button onclick="toggleQr('${inputId}', this)" style="${LINK_BTN_STYLE}">▦ QR</button>
-                        </div>
+                <div class="link-field">
+                    <label class="label" for="${inputId}">${escapeHtml(labelText)}</label>
+                    <div class="row">
+                        <input id="${inputId}" class="field code" type="text" readonly value="${escapeHtml(url)}" onclick="this.select()">
+                        <button onclick="copyLink('${inputId}', this)" class="key small">Copy</button>
+                        ${canShare ? `<button onclick="shareLink('${escapeHtml(shareTitle)}', '${inputId}', this)" class="key small">Share</button>` : ''}
+                        <button onclick="toggleQr('${inputId}', this)" class="key small">QR</button>
                     </div>
-                    <div id="${inputId}Qr" hidden style="margin-top:10px;width:180px;height:180px;background:#fff;border-radius:8px;padding:6px;box-sizing:border-box;"></div>
+                    <div id="${inputId}Qr" class="qrbox" hidden></div>
                 </div>
             `;
         }
@@ -958,17 +611,17 @@
         function renderRoomLinksModal(title, roomSlug, controlUrl, displayUrl) {
             const canShare = typeof navigator.share === 'function';
             return `
-                <h2 id="modalTitle" style="margin:0 0 4px 0;font-size:1.2rem;color:#fafafa;">${escapeHtml(title)}</h2>
-                <p style="margin:0 0 14px 0;color:#f5f5f5;font-size:0.95rem;font-weight:600;">${escapeHtml(roomSlug)}</p>
-                <p style="margin:0 0 20px 0;color:#999;font-size:0.85rem;line-height:1.5;">Use the control link for the operator and the display link for the presentation screen. You can open these links again from the room card.</p>
+                <h2 id="modalTitle">${escapeHtml(title)}</h2>
+                <p class="room-title">${escapeHtml(roomSlug)}</p>
+                <p>Use the control link for the operator and the display link for the presentation screen. You can open these links again from the room card.</p>
                 ${renderLinkField('Control link', 'controlLinkText', controlUrl, `${roomSlug} - Control`, canShare)}
                 ${renderLinkField('Display link', 'displayLinkText', displayUrl, `${roomSlug} - Display`, canShare)}
-                <div style="display:flex;justify-content:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:20px;">
-                    <button onclick="copyBothLinks(this)" style="${LINK_SECONDARY_ROW_BTN_STYLE}">📋 Copy both links</button>
-                    ${canShare ? `<button onclick="shareBothLinks('${escapeHtml(roomSlug)}', this)" style="${LINK_SECONDARY_ROW_BTN_STYLE}">📤 Share both links</button>` : ''}
-                </div>
-                <div style="display:flex;justify-content:flex-end;">
-                    <button onclick="closeModal()" style="padding:10px 18px;border-radius:8px;border:none;background:#2e7d32;color:#fff;cursor:pointer;font-weight:600;font-size:0.9rem;">Close</button>
+                <div class="actions" style="justify-content:space-between;">
+                    <span style="display:flex;gap:6px;flex-wrap:wrap;">
+                        <button onclick="copyBothLinks(this)" class="key small flat">Copy both links</button>
+                        ${canShare ? `<button onclick="shareBothLinks('${escapeHtml(roomSlug)}', this)" class="key small flat">Share both links</button>` : ''}
+                    </span>
+                    <button onclick="closeModal()" class="key lit">Close</button>
                 </div>
             `;
         }
@@ -977,11 +630,11 @@
         // key is the laptop's own and stays the same until "Make a new key".
         function companionField(label, id, value) {
             return `
-                <div style="margin-bottom:14px;">
-                    <label style="display:block;font-size:0.78rem;color:#999;text-transform:uppercase;margin-bottom:6px;">${escapeHtml(label)}</label>
-                    <div style="display:flex;gap:8px;align-items:center;">
-                        <input id="${id}" type="text" readonly value="${escapeHtml(value)}" onclick="this.select()" style="flex:1;min-width:0;padding:10px 12px;border-radius:6px;border:1px solid #333;background:#0a0a0a;color:#e5e5e5;font-family:'Courier New',monospace;font-size:0.8rem;box-sizing:border-box;">
-                        <button onclick="copyLink('${id}', this)" style="${LINK_BTN_STYLE}">📋 Copy</button>
+                <div class="link-field">
+                    <label class="label" for="${id}">${escapeHtml(label)}</label>
+                    <div class="row">
+                        <input id="${id}" class="field code" type="text" readonly value="${escapeHtml(value)}" onclick="this.select()">
+                        <button onclick="copyLink('${id}', this)" class="key small">Copy</button>
                     </div>
                 </div>`;
         }
@@ -998,25 +651,25 @@
             let keyBlock;
             if (data.apiKey) {
                 keyBlock = companionField('Client API key', 'companionApiKey', data.apiKey) + (isLocalOperator ? '' :
-                    '<p style="margin:-6px 0 14px 0;color:#ffb74d;font-size:0.82rem;line-height:1.5;">Copy this key now. It won’t be shown again.</p>');
+                    '<p style="margin:-6px 0 14px 0;color:var(--warn);">Copy this key now. It won’t be shown again.</p>');
             } else {
                 const made = data.keyMadeAt ? ' Your current key was made on ' + new Date(data.keyMadeAt).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' }) + '.' : '';
                 keyBlock = `
-                <div style="margin-bottom:14px;">
-                    <label style="display:block;font-size:0.78rem;color:#999;text-transform:uppercase;margin-bottom:6px;">Client API key</label>
-                    <p style="margin:0;color:#ccc;font-size:0.85rem;line-height:1.5;">For security, a key is only shown once, when it is made.${made} Don’t have it? Press <b>Make a new key</b> below.</p>
+                <div class="link-field">
+                    <span class="label" style="display:block;margin-bottom:5px;">Client API key</span>
+                    <p style="margin:0;">For security, a key is only shown once, when it is made.${made} Don’t have it? Press <b>Make a new key</b> below.</p>
                 </div>`;
             }
             openModal(`
-                <h2 id="modalTitle" style="margin:0 0 6px 0;font-size:1.2rem;color:#fafafa;">Companion</h2>
-                <p style="margin:0 0 18px 0;color:#999;font-size:0.85rem;line-height:1.5;">In Companion, add a <b>Foxy Presentation Timer</b> connection and copy these three into its settings. ${where} <a href="/help#companion" target="foxy-help" style="color:#90caf9;">Step-by-step guide</a></p>
-                <p style="margin:-8px 0 18px 0;color:#999;font-size:0.85rem;line-height:1.5;">First time? <a href="/download/companion-module" download style="color:#90caf9;font-weight:600;">Download the Companion module</a>, then in Companion: <i>Modules → Import module package</i>.</p>
+                <h2 id="modalTitle">Companion</h2>
+                <p>In Companion, add a <b>Foxy Presentation Timer</b> connection and copy these three into its settings. ${where} <a href="/help#companion" target="foxy-help">Step-by-step guide</a></p>
+                <p>First time? <a href="/download/companion-module" download style="font-weight:600;">Download the Companion module</a>, then in Companion: <i>Modules → Import module package</i>.</p>
                 ${companionField('Server URL', 'companionServerUrl', data.serverUrl)}
                 ${keyBlock}
                 ${companionField('Room IDs to monitor', 'companionRooms', data.rooms.join(','))}
-                <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:6px;">
-                    <button onclick="makeNewCompanionKey(this)" style="padding:10px 14px;border-radius:8px;border:1px solid #444;background:transparent;color:#ccc;cursor:pointer;font-size:0.85rem;">🔄 Make a new key</button>
-                    <button onclick="closeModal()" style="padding:10px 18px;border-radius:8px;border:none;background:#2e7d32;color:#fff;cursor:pointer;font-weight:600;font-size:0.9rem;">Close</button>
+                <div class="actions" style="justify-content:space-between;">
+                    <button onclick="makeNewCompanionKey(this)" class="key small flat">Make a new key</button>
+                    <button onclick="closeModal()" class="key lit">Close</button>
                 </div>
             `, triggerEl);
         }
@@ -1056,8 +709,8 @@
                 warn.hidden = false;
             } else if (fw.state === 'blocked') {
                 warn.innerHTML = `<b>Windows Firewall is blocking phones and screens.</b> This laptop can use Foxy Timer, but other devices${escapeHtml(net)} can't reach it. Allow it once and they can.
-                    <div class="row"><button type="button" class="laptop-btn primary" onclick="allowThroughFirewall(this)">Allow through firewall</button>
-                    <a class="laptop-btn" href="/help#firewall" target="foxy-help">Why?</a></div>`;
+                    <div class="row"><button type="button" class="key small lit-go" onclick="allowThroughFirewall(this)">Allow through firewall</button>
+                    <a class="key small" href="/help#firewall" target="foxy-help">Why?</a></div>`;
                 warn.hidden = false;
             } else {
                 warn.hidden = true;
@@ -1127,9 +780,9 @@
                 msg = `<b>Start your free trial:</b> connect this laptop to the internet once, then press Check again. Until then it runs as the free version: ${FREE_VERSION_LIMITS}.`;
             }
             const failed = lic.lastCheckIn && !lic.lastCheckIn.ok && lic.status !== 'clock'
-                ? `<div style="margin-top:0.4rem;color:#bfa77a;">Last check: ${escapeHtml(lic.lastCheckIn.error === 'Offline' || lic.lastCheckIn.error === 'No reply' ? "couldn't reach Foxy Timer Online" : lic.lastCheckIn.error)}.</div>`
+                ? `<div style="margin-top:0.4rem;color:var(--ink-2);">Last check: ${escapeHtml(lic.lastCheckIn.error === 'Offline' || lic.lastCheckIn.error === 'No reply' ? "couldn't reach Foxy Timer Online" : lic.lastCheckIn.error)}.</div>`
                 : '';
-            const button = lic.status === 'clock' ? '' : '<div class="row"><button type="button" class="laptop-btn" onclick="checkLicenceNow(this)">Check again</button></div>';
+            const button = lic.status === 'clock' ? '' : '<div class="row"><button type="button" class="key small" onclick="checkLicenceNow(this)">Check again</button></div>';
             warn.innerHTML = msg + failed + button;
             warn.hidden = false;
             updateLaptopCollapse();
@@ -1199,8 +852,8 @@
             }, triggerEl);
             if (!ok) return;
             await authFetch('/api/local/stop', { method: 'POST' }).catch(() => {});
-            document.body.innerHTML = `<div style="padding:60px 20px;text-align:center;color:#ccc;font-family:inherit;">
-                <h2 style="color:#fafafa;">Foxy Timer has stopped</h2>
+            document.body.innerHTML = `<div style="padding:60px 20px;text-align:center;color:var(--ink-2);">
+                <h2 style="color:var(--ink);">Foxy Timer has stopped</h2>
                 <p>Start it again from the <b>Foxy Timer</b> icon on the desktop or Start menu.</p></div>`;
         }
 
@@ -1282,7 +935,7 @@
             } catch (error) {
                 console.error('Error fetching rooms:', error);
                 document.getElementById('roomsContainer').innerHTML = 
-                    '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">Unable to load rooms</div></div>';
+                    '<div class="empty-state"><div class="empty-state-text">Couldn’t load the rooms</div><div>Check this device is online. The page keeps trying.</div></div>';
             }
         }
 
@@ -1298,9 +951,8 @@
             if (roomsData.length === 0) {
                 container.innerHTML = `
                     <div class="empty-state">
-                        <div class="empty-state-icon">⏱️</div>
-                        <div class="empty-state-text">No active rooms</div>
-                        <div class="empty-state-hint">Create a room using the field above to get started</div>
+                        <div class="empty-state-text">No rooms yet</div>
+                        <div>Type a name in “New room name” above and press Create room.</div>
                     </div>
                 `;
                 updateSelectionUI();
@@ -1314,26 +966,22 @@
             container.innerHTML = sortedRooms.map(room => {
                 let displayTime;
                 let timerClass;
-                let modeIcon;
                 let modeText;
 
                 if (room.outputMode === 'clock') {
                     const now = new Date();
                     displayTime = now.toLocaleTimeString('en-GB');
                     timerClass = 'clock';
-                    modeIcon = '🕐';
-                    modeText = 'Clock Mode';
+                    modeText = 'Clock';
                 } else if (room.countDirection === 'up') {
                     // Stopwatch: elapsed time from 0:00
                     displayTime = formatCountdownDisplay(room.elapsedMs || 0);
                     timerClass = '';
-                    modeIcon = '⏱️';
                     modeText = 'Counting up';
                 } else if (room.countUp && room.overMs > 0) {
                     // Overtime: timer has passed zero, showing elapsed over time
                     displayTime = formatCountdownDisplay(room.overMs, '-');
                     timerClass = 'red';
-                    modeIcon = '⏱️';
                     modeText = 'Overtime';
                 } else {
                     displayTime = formatCountdownDisplay(room.remainingMs);
@@ -1346,8 +994,7 @@
                     } else {
                         timerClass = '';
                     }
-                    modeIcon = '⏱️';
-                    modeText = 'Timer Mode';
+                    modeText = 'Countdown';
                 }
 
                 const isSelected = selectedRooms.has(room.id);
@@ -1357,97 +1004,52 @@
                 // slug-addressed endpoints (unchanged from Phase 2) or the
                 // platform-admin, id-addressed /api/admin/rooms/:id/* endpoints.
                 const clientBadge = room.clientName
-                    ? `<div style="font-size:0.75rem;color:#ba68c8;margin-top:2px;">Client: ${escapeHtml(room.clientName)}</div>`
+                    ? `<div class="client-tag">Client: ${escapeHtml(room.clientName)}</div>`
                     : '';
-                const pauseBtn = room.mode === 'running'
-                    ? `<button onclick="toggleRoomTimer('${escapeHtml(room.id)}', 'running')" class="action-btn primary-action" style="background:#ff9800;border-color:#ff9800;color:white;">⏸️ Pause</button>`
-                    : room.mode === 'paused'
-                        ? `<button onclick="toggleRoomTimer('${escapeHtml(room.id)}', 'paused')" class="action-btn primary-action" style="background:#4caf50;border-color:#4caf50;color:white;">▶️ Resume</button>`
-                        : `<button onclick="toggleRoomTimer('${escapeHtml(room.id)}', 'stopped')" class="action-btn primary-action" style="background:#4caf50;border-color:#4caf50;color:white;">▶️ Start</button>`;
-
-                const view = { displayTime, timerClass, isSelected, clientBadge };
+                const view = { displayTime, timerClass, isSelected, clientBadge, modeText };
                 if (roomLayout === 'list') return renderRoomRow(room, view);
                 if (roomLayout === 'mini') return renderRoomMini(room, view);
 
                 if (room.licenceLocked) {
                     return `
-                    <div class="room-card room-item licence-locked" data-room-id="${escapeHtml(room.id)}">
-                        <div class="room-header">
-                            <div class="room-name">${escapeHtml(room.slug)}</div>
-                            <div class="room-status">free version</div>
-                        </div>
+                    <div class="room-card panel room-item licence-locked" data-room-id="${escapeHtml(room.id)}">
+                        <div class="card-top"><span class="tally"></span><div class="name-wrap"><div class="room-name">${escapeHtml(room.slug)}</div></div><span class="state">Free version</span></div>
                         <div class="licence-locked-note">The free version runs one room, so this room is switched off. Its links will work again with the full version.</div>
-                        <div class="room-actions" style="margin-top:0.8rem;">
-                            <button onclick="deleteRoom('${escapeHtml(room.id)}')" class="action-btn danger secondary-action">🗑️ Delete</button>
+                        <div class="room-actions">
+                            <button onclick="deleteRoom('${escapeHtml(room.id)}')" class="key small danger">Delete</button>
                         </div>
                     </div>`;
                 }
 
+                const id = escapeHtml(room.id);
                 return `
-                    <div class="room-card room-item ${room.mode}"
-                         draggable="true"
-                         data-room-id="${escapeHtml(room.id)}"
-                         ondragstart="handleDragStart(event)"
-                         ondragover="handleDragOver(event)"
-                         ondrop="handleDrop(event)"
-                         ondragend="handleDragEnd(event)"
-                         ondragenter="handleDragEnter(event)"
-                         ondragleave="handleDragLeave(event)">
-                        <div class="drag-handle">⋮⋮</div>
-                        <div class="room-header">
-                            <div style="display:flex;align-items:center;gap:8px;">
-                                <input type="checkbox" class="room-checkbox"
-                                       data-room-id="${escapeHtml(room.id)}"
-                                       ${isSelected ? 'checked' : ''}
-                                       onchange="onCheckboxChange(this)"
-                                       style="width:16px;height:16px;cursor:pointer;accent-color:#4caf50;"
-                                       onclick="event.stopPropagation()">
-                                <div>
-                                    <div class="room-name">${escapeHtml(room.slug)}</div>
-                                    ${clientBadge}
-                                </div>
-                            </div>
-                            <div class="room-status ${room.mode}">${room.mode}</div>
+                    <div class="room-card panel room-item ${room.mode}" data-room-id="${id}" ${dragAttrs}>
+                        <div class="card-top">
+                            ${selectBox(room, isSelected)}
+                            ${tallyLamp(room)}
+                            <div class="name-wrap"><div class="room-name" title="${escapeHtml(room.slug)}">${escapeHtml(room.slug)}</div>${clientBadge}</div>
+                            <span class="state">${stateWord(room)}</span>
+                            <span class="drag-handle" aria-hidden="true" title="Drag to reorder">⋮⋮</span>
                         </div>
-
-                        <div class="room-timer">
-                            <div class="timer-display ${timerClass}">${displayTime}</div>
-                            <div class="timer-mode">${modeIcon} ${modeText}</div>
+                        <div class="well">
+                            <span class="timer-display ${timerClass}">${displayTime}</span>
+                            <span class="well-meta">${view.modeText}${room.mode === 'running' ? `<br>ends ${getEndingTime(room.remainingMs)}` : ''}</span>
                         </div>
-
                         <div class="room-info">
-                            <div class="info-item">
-                                <div class="info-label">Connections</div>
-                                <div class="info-value">👥 ${room.connections}</div>
-                            </div>
-                            <div class="info-item">
-                                <div class="info-label">Ending At</div>
-                                <div class="info-value">${room.mode === 'running' ? getEndingTime(room.remainingMs) : '—'}</div>
-                            </div>
-                            ${appOutputs ? `<div class="info-item"><div class="info-label">Screen</div><div class="info-value">${screenChip(room)}</div></div>` : ''}
+                            <span><b>${room.connections}</b> connected</span>
+                            ${appOutputs ? screenChip(room) : ''}
                         </div>
-
                         <div class="room-actions">
-                            ${pauseBtn}
+                            ${primaryRoomButton(room, false)}
                             <div class="room-actions-row">
-                                <a href="${room.controlUrl}" class="action-btn control" target="foxy-control-${escapeHtml(room.id)}">
-                                    📱 Control Panel
-                                </a>
-                                <a href="${room.displayUrl}" class="action-btn display" target="foxy-display-${escapeHtml(room.id)}">
-                                    🖥️ Display
-                                </a>
+                                <a href="${room.controlUrl}" class="key" target="foxy-control-${id}">Control</a>
+                                <a href="${room.displayUrl}" class="key" target="foxy-display-${id}">Display</a>
                             </div>
-                            <button onclick="showRoomLinks('${escapeHtml(room.id)}', this)" class="action-btn secondary-action" style="background:transparent;border:1px solid #1976d2;color:#90caf9;">
-                                🔗 Share links &amp; QR
-                            </button>
                             <div class="room-actions-row">
-                                <button onclick="regenerateLinks('${escapeHtml(room.id)}', this)" class="action-btn secondary-action" style="background:#455a64;border-color:#455a64;color:white;">
-                                    🔄 New Links
-                                </button>
-                                <button onclick="deleteRoom('${escapeHtml(room.id)}')" class="action-btn danger secondary-action">
-                                    🗑️ Delete
-                                </button>
+                                <button onclick="showRoomLinks('${id}', this)" class="key small">Share links &amp; QR</button>
+                                <button onclick="regenerateLinks('${id}', this)" class="key small">New links</button>
                             </div>
+                            <button onclick="deleteRoom('${id}')" class="key small flat danger">Delete room</button>
                         </div>
                     </div>
                 `;
@@ -1484,45 +1086,58 @@
             if (want !== roomLayout) setRoomLayout(want, false);
         }
 
+        // The main key lights to show the room's state, like a hardware panel:
+        // green while running (press to pause), amber while paused (press to resume).
         function primaryRoomButton(room, compact) {
             const id = escapeHtml(room.id);
-            if (room.mode === 'running') return `<button onclick="toggleRoomTimer('${id}', 'running')" class="action-btn hold">${compact ? '⏸ Pause' : '⏸️ Pause'}</button>`;
-            if (room.mode === 'paused') return `<button onclick="toggleRoomTimer('${id}', 'paused')" class="action-btn go">▶ Resume</button>`;
-            return `<button onclick="toggleRoomTimer('${id}', 'stopped')" class="action-btn go">▶ Start</button>`;
+            const size = compact ? '' : ' big';
+            if (room.mode === 'running') return `<button onclick="toggleRoomTimer('${id}', 'running')" class="key lit-go${size}">Pause</button>`;
+            if (room.mode === 'paused') return `<button onclick="toggleRoomTimer('${id}', 'paused')" class="key lit-warn${size}">Resume</button>`;
+            return `<button onclick="toggleRoomTimer('${id}', 'stopped')" class="key ready${size}">Start</button>`;
         }
 
         function moreButton(room) {
-            return `<button type="button" class="action-btn more" aria-haspopup="menu" aria-label="More for ${escapeHtml(room.slug)}" onclick="openRoomMenu('${escapeHtml(room.id)}', this)">⋯</button>`;
+            return `<button type="button" class="key more" aria-haspopup="menu" aria-label="More for ${escapeHtml(room.slug)}" onclick="openRoomMenu('${escapeHtml(room.id)}', this)">⋯</button>`;
+        }
+
+        function tallyLamp(room) {
+            const lamp = room.mode === 'running' ? 'go' : room.mode === 'paused' ? 'warn' : '';
+            return `<span class="tally ${lamp}" aria-hidden="true"></span>`;
+        }
+
+        function stateWord(room) {
+            return { running: 'Running', paused: 'Paused', stopped: 'Stopped' }[room.mode] || room.mode;
         }
 
         const dragAttrs = `draggable="true" ondragstart="handleDragStart(event)" ondragover="handleDragOver(event)" ondrop="handleDrop(event)" ondragend="handleDragEnd(event)" ondragenter="handleDragEnter(event)" ondragleave="handleDragLeave(event)"`;
 
         function selectBox(room, isSelected) {
-            return `<input type="checkbox" class="room-checkbox" data-room-id="${escapeHtml(room.id)}" ${isSelected ? 'checked' : ''} onchange="onCheckboxChange(this)" onclick="event.stopPropagation()" style="width:16px;height:16px;cursor:pointer;accent-color:#4caf50;" aria-label="Select ${escapeHtml(room.slug)}">`;
+            return `<input type="checkbox" class="room-checkbox" data-room-id="${escapeHtml(room.id)}" ${isSelected ? 'checked' : ''} onchange="onCheckboxChange(this)" onclick="event.stopPropagation()" aria-label="Select ${escapeHtml(room.slug)}">`;
         }
 
         function renderRoomRow(room, v) {
             const id = escapeHtml(room.id);
             if (room.licenceLocked) {
-                return `<div class="room-row room-item" data-room-id="${id}">
-                    <span class="sel"></span><div class="name room-name">${escapeHtml(room.slug)}</div>
-                    <div class="licence-locked-note" style="grid-column: 3 / 7;">Free version: this room is switched off</div>
-                    <div class="row-actions"><button onclick="deleteRoom('${id}')" class="action-btn danger">🗑️ Delete</button></div>
+                return `<div class="room-row panel room-item licence-locked" data-room-id="${id}">
+                    <span class="sel"></span><span class="tally"></span><div class="name room-name">${escapeHtml(room.slug)}</div>
+                    <div class="licence-locked-note" style="grid-column: 4 / 8;">Free version: this room is switched off</div>
+                    <div class="row-actions"><button onclick="deleteRoom('${id}')" class="key small danger" style="grid-column: 1 / -1;">Delete</button></div>
                 </div>`;
             }
             const ends = room.mode === 'running' ? `ends ${getEndingTime(room.remainingMs)}` : '';
-            return `<div class="room-row room-item ${room.mode}" data-room-id="${id}" ${dragAttrs}>
+            return `<div class="room-row panel room-item ${room.mode}" data-room-id="${id}" ${dragAttrs}>
                 <span class="sel">${selectBox(room, v.isSelected)}</span>
+                ${tallyLamp(room)}
                 <div class="name" style="min-width:0"><div class="room-name" title="${escapeHtml(room.slug)}">${escapeHtml(room.slug)}</div>${v.clientBadge}</div>
-                <div class="room-status ${room.mode}">${room.mode}</div>
+                <div class="state">${stateWord(room)}</div>
                 <div class="timer-display ${v.timerClass}">${v.displayTime}</div>
                 <div class="row-meta ends">${ends}</div>
-                <div class="row-meta conns" title="Connections">👥 ${room.connections}</div>
+                <div class="row-meta conns">${room.connections} connected</div>
                 ${appOutputs ? `<div class="screen-cell">${screenChip(room)}</div>` : ''}
                 <div class="row-actions">
                     ${primaryRoomButton(room, true)}
-                    <a href="${room.controlUrl}" class="action-btn control" target="foxy-control-${id}">Control</a>
-                    <a href="${room.displayUrl}" class="action-btn display" target="foxy-display-${id}">Display</a>
+                    <a href="${room.controlUrl}" class="key" target="foxy-control-${id}">Control</a>
+                    <a href="${room.displayUrl}" class="key" target="foxy-display-${id}">Display</a>
                     ${moreButton(room)}
                 </div>
             </div>`;
@@ -1531,25 +1146,29 @@
         function renderRoomMini(room, v) {
             const id = escapeHtml(room.id);
             if (room.licenceLocked) {
-                return `<div class="room-card mini room-item licence-locked" data-room-id="${id}">
-                    <div class="room-header"><div class="room-name">${escapeHtml(room.slug)}</div></div>
+                return `<div class="room-card panel mini room-item licence-locked" data-room-id="${id}">
+                    <div class="card-top"><span class="tally"></span><div class="name-wrap"><div class="room-name">${escapeHtml(room.slug)}</div></div></div>
                     <div class="licence-locked-note">Free version: this room is switched off</div>
-                    <div style="margin-top:0.5rem"><button onclick="deleteRoom('${id}')" class="action-btn danger" style="padding:6px 10px;font-size:0.8rem;">🗑️ Delete</button></div>
+                    <div class="room-actions"><button onclick="deleteRoom('${id}')" class="key small danger">Delete</button></div>
                 </div>`;
             }
-            const ends = room.mode === 'running' ? `ends ${getEndingTime(room.remainingMs)}` : '';
-            return `<div class="room-card mini room-item ${room.mode}" data-room-id="${id}" ${dragAttrs}>
-                <div class="room-header">
-                    <div style="display:flex;align-items:center;gap:8px;min-width:0;">${selectBox(room, v.isSelected)}
-                        <div style="min-width:0"><div class="room-name" title="${escapeHtml(room.slug)}">${escapeHtml(room.slug)}</div>${v.clientBadge}</div></div>
-                    <div class="room-status ${room.mode}">${room.mode}</div>
+            const ends = room.mode === 'running' ? `ends ${getEndingTime(room.remainingMs)}` : v.modeText;
+            return `<div class="room-card panel mini room-item ${room.mode}" data-room-id="${id}" ${dragAttrs}>
+                <div class="card-top">
+                    ${selectBox(room, v.isSelected)}
+                    ${tallyLamp(room)}
+                    <div class="name-wrap"><div class="room-name" title="${escapeHtml(room.slug)}">${escapeHtml(room.slug)}</div>${v.clientBadge}</div>
+                    <span class="state">${stateWord(room)}</span>
                 </div>
-                <div class="timer-display ${v.timerClass}">${v.displayTime}</div>
-                <div class="mini-meta"><span title="Connections">👥 ${room.connections}</span>${screenChip(room)}<span>${ends}</span></div>
+                <div class="well">
+                    <span class="timer-display ${v.timerClass}">${v.displayTime}</span>
+                    <span class="well-meta">${ends}<br>${room.connections} connected</span>
+                </div>
+                ${appOutputs && !room.licenceLocked ? `<div class="room-info">${screenChip(room)}</div>` : ''}
                 <div class="mini-actions">
                     ${primaryRoomButton(room, true)}
-                    <a href="${room.controlUrl}" class="action-btn control" target="foxy-control-${id}">Control</a>
-                    <a href="${room.displayUrl}" class="action-btn display" target="foxy-display-${id}">Display</a>
+                    <a href="${room.controlUrl}" class="key" target="foxy-control-${id}">Control</a>
+                    <a href="${room.displayUrl}" class="key" target="foxy-display-${id}">Display</a>
                     ${moreButton(room)}
                 </div>
             </div>`;
@@ -1573,7 +1192,7 @@
         function screenChip(room) {
             if (!appOutputs || room.licenceLocked) return '';
             const nums = appOutputs.screens.filter((sc) => sc.roomId === room.id).map((sc) => sc.number);
-            const label = nums.length ? `🖥 Screen ${nums.join(' + ')}` : (appOutputs.enabled ? '🖥 No screen' : '🖥 Screens off');
+            const label = nums.length ? `Screen ${nums.join(' + ')}` : (appOutputs.enabled ? 'No screen' : 'Screens off');
             return `<button type="button" class="screen-chip ${nums.length ? 'on' : ''}" aria-haspopup="menu" title="Choose which screen shows this room" onclick="openScreenMenu('${escapeHtml(room.id)}', this)">${label}</button>`;
         }
 
@@ -1592,7 +1211,7 @@
             }).join('');
             const note = appOutputs.enabled ? '' : '<div class="menu-note">Timers on other screens are switched off. Choosing a screen turns them on.</div>';
             const single = appOutputs.screens.length < 2 ? '<div class="menu-note">Only this laptop\'s screen is connected. Plug in a screen or projector to show the timer on it.</div>' : '';
-            menu.innerHTML = `<div class="menu-note">Show <b>${escapeHtml(room.slug)}</b> on:</div>${note}${items}${single}<hr><button type="button" role="menuitem" onclick="window.foxyApp.identifyScreens()">🔢 Identify screens</button>`;
+            menu.innerHTML = `<div class="menu-note">Show <b>${escapeHtml(room.slug)}</b> on:</div>${note}${items}${single}<hr><button type="button" role="menuitem" onclick="window.foxyApp.identifyScreens()">Identify screens</button>`;
         }
         function openScreenMenu(id, btn) {
             const menu = document.getElementById('screenMenu');
@@ -1650,7 +1269,7 @@
                 closeRoomMenu(); closeScreenMenu();
                 appDialogReq = req;
                 const box = document.querySelector('#appDialog .app-dialog-box');
-                box.innerHTML = `<h2 id="appDialogTitle"><img src="/favicon.svg" alt="" width="24" height="24">${escapeHtml(req.title)}</h2>`
+                box.innerHTML = `<h2 id="appDialogTitle"><span class="brand-mark"></span>${escapeHtml(req.title)}</h2>`
                     + (req.message ? `<p class="msg">${escapeHtml(req.message)}</p>` : '')
                     + '<div class="app-options">' + req.options.map((o, i) => `<button type="button" class="app-option ${o.kind || 'plain'}" onclick="answerAppDialog(${i})"><span>${escapeHtml(o.label)}</span>${o.detail ? `<span class="detail">${escapeHtml(o.detail)}</span>` : ''}</button>`).join('') + '</div>';
                 document.getElementById('appDialog').hidden = false;
@@ -1698,7 +1317,7 @@
             else if (action === 'delete') deleteRoom(id);
         }
         document.addEventListener('click', (e) => {
-            if (!e.target.closest('#roomMenu') && !e.target.closest('.action-btn.more')) closeRoomMenu();
+            if (!e.target.closest('#roomMenu') && !e.target.closest('.key.more')) closeRoomMenu();
             if (!e.target.closest('#screenMenu') && !e.target.closest('.screen-chip')) closeScreenMenu();
         });
         document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeRoomMenu(); closeScreenMenu(); } });
@@ -1872,8 +1491,8 @@
             const btn = document.getElementById('startSelectedBtn');
             if (!btn) return;
             if (selectedRooms.size > 0) {
-                btn.style.display = 'inline-block';
-                btn.textContent = `▶ Start Selected (${selectedRooms.size})`;
+                btn.style.display = '';
+                btn.textContent = `Start selected (${selectedRooms.size})`;
             } else {
                 btn.style.display = 'none';
             }

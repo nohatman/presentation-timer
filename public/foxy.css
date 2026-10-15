@@ -1,0 +1,190 @@
+/* Foxy Timer shared look: "Production desk".
+   Every page that links this gets the same colours, type and controls. A
+   style pack is just another set of the tokens in :root, so pages should
+   only ever use var(--...) colours, never their own hex values.
+
+   Fonts ship in /fonts (OFL, see fonts/README.txt) so the Windows app and
+   venues with no internet look the same as foxytimer.com. */
+
+@font-face { font-family: 'Foxy UI'; src: url('/fonts/barlow-semi-condensed-500.woff2') format('woff2'); font-weight: 400 500; font-display: swap; }
+@font-face { font-family: 'Foxy UI'; src: url('/fonts/barlow-semi-condensed-600.woff2') format('woff2'); font-weight: 600; font-display: swap; }
+@font-face { font-family: 'Foxy UI'; src: url('/fonts/barlow-semi-condensed-700.woff2') format('woff2'); font-weight: 700 900; font-display: swap; }
+/* Digits only (0-9 : + - . space) - same file the display's "Condensed" uses. */
+@font-face { font-family: 'Foxy Digits'; src: url('/fonts/barlow-condensed-700.woff2') format('woff2'); font-weight: 700; font-display: swap; }
+
+:root {
+    color-scheme: dark;
+
+    /* Surfaces, darkest to lightest */
+    --desk: #1d1e20;        /* page */
+    --well: #0d0d0e;        /* recessed: timer readouts, inputs */
+    --panel: #2a2b2e;       /* raised panels and cards */
+    --panel-hi: #313236;    /* panel hover / menu hover */
+    --key: #3b3d41;         /* unlit key */
+    --key-hi: #47494e;      /* unlit key hover */
+    --seam: #121314;        /* 1px edges between parts */
+    --bevel: rgba(255, 255, 255, 0.06); /* top highlight on raised parts */
+
+    /* Text */
+    --ink: #e4e5e7;
+    --ink-2: #a4a7ad;       /* secondary */
+    --ink-3: #74777d;       /* hints, disabled */
+
+    /* Brand: the fox mark, and nothing else */
+    --fox: #ff6a1a;
+
+    /* Lamps: state colours. Functional, not decoration. */
+    --go: #3fb950;
+    --go-key: #2f8f3e;      /* lit key fill */
+    --warn: #f0a020;
+    --warn-key: #c98510;
+    --stop: #ef4b3c;
+    --stop-key: #b3322a;
+    --over: #b36bff;
+    --info: #7fb6e6;        /* links, addresses */
+    --lit: #d6d8db;         /* a selected (lit) neutral key */
+
+    --radius: 3px;
+    --ui: 'Foxy UI', 'Bahnschrift', 'Segoe UI', Roboto, 'Arial Narrow', sans-serif;
+    --digits: 'Foxy Digits', 'Bahnschrift', 'Arial Narrow', sans-serif;
+    --mono: ui-monospace, 'Cascadia Mono', Consolas, 'Roboto Mono', monospace;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body.foxy {
+    margin: 0;
+    background: var(--desk);
+    color: var(--ink);
+    font-family: var(--ui);
+    font-weight: 500;
+    font-size: 16px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+}
+.foxy a:not(.key) { color: var(--info); }
+.foxy :focus-visible { outline: 2px solid var(--info); outline-offset: 2px; }
+
+/* ---- Brand ---- */
+.brand { display: inline-flex; align-items: center; gap: 9px; font-weight: 700; font-size: 1.15rem; letter-spacing: 0.01em; color: var(--ink); text-decoration: none; }
+.brand-mark { width: 11px; height: 11px; background: var(--fox); border-radius: 2px; flex: none; }
+
+/* ---- Panels ---- */
+.panel {
+    background: var(--panel);
+    border: 1px solid var(--seam);
+    border-radius: var(--radius);
+    box-shadow: inset 0 1px 0 var(--bevel);
+}
+.well {
+    background: var(--well);
+    border: 1px solid var(--seam);
+    border-radius: 2px;
+}
+
+/* ---- Keys (every button) ---- */
+.key {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    font: inherit; font-weight: 600; font-size: 0.95rem; letter-spacing: 0.03em; text-transform: uppercase;
+    line-height: 1.1;
+    color: var(--ink);
+    background: var(--key);
+    border: 1px solid var(--seam);
+    border-radius: var(--radius);
+    padding: 9px 13px;
+    min-height: 38px;
+    cursor: pointer;
+    text-decoration: none;
+    white-space: nowrap;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), inset 0 -2px 0 rgba(0, 0, 0, 0.25);
+    transition: background 0.12s, color 0.12s;
+    -webkit-tap-highlight-color: transparent;
+}
+.key:hover { background: var(--key-hi); }
+.key:active { box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4); }
+.key:disabled { color: var(--ink-3); cursor: not-allowed; background: var(--key); }
+.key.small { font-size: 0.85rem; padding: 6px 10px; min-height: 32px; }
+.key.big { font-size: 1.1rem; padding: 13px 16px; min-height: 50px; }
+.key.plain { text-transform: none; letter-spacing: 0; }
+/* Lit keys show what is happening now, like a hardware panel. */
+.key.lit-go { background: var(--go-key); color: #fff; }
+.key.lit-go:hover { background: #35a046; }
+.key.lit-warn { background: var(--warn-key); color: #1a1000; }
+.key.lit-warn:hover { background: #d99317; }
+.key.lit { background: var(--lit); color: #121314; }
+/* Ready to go: green legend on an unlit key. */
+.key.ready { color: var(--go); }
+/* Destructive: red legend, lights red on hover. */
+.key.danger { color: #ff8a80; }
+.key.danger:hover { background: var(--stop-key); color: #fff; }
+.key.lit-stop { background: var(--stop-key); color: #fff; }
+/* A quiet key with no cap, for low-priority actions. */
+.key.flat { background: transparent; box-shadow: none; border-color: transparent; color: var(--ink-2); }
+.key.flat:hover { background: var(--panel-hi); color: var(--ink); }
+
+/* Segmented keys: one lit at a time */
+.seg { display: inline-flex; gap: 0; border: 1px solid var(--seam); border-radius: var(--radius); overflow: hidden; }
+.seg .key { border: 0; border-radius: 0; min-height: 32px; }
+.seg .key + .key { border-left: 1px solid var(--seam); }
+.seg .key[aria-pressed="true"] { background: var(--lit); color: #121314; }
+
+/* ---- Tally lamp ---- */
+.tally { display: inline-block; width: 20px; height: 8px; border-radius: 1px; background: #44464b; flex: none; }
+.tally.go { background: var(--go); box-shadow: 0 0 6px rgba(63, 185, 80, 0.55); }
+.tally.warn { background: var(--warn); }
+.tally.stop { background: var(--stop); }
+
+/* ---- Text ---- */
+.label { font-size: 0.85rem; font-weight: 600; color: var(--ink-2); }
+.hint { font-size: 0.85rem; color: var(--ink-2); }
+.readout { font-family: var(--digits); font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; }
+.code { font-family: var(--mono); font-size: 0.85em; color: var(--info); overflow-wrap: anywhere; }
+
+/* ---- Fields ---- */
+.field {
+    font: inherit; font-size: 1rem; font-weight: 500;
+    color: var(--ink); background: var(--well);
+    border: 1px solid #3a3c40; border-radius: var(--radius);
+    padding: 8px 11px; min-height: 38px;
+}
+.field::placeholder { color: var(--ink-3); }
+.field:focus { outline: none; border-color: var(--info); }
+.field.code { font-family: var(--mono); font-size: 0.82rem; color: var(--ink); }
+
+/* ---- Menus ---- */
+.menu {
+    position: fixed; z-index: 900;
+    background: var(--panel); border: 1px solid var(--seam); border-radius: var(--radius);
+    box-shadow: inset 0 1px 0 var(--bevel), 0 10px 30px rgba(0, 0, 0, 0.55);
+    padding: 4px; min-width: 200px;
+}
+.menu[hidden] { display: none; }
+.menu button { display: block; width: 100%; text-align: left; font: inherit; font-size: 0.98rem; background: none; border: 0; color: var(--ink); padding: 9px 12px; border-radius: 2px; cursor: pointer; }
+.menu button:hover, .menu button:focus { background: var(--panel-hi); outline: none; }
+.menu button.danger { color: #ff8a80; }
+.menu hr { border: 0; border-top: 1px solid var(--seam); margin: 4px 0; }
+
+/* ---- Dialogs ---- */
+.dialog-overlay { position: fixed; inset: 0; z-index: 1000; background: rgba(0, 0, 0, 0.65); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.dialog-overlay[hidden] { display: none; }
+.dialog {
+    background: var(--panel); border: 1px solid var(--seam); border-radius: var(--radius);
+    box-shadow: inset 0 1px 0 var(--bevel), 0 18px 50px rgba(0, 0, 0, 0.6);
+    width: 100%; max-width: 480px; max-height: 90vh; overflow-y: auto; padding: 22px; outline: none;
+}
+.dialog h2 { margin: 0 0 10px; font-size: 1.3rem; font-weight: 700; color: var(--ink); line-height: 1.2; }
+.dialog p { margin: 0 0 14px; color: var(--ink-2); line-height: 1.5; }
+.dialog .actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; margin-top: 18px; }
+
+/* ---- Toast ---- */
+.toast {
+    position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 1001;
+    display: flex; align-items: center; gap: 10px;
+    background: var(--panel); color: var(--ink); border: 1px solid var(--seam); border-radius: var(--radius);
+    box-shadow: inset 0 1px 0 var(--bevel), 0 8px 24px rgba(0, 0, 0, 0.5);
+    padding: 10px 16px; font-weight: 600; max-width: calc(100vw - 32px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .key { transition: none; }
+}
