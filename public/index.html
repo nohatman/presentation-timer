@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Foxy Timer - your presentation timer, centre stage</title>
-    <meta name="description" content="A presentation timer that shows who's on, time left and who's next, in sync on every screen. Run one room or many from your device's browser. Works with Companion.">
+    <meta name="description" content="A presentation timer for live events: who's on, time left and who's next, in step on every screen. A small, independent project, run from a browser or a Windows laptop. Works with Companion. Feedback welcome.">
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <style>
         :root {
@@ -69,7 +69,7 @@
         .nav-links .login { color: var(--text); }
 
         /* ---------- Hero ---------- */
-        .hero { padding: 72px 0 56px; position: relative; overflow: hidden; }
+        .hero { padding: 44px 0 56px; position: relative; overflow: hidden; }
         .hero::before {
             content: ''; position: absolute; inset: -20% -10% auto auto; width: 70%; height: 120%;
             background: radial-gradient(closest-side, rgba(255, 106, 26, 0.13), transparent 70%);
@@ -175,7 +175,7 @@
         .mode li { padding: 5px 0 5px 20px; position: relative; }
         .mode li::before { content: ''; position: absolute; left: 2px; top: 13px; width: 8px; height: 2px; background: var(--fox); }
         .mode-download { margin-top: 20px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
-        .mode-download[hidden] { display: none; }
+        .mode-download[hidden], .win-dl[hidden], .win-soon[hidden] { display: none !important; }
         .mode-download .note { color: var(--muted); font-size: 0.9rem; }
 
         /* Contact */
@@ -202,6 +202,30 @@
         .form-status.ok { display: block; color: var(--green); }
         .form-status.err { display: block; color: #ff8a80; }
         .hp { position: absolute; left: -9999px; }
+
+        /* Online / Windows switch. body[data-edition] picks which version's text shows. */
+        .edition-bar { display: flex; justify-content: center; padding: 22px 16px 0; position: relative; z-index: 2; }
+        .edition-switch { display: inline-flex; background: var(--bg-2); border: 1px solid var(--line); border-radius: 999px; padding: 4px; gap: 4px; max-width: 100%; }
+        .edition-switch button { font: inherit; font-size: 0.95rem; font-weight: 600; color: var(--muted); background: transparent; border: 0; border-radius: 999px; padding: 9px 18px; cursor: pointer; white-space: nowrap; }
+        .edition-switch button:hover { color: var(--text); }
+        .edition-switch button[aria-selected="true"] { background: var(--fox); color: #140800; }
+        .edition-switch button:focus-visible { outline: 2px solid var(--fox-2); outline-offset: 2px; }
+        body[data-edition="online"] [data-for="windows"], body[data-edition="windows"] [data-for="online"] { display: none !important; }
+
+        /* Getting started */
+        .start-grid { display: grid; grid-template-columns: 1.25fr 0.75fr; gap: 24px; align-items: start; }
+        .steps { counter-reset: step; list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+        .steps li { counter-increment: step; position: relative; padding: 16px 18px 16px 60px; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); color: var(--muted); }
+        .steps li::before { content: counter(step); position: absolute; left: 18px; top: 15px; width: 28px; height: 28px; border-radius: 50%; background: rgba(255,106,26,0.14); color: var(--fox-2); font-weight: 700; display: flex; align-items: center; justify-content: center; font-size: 0.92rem; }
+        .steps li strong { color: var(--text); display: block; margin-bottom: 2px; }
+        .start-cta { margin-top: 20px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+        .start-cta .note { color: var(--muted); font-size: 0.9rem; }
+        .aside-notes { display: grid; gap: 12px; }
+        .aside-note { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 20px; color: var(--muted); font-size: 0.93rem; }
+        .aside-note h3 { margin: 0 0 6px; font-size: 1rem; color: var(--text); }
+        .aside-note p { margin: 0; }
+        @media (max-width: 960px) { .start-grid { grid-template-columns: 1fr; } }
+        @media (max-width: 480px) { .edition-switch button { padding: 9px 12px; font-size: 0.88rem; } }
 
         /* Footer */
         footer { border-top: 1px solid var(--line); padding: 32px 0 calc(32px + env(safe-area-inset-bottom)); color: var(--faint); font-size: 0.88rem; }
@@ -245,34 +269,51 @@
         }
     </style>
 </head>
-<body>
+<body data-edition="online">
 
 <header class="nav" id="nav">
     <div class="wrap">
         <a class="brand" href="/"><img src="/favicon.svg" alt=""> Foxy Timer</a>
         <nav class="nav-links">
-            <a href="#why">Why Foxy</a>
+            <a href="#why">What it does</a>
             <a href="#details">Details</a>
-            <a href="#contact">Contact</a>
+            <a href="#contact">Feedback</a>
             <a class="login" href="/dashboard">Log in</a>
-            <a class="btn btn-primary" href="/try">Try it now</a>
+            <a class="btn btn-primary" href="/try" data-for="online">Try it now</a>
+            <a class="btn btn-primary" href="#start" data-for="windows">Download</a>
         </nav>
     </div>
 </header>
 
 <main>
+    <!-- Which version: everything marked data-for="online" / "windows" below
+         shows only on its own tab. Remembered, and ?for=windows links to it. -->
+    <div class="edition-bar">
+        <div class="edition-switch" role="tablist" aria-label="Which Foxy Timer">
+            <button type="button" role="tab" data-edition="online" aria-selected="true" onclick="setEdition('online')">Foxy Timer Online</button>
+            <button type="button" role="tab" data-edition="windows" aria-selected="false" onclick="setEdition('windows')">Foxy Timer for Windows</button>
+        </div>
+    </div>
+
     <!-- Hero -->
     <div class="hero">
         <div class="wrap">
             <div>
-                <span class="eyebrow">Presentation timer</span>
+                <span class="eyebrow" data-for="online">Presentation timer · in your browser</span>
+                <span class="eyebrow" data-for="windows">Presentation timer · on your show laptop</span>
                 <h1>Put your timer<br>centre stage.<br><span class="soft">Who's on, time left,<br>who's next.</span></h1>
-                <p class="lede">Your countdown, the speaker's name and what's coming up, live and in sync on every display and all your devices. Run one room or every room at once, from your device's browser. Works with Companion.</p>
-                <div class="cta-row">
+                <p class="lede" data-for="online">The countdown, the speaker's name and what's coming up, in step on every display and device. Nothing to install: rooms, displays and phones all run in a browser. Works with Companion.</p>
+                <p class="lede" data-for="windows">The same timer, running on the laptop at FOH. Displays, phones and Companion connect over your own network, so the show doesn't depend on the venue's internet. Screens plugged into the laptop show the timer straight away.</p>
+                <div class="cta-row" data-for="online">
                     <a class="btn btn-primary" href="/try">Try it now, no sign-up</a>
-                    <a class="btn btn-ghost" href="#contact">Get a trial account</a>
+                    <a class="btn btn-ghost" href="#contact">Send feedback</a>
                 </div>
-                <p class="by">Built by Business Shows Limited, and used on our own live events.</p>
+                <div class="cta-row" data-for="windows">
+                    <a class="btn btn-primary win-dl" href="/download/windows" hidden>Download for Windows</a>
+                    <a class="btn btn-primary win-soon" href="#contact">Ask for the download</a>
+                    <a class="btn btn-ghost" href="#start">How it works</a>
+                </div>
+                <p class="by">There are plenty of good presentation timers. This is a small, independent one, used on real events and still growing. Try it and see if it suits your shows.</p>
             </div>
 
             <div class="stage" aria-hidden="true">
@@ -295,10 +336,10 @@
 
         <div class="strip">
             <div class="wrap">
-                <span class="label">Plays well with</span>
+                <span class="label">Works with</span>
                 <span><strong>Bitfocus Companion</strong></span>
                 <span><strong>CDEther / Hive</strong> LED clocks</span>
-                <span>Any vision mixer, via <strong>chromakey</strong></span>
+                <span><strong>Vision mixers</strong>: plain green, blue or black to key</span>
                 <span>Any screen with a <strong>browser</strong></span>
             </div>
         </div>
@@ -308,16 +349,32 @@
     <section id="why">
         <div class="wrap">
             <div class="section-head">
-                <h2>Built around what goes wrong on show day.</h2>
-                <p>Every screen runs from the same clock, one person is in control at a time, and nothing reaches the stage until you Apply it.</p>
+                <h2>What it does.</h2>
+                <p>Every screen follows the same clock, one person is in control at a time, and changes wait until you press Apply. If something you need is missing, say so.</p>
             </div>
 
             <div class="cards">
-                <div class="card feature">
+                <div class="card feature" data-for="online">
                     <div>
                         <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></div>
                         <h3>Every screen is just a link</h3>
-                        <p>Displays, confidence monitors and operators' phones open a link in a browser, with no software to install on each machine. Run it hosted, or from a Windows laptop at FOH on your own show network, where it needs no internet at all.</p>
+                        <p>Displays, confidence monitors and operators' phones open a link in a browser, with nothing to install on each machine. The links work from anywhere with an internet connection.</p>
+                    </div>
+                    <div class="diagram">
+                        <span class="hub">Foxy Timer Online</span><br>
+                        Internet &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--faint)">on every device</span><br>
+                        &nbsp;&#9500; Stage display&nbsp;&nbsp;&nbsp;<span class="ok tick">0:40</span><br>
+                        &nbsp;&#9500; Confidence mon.&nbsp;<span class="ok tick">0:40</span><br>
+                        &nbsp;&#9500; Companion&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="ok tick">0:40</span><br>
+                        &nbsp;&#9492; Remote operator&nbsp;&nbsp;<span class="ok tick">0:40</span>
+                    </div>
+                </div>
+
+                <div class="card feature" data-for="windows">
+                    <div>
+                        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></div>
+                        <h3>Every screen is just a link</h3>
+                        <p>Displays, confidence monitors and operators' phones open a link in a browser, with nothing to install on each machine. The laptop is the server on your own show network, so it needs no internet during the show.</p>
                     </div>
                     <div class="diagram">
                         <span class="hub">FOH laptop</span> &nbsp;<span class="ok">&#9679; show server</span><br>
@@ -332,7 +389,7 @@
                 <div class="card">
                     <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></div>
                     <h3>Works with Companion</h3>
-                    <p>A native Companion module with a start/pause toggle, nudges, set duration, running order Prev / Take / Next, and live time and colour on the keys. Works with Foxy Timer Online over the internet, or on your own network with Foxy Timer for Windows.</p>
+                    <p>A native Companion module with a start/pause toggle, nudges, set duration, running order Prev / Take / Next, and live time and colour on the keys. <span data-for="online">It connects over the internet, from wherever Companion runs.</span><span data-for="windows">It connects to the laptop over your show network.</span></p>
                 </div>
 
                 <div class="card">
@@ -356,13 +413,25 @@
                 <div class="card">
                     <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><path d="M17 14v6M14 17h6"/></svg></div>
                     <h3>Every breakout on one dashboard</h3>
-                    <p>Run all your rooms side by side. Each room gets its own secret control and display links, with no guessable room codes for the audience to find.</p>
+                    <p>Run all your rooms side by side. Each room has its own control and display links, made from long random codes, so nobody can reach your controls by guessing an address. A display link only ever shows the timer.</p>
                 </div>
 
-                <div class="card wide">
+                <div class="card">
                     <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
                     <h3>Talk to the stage, quietly</h3>
-                    <p>Send "Wrap up" or "Take questions" to the speaker, full screen or as a ticker, without touching the countdown. The display shows who's on and who's next from your running order, so the speaker always knows where they are.</p>
+                    <p>Send "Wrap up" or "Take questions" to the speaker, full screen or as a ticker, without touching the countdown. The display also shows who's on and who's next from your running order.</p>
+                </div>
+
+                <div class="card" data-for="online">
+                    <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18"/></svg></div>
+                    <h3>Operate from anywhere</h3>
+                    <p>For hybrid events and remote crews: the control link works on any internet connection, so the person running the clock doesn't have to be in the room.</p>
+                </div>
+
+                <div class="card" data-for="windows">
+                    <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="13" height="9" rx="1.5"/><rect x="17" y="7" width="5" height="9" rx="1"/><path d="M6 17h5M8.5 13v4"/></svg></div>
+                    <h3>Screens plugged into the laptop</h3>
+                    <p>Each monitor or projector connected to the laptop can show a room, full screen, chosen from the dashboard. Two extra screens can show two different rooms.</p>
                 </div>
             </div>
         </div>
@@ -382,7 +451,7 @@
                 <div><dt>Clock mode</dt><dd>Switch the display to a time-of-day clock for breaks and changeovers.</dd></div>
                 <div><dt>Warnings</dt><dd>Green, amber, red, then purple on overrun, flashing at zero. You set the thresholds and colours per room, and can use them when counting up too.</dd></div>
                 <div><dt>Messages</dt><dd>Send "Wrap up" or "Take questions" to the stage, full screen or as a ticker. Clear it with one tap.</dd></div>
-                <div><dt>Background</dt><dd>Black, chromakey green or blue, any colour, or your own image: fill the screen, fit it, or stretch it.</dd></div>
+                <div><dt>Background</dt><dd>Black, any colour, or your own image: fill the screen, fit it, or stretch it. Plain green, blue or black gives your vision mixer a clean picture to key.</dd></div>
                 <div><dt>Size &amp; fit</dt><dd>Set the size of the digits. The timer fits to width on any screen, portrait or landscape, and goes full screen with one click.</dd></div>
                 <div><dt>Running order</dt><dd>Load your speakers and session lengths, or paste in your run of show as text, then step through with Prev / Take / Next.</dd></div>
                 <div><dt>Quick presets</dt><dd>Eight one-tap durations. Ctrl+click to save your own.</dd></div>
@@ -392,38 +461,49 @@
         </div>
     </section>
 
-    <!-- Ways to run -->
-    <section id="run">
+    <!-- Getting started, per version -->
+    <section id="start">
         <div class="wrap">
             <div class="section-head">
-                <h2>Two ways to run it.</h2>
-                <p>The same timer either way. Choose per show.</p>
+                <h2>Getting started.</h2>
+                <p data-for="online">Foxy Timer Online runs in your browser. Try a demo room straight away, or ask for an account to use on a show.</p>
+                <p data-for="windows">Foxy Timer for Windows runs on the laptop at FOH. Everything else connects to it over your show network.</p>
             </div>
-            <div class="modes">
-                <div class="mode">
-                    <span class="tag">Foxy Timer Online</span>
-                    <h3>Open a browser and go</h3>
-                    <p>Nothing to install. Good for hybrid events, remote operators and quick setups.</p>
-                    <ul>
-                        <li>Log in, create rooms, send out the links</li>
-                        <li>Operate from anywhere with a connection</li>
-                        <li>Companion works too, over the internet</li>
-                    </ul>
+
+            <div class="start-grid" data-for="online">
+                <div>
+                    <ol class="steps">
+                        <li><strong>Try a demo room</strong>It opens straight away, lasts two hours and needs no sign-up.</li>
+                        <li><strong>Ask for an account</strong>Use the form below and say what you're running. Accounts can have several rooms and users.</li>
+                        <li><strong>Create your rooms and share the links</strong>Each operator and display gets its own link or QR code.</li>
+                    </ol>
+                    <div class="start-cta"><a class="btn btn-primary" href="/try">Open a demo room</a> <a class="btn btn-ghost" href="/dashboard">Log in</a></div>
                 </div>
-                <div class="mode">
-                    <span class="tag">Foxy Timer for Windows</span>
-                    <h3>Your laptop, your network</h3>
-                    <p>Runs on your show laptop. For shows where you run the network, or where the internet can't be trusted.</p>
-                    <ul>
-                        <li>Install once on your show laptop</li>
-                        <li>Displays, phones and Companion join over the venue network</li>
-                        <li>Needs no internet connection during the show</li>
-                    </ul>
+                <div class="aside-notes">
+                    <div class="aside-note"><h3>Good for</h3><p>Hybrid events, remote operators and quick setups.</p></div>
+                    <div class="aside-note"><h3>You'll need</h3><p>An internet connection on every device. If the venue's internet can't be trusted, the Windows version runs without it.</p></div>
+                </div>
+            </div>
+
+            <div class="start-grid" data-for="windows">
+                <div>
+                    <ol class="steps">
+                        <li><strong>Download and install</strong>On Windows 10 or 11. Windows may show a SmartScreen warning because the installer isn't code-signed yet: choose <b>More info</b>, then <b>Run anyway</b>.</li>
+                        <li><strong>Open it once with internet</strong>That starts your free <span class="trial-days">14</span>-day trial. After that it doesn't need the internet.</li>
+                        <li><strong>Plug in your screens</strong>Each monitor or projector on the laptop can show a room, chosen from the dashboard.</li>
+                        <li><strong>Join phones and displays</strong>They scan a QR code from the dashboard, on the same network as the laptop.</li>
+                    </ol>
                     <!-- Shown once an admin has set a download link (/api/windows/info). -->
-                    <div class="mode-download" id="winDownload" hidden>
-                        <a class="btn btn-primary" href="/download/windows">Download for Windows</a>
-                        <span class="note" id="winTrialNote"></span>
+                    <div class="start-cta">
+                        <a class="btn btn-primary win-dl" href="/download/windows" hidden>Download for Windows</a>
+                        <span class="note win-dl" hidden>Free for <span class="trial-days">14</span> days, no sign-up</span>
+                        <a class="btn btn-primary win-soon" href="#contact">Ask for the download</a>
+                        <span class="note win-soon">The download isn't public yet. Ask below and I'll send it.</span>
                     </div>
+                </div>
+                <div class="aside-notes">
+                    <div class="aside-note"><h3>About the trial</h3><p><span class="trial-days">14</span> days with everything. After that it keeps working with one room, and a small "Foxy Timer" note on displays.</p></div>
+                    <div class="aside-note"><h3>About venue Wi-Fi</h3><p>Guest Wi-Fi often stops devices reaching each other. The dashboard has a quick phone check; if it fails, use your own router or a phone hotspot.</p></div>
                 </div>
             </div>
         </div>
@@ -434,13 +514,14 @@
         <div class="wrap">
             <div>
                 <div class="section-head">
-                    <h2>Try it on your next show.</h2>
-                    <p>Tell us what you're running and we'll set you up with a free trial account. Want to talk it through first? Just say so.</p>
-                    <p style="margin-top:14px;">Just want a quick look? <a href="/try" style="color:var(--fox-2);font-weight:600;">Open a demo room now</a>. It lasts two hours and needs no sign-up.</p>
+                    <h2>Tell me what you think.</h2>
+                    <p>Foxy Timer is a small project that's still growing, and it gets better from other people's shows. If you try it, I'd like to hear what breaks, what's awkward, and what you'd want it to do. Wish-list ideas are as welcome as bug reports.</p>
+                    <p style="margin-top:14px;">Want an account to use it on a show? Ask here too.</p>
+                    <p style="margin-top:14px;" data-for="online">Just want a quick look? <a href="/try" style="color:var(--fox-2);font-weight:600;">Open a demo room now</a>. It lasts two hours and needs no sign-up.</p>
                 </div>
                 <ul class="points">
-                    <li><strong>Already a customer?</strong> <a href="/dashboard">Log in to your dashboard</a></li>
-                    <li><strong>Production company or crew?</strong> Ask about multi-room and multi-user accounts.</li>
+                    <li><strong>Already have an account?</strong> <a href="/dashboard">Log in to your dashboard</a></li>
+                    <li><strong>Several rooms or a team?</strong> Accounts can have several rooms and users.</li>
                 </ul>
             </div>
 
@@ -451,15 +532,16 @@
                 </div>
                 <label><span>Company <span style="color:var(--faint)">(optional)</span></span><input name="company" autocomplete="organization"></label>
                 <div>
-                    <label style="margin-bottom:8px">I'm interested in</label>
+                    <label style="margin-bottom:8px">This is about</label>
                     <div class="interest">
-                        <label><input type="checkbox" name="interest" value="trial" checked> A free trial</label>
+                        <label><input type="checkbox" name="interest" value="feedback" checked> A bug, a rough edge or an idea</label>
+                        <label><input type="checkbox" name="interest" value="trial"> An account for a show</label>
                         <label><input type="checkbox" name="interest" value="local"> Foxy Timer for Windows</label>
                         <label><input type="checkbox" name="interest" value="companion"> Companion</label>
                         <label><input type="checkbox" name="interest" value="call"> A quick call</label>
                     </div>
                 </div>
-                <label>What are you running?<textarea name="message" placeholder="e.g. 3-day conference, 6 breakout rooms, main stage with confidence monitors"></textarea></label>
+                <label>Your message<textarea name="message" placeholder="e.g. the ticker is hard to read from the back of the room, or: 3-day conference with 6 breakout rooms"></textarea></label>
                 <input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
                 <button class="btn btn-primary" type="submit" id="contactSubmit">Send</button>
                 <p class="form-status" id="formStatus" role="status"></p>
@@ -473,8 +555,8 @@
     <div class="wrap">
         <span>&copy; <span id="year">2026</span> Business Shows Limited &middot; Foxy Timer</span>
         <nav>
-            <a href="#why">Why Foxy</a>
-            <a href="#contact">Contact</a>
+            <a href="#why">What it does</a>
+            <a href="#contact">Feedback</a>
             <a href="/dashboard">Log in</a>
         </nav>
     </div>
@@ -483,11 +565,31 @@
 <script>
     document.getElementById('year').textContent = new Date().getFullYear();
 
-    // Windows download button, with the current trial length.
+    // Online / Windows switch: ?for=windows wins, then the visitor's last choice.
+    function setEdition(edition, remember = true) {
+        document.body.dataset.edition = edition;
+        document.querySelectorAll('.edition-switch button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.edition === edition)));
+        if (!remember) return;
+        try { localStorage.setItem('foxyEdition', edition); } catch { /* not kept */ }
+        const url = new URL(location.href);
+        url.searchParams.set('for', edition);
+        history.replaceState(null, '', url);
+    }
+    (function () {
+        const asked = new URLSearchParams(location.search).get('for');
+        let edition = asked === 'windows' || asked === 'online' ? asked : null;
+        if (!edition) { try { edition = localStorage.getItem('foxyEdition'); } catch { /* none */ } }
+        setEdition(edition === 'windows' ? 'windows' : 'online', false);
+    })();
+
+    // Windows download buttons, with the current trial length. Until an admin
+    // sets a download link, "Ask for the download" shows instead.
     fetch('/api/windows/info').then((r) => r.json()).then((info) => {
-        if (!info.ok || !info.downloadAvailable) return;
-        document.getElementById('winTrialNote').textContent = `Free for ${info.trialDays} ${info.trialDays === 1 ? 'day' : 'days'}, no sign-up`;
-        document.getElementById('winDownload').hidden = false;
+        if (!info.ok) return;
+        document.querySelectorAll('.trial-days').forEach((el) => { el.textContent = info.trialDays; });
+        if (!info.downloadAvailable) return;
+        document.querySelectorAll('.win-dl').forEach((el) => { el.hidden = false; });
+        document.querySelectorAll('.win-soon').forEach((el) => { el.hidden = true; });
     }).catch(() => {});
 
     // Sticky nav gets a hairline once the page scrolls.

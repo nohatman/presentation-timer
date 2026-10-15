@@ -14,9 +14,10 @@
 //                       must be on a domain verified in Resend
 
 const INTERESTS = {
-  trial: 'A free trial',
+  feedback: 'Feedback (bug, rough edge or idea)',
+  trial: 'An account for a show',
   local: 'Foxy Timer for Windows',
-  companion: 'Companion / Stream Deck',
+  companion: 'Companion',
   call: 'A quick call'
 };
 
