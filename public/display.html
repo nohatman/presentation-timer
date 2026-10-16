@@ -270,6 +270,28 @@
             word-break: break-word;
         }
         /* Message ticker - sits above timer display within the layout */
+        /* Strip layout: very wide screens such as 1920x480 bar displays (set by
+           updateStripLayout). Digits on the left sized by the screen's height,
+           the other lines in a column on the right. With nothing else showing
+           (digits only) it stays the normal centred stack, just bigger. */
+        body.strip .speaker-name { font-size: 10vh; }
+        body.strip .status, body.strip .info-line { font-size: 7vh; }
+        body.strip .up-next { font-size: 6vh; }
+        body.strip-side .container {
+            display: grid;
+            grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+            /* ticker, spacer, the four side lines, spacer: the spacers keep the
+               side lines together and centred against the digits */
+            grid-template-rows: auto 1fr auto auto auto auto 1fr;
+            column-gap: 4vw;
+        }
+        body.strip-side #messageTicker { grid-column: 1 / -1; grid-row: 1; margin-bottom: 3vh; }
+        body.strip-side #timerDisplay, body.strip-side #clockDisplay { grid-column: 1; grid-row: 2 / 8; align-self: center; margin: 0; text-align: center; }
+        body.strip-side .speaker-name, body.strip-side .status, body.strip-side .info-line, body.strip-side .up-next { grid-column: 2; text-align: left; margin: 0 0 1.5vh; }
+        body.strip-side .speaker-name { grid-row: 3; }
+        body.strip-side .status { grid-row: 4; }
+        body.strip-side .info-line { grid-row: 5; }
+        body.strip-side .up-next { grid-row: 6; margin-bottom: 0; }
         #messageTicker {
             display: none;
             width: 100%;
@@ -434,7 +456,10 @@
             outerEl.style.fontSize = baseFontSize;
             const container = document.querySelector('.container');
             const cs = getComputedStyle(container);
-            const availWidth = container.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+            // Strip layout with a side column: the digits get their own column's width.
+            const availWidth = document.body.classList.contains('strip-side')
+                ? outerEl.clientWidth
+                : container.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
             const naturalWidth = innerEl.getBoundingClientRect().width;
             if (naturalWidth > availWidth && naturalWidth > 0 && availWidth > 0) {
                 const targetPx = parseFloat(getComputedStyle(outerEl).fontSize);
@@ -530,8 +555,8 @@
             // is only the TARGET size - fitToWidth() (called from
             // updateTimerDisplay/updateClockDisplay) shrinks it further if the
             // actual digits would be wider than the screen.
-            const scale = state.displayScale || 1.0;
-            baseTimerFontSize = `min(${(scale * 34).toFixed(2)}vmin, 100dvh)`;
+            displayScale = state.displayScale || 1.0;
+            setBaseSizes();
             // Scale, or which lines are shown, may have changed even if the digits didn't.
             lastFitted.timer = null;
             lastFitted.clock = null;
@@ -571,7 +596,34 @@
                 speakerEl.style.display = 'none';
                 upNextEl.style.display  = 'none';
             }
+            updateStripLayout();
         });
+
+        // ---- Strip layout for very wide screens (bar displays, e.g. 1920x480) ----
+        // At 2.5:1 or wider the digits size from the screen's height. If any of
+        // speaker / status / Now-Finish / Up next is showing, they move to a
+        // column on the right; digits only stay centred.
+        const stripQuery = window.matchMedia('(min-aspect-ratio: 5/2)');
+        let displayScale = 1.5;
+        function setBaseSizes() {
+            const strip = document.body.classList.contains('strip');
+            baseTimerFontSize = strip
+                ? `min(${(displayScale * 56).toFixed(2)}vh, 100dvh)`
+                : `min(${(displayScale * 34).toFixed(2)}vmin, 100dvh)`;
+            baseClockFontSize = strip ? '60vh' : '18vmin';
+        }
+        function updateStripLayout() {
+            const body = document.body;
+            const strip = stripQuery.matches;
+            const side = strip && ['speakerName', 'status', 'infoLine', 'upNext']
+                .some((id) => document.getElementById(id).style.display !== 'none');
+            if (strip === body.classList.contains('strip') && side === body.classList.contains('strip-side')) return;
+            body.classList.toggle('strip', strip);
+            body.classList.toggle('strip-side', side);
+            setBaseSizes();
+            lastFitted.timer = lastFitted.clock = null;
+        }
+        stripQuery.addEventListener('change', updateStripLayout);
 
         // Digits font, glow and red pulse. A new font changes the digits' width, so
         // the fit-to-width cache is cleared once it has loaded (and straight away,
@@ -789,6 +841,7 @@
             el.textContent = text;
             el.style.display = text ? 'block' : 'none';
             lastFitted.timer = null; // line shown/hidden/changed: re-check the digits fit
+            updateStripLayout();
         }
 
         function updateClockDisplay() {
