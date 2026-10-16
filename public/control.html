@@ -287,6 +287,15 @@
         .preset-button:active {
             transform: translateY(0);
         }
+        /* Press-and-hold saves a preset on touch screens: no text selection or
+           callout menu getting in the way of the hold. */
+        .preset-button { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; touch-action: manipulation; }
+        .preset-button.saved { border-color: #4caf50; color: #81c784; }
+        .presets-save-hint .touch { display: none; }
+        @media (pointer: coarse) {
+            .presets-save-hint .mouse { display: none; }
+            .presets-save-hint .touch { display: inline; }
+        }
         .status {
             display: none;
         }
@@ -1378,9 +1387,6 @@
             .output-controls .count-style { flex: 1 1 0; min-width: 0; }
             .count-style-btn { min-height: 44px; padding: 8px 10px; }
             .count-up-extra,
-            .presets-save-hint {
-                display: none; /* no Ctrl+Click on a phone */
-            }
             .presets {
                 grid-template-columns: repeat(4, 1fr);
                 gap: 6px;
@@ -1607,7 +1613,7 @@
                     </div>
                 </div>
                 <div>
-                    <div class="setup-heading">Quick Presets <span class="presets-save-hint">· Ctrl+Click to save</span></div>
+                    <div class="setup-heading">Quick Presets <span class="presets-save-hint"><span class="mouse">· Ctrl+click to save</span><span class="touch">· Hold to save</span></span></div>
                     <div class="presets" id="presetsGrid"></div>
                 </div>
             </div>
@@ -3216,21 +3222,54 @@
                 const btn = document.createElement('button');
                 btn.className='preset-button';
                 btn.textContent = msToLabel(ms);
-                btn.title = 'Click to apply; Ctrl+Click to save current duration to this preset';
+                btn.title = 'Click to apply. Ctrl+click (or press and hold) to save the Duration time to this preset';
                 btn.addEventListener('click', (e)=>{
-                    if (e.ctrlKey || e.metaKey){
-                        // save current duration to this preset
-                        const newMs = getDurationMs();
-                        const updated = loadPresets();
-                        updated[idx]=newMs;
-                        savePresets(updated);
-                        renderPresets();
-                    } else {
-                        applyPreset(ms);
-                    }
+                    if (btn.dataset.held) { delete btn.dataset.held; return; } // a hold already saved
+                    if (e.ctrlKey || e.metaKey) savePresetAt(idx, btn);
+                    else applyPreset(ms);
                 });
+                addHoldToSave(btn, idx);
                 grid.appendChild(btn);
             });
+        }
+        // Save the Duration field's time into preset idx (Ctrl+click, or a hold).
+        function savePresetAt(idx, btn) {
+            const newMs = getDurationMs();
+            if (!(newMs > 0)) { flashPreset(btn, 'Set a time'); return; }
+            const updated = loadPresets();
+            updated[idx] = newMs;
+            savePresets(updated);
+            renderPresets();
+            const fresh = document.getElementById('presetsGrid').children[idx];
+            if (fresh) flashPreset(fresh, 'Saved');
+        }
+        function flashPreset(btn, text) {
+            const label = btn.textContent;
+            btn.textContent = text;
+            btn.classList.add('saved');
+            setTimeout(() => { btn.textContent = label; btn.classList.remove('saved'); }, 1200);
+        }
+        // Press and hold (touch or pen) for 600 ms saves; moving the finger
+        // (a scroll) or lifting early cancels, and the tap then applies as usual.
+        function addHoldToSave(btn, idx) {
+            let timer = null, startX = 0, startY = 0;
+            const cancel = () => { clearTimeout(timer); timer = null; };
+            btn.addEventListener('pointerdown', (e) => {
+                if (e.pointerType === 'mouse') return;
+                startX = e.clientX; startY = e.clientY;
+                cancel();
+                timer = setTimeout(() => {
+                    timer = null;
+                    btn.dataset.held = '1';
+                    if (navigator.vibrate) navigator.vibrate(30);
+                    savePresetAt(idx, btn);
+                }, 600);
+            });
+            btn.addEventListener('pointermove', (e) => {
+                if (timer && Math.hypot(e.clientX - startX, e.clientY - startY) > 10) cancel();
+            });
+            ['pointerup', 'pointercancel', 'pointerleave'].forEach((type) => btn.addEventListener(type, cancel));
+            btn.addEventListener('contextmenu', (e) => e.preventDefault()); // Android's long-press menu
         }
         function applyPreset(durationMs) {
             const minutes = Math.floor(durationMs / (60 * 1000));
