@@ -92,7 +92,7 @@
         .room-card.mini .timer-display { font-size: 2.6rem; }
         .mini-actions { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr) 40px; gap: 5px; padding: 8px 10px 10px; margin-top: auto; }
         .mini-actions .key, .row-actions .key { padding-left: 4px; padding-right: 4px; overflow: hidden; }
-        .mini-actions .key { font-size: 0.86rem; letter-spacing: 0.01em; }
+        .mini-actions .key { font-size: 0.92rem; letter-spacing: 0; }
         .room-card.mini .room-info { padding: 8px 10px 0; }
 
         /* List */
@@ -194,7 +194,7 @@
     <div class="toolbar">
         <div class="group">
             <button id="startAllBtn" onclick="startAllRooms()" class="key ready">Start all</button>
-            <button onclick="stopAllRooms()" class="key danger">Stop all</button>
+            <button onclick="stopAllRooms()" class="key hold">Pause all</button>
             <button id="startSelectedBtn" onclick="startSelectedRooms()" class="key ready" style="display:none;">Start selected (0)</button>
         </div>
         <div id="createRoomRow" class="create-room-row">
@@ -1447,9 +1447,9 @@
             if (isPlatformAdmin) {
                 const clientCount = new Set(targets.map(r => r.clientName)).size;
                 const ok = await uiConfirm({
-                    title: 'Stop ALL running rooms across ALL clients?',
+                    title: 'Pause ALL running rooms across ALL clients?',
                     body: `This will pause ${targets.length} room(s) across ${clientCount} client(s), platform-wide.`,
-                    okLabel: 'Stop all', danger: true,
+                    okLabel: 'Pause all', danger: true,
                 });
                 if (!ok) return;
             }

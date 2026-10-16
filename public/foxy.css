@@ -86,7 +86,7 @@ body.foxy {
 /* ---- Keys (every button) ---- */
 .key {
     display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-    font: inherit; font-weight: 600; font-size: 0.95rem; letter-spacing: 0.03em; text-transform: uppercase;
+    font: inherit; font-weight: 600; font-size: 1rem; letter-spacing: 0.01em;
     line-height: 1.1;
     color: var(--ink);
     background: var(--key);
@@ -104,7 +104,7 @@ body.foxy {
 .key:hover { background: var(--key-hi); }
 .key:active { box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4); }
 .key:disabled { color: var(--ink-3); cursor: not-allowed; background: var(--key); }
-.key.small { font-size: 0.85rem; padding: 6px 10px; min-height: 32px; }
+.key.small { font-size: 0.9rem; padding: 6px 10px; min-height: 32px; }
 .key.big { font-size: 1.1rem; padding: 13px 16px; min-height: 50px; }
 .key.plain { text-transform: none; letter-spacing: 0; }
 /* Lit keys show what is happening now, like a hardware panel. */
@@ -113,8 +113,9 @@ body.foxy {
 .key.lit-warn { background: var(--warn-key); color: #1a1000; }
 .key.lit-warn:hover { background: #d99317; }
 .key.lit { background: var(--lit); color: #121314; }
-/* Ready to go: green legend on an unlit key. */
+/* Ready to go: green legend on an unlit key. Hold: amber legend. */
 .key.ready { color: var(--go); }
+.key.hold { color: var(--warn); }
 /* Destructive: red legend, lights red on hover. */
 .key.danger { color: #ff8a80; }
 .key.danger:hover { background: var(--stop-key); color: #fff; }
