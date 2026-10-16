@@ -1441,7 +1441,7 @@
                      of connected control panels, with "Rename this device". See the
                      device-name block in the script. -->
                 <button type="button" id="deviceNameBtn" class="device-name-btn" onclick="showConnectedPanels()" title="This device and the other connected control panels" aria-haspopup="dialog"><span class="chip-icon" aria-hidden="true">👤 </span><span id="deviceNameLabel"></span><span id="controllerStatusCount" class="panel-count"></span></button>
-                <button id="controllerTakeOverBtn" style="display: none; padding: 5px 14px; font-size: 0.8rem; border-radius: 5px; border: none; background: #1976d2; color: #fff; cursor: pointer; white-space: nowrap;" onclick="openTakeOverModal()">Take Over</button>
+                <button id="controllerTakeOverBtn" style="display: none; padding: 5px 14px; font-size: 0.8rem; border-radius: 5px; border: none; background: #1976d2; color: #fff; cursor: pointer; white-space: nowrap;" onclick="openTakeOverModal()">Take over</button>
                 <!-- Physical Display Output (CDEther) compact status - P2.1. Hidden
                      until the room has ever reported bridge status this session (a
                      room with no bridge configured shows nothing extra). Never
@@ -1670,7 +1670,7 @@
                     </div>
                     <textarea id="rundownImportText" spellcheck="false"
                               style="width:100%;height:110px;background:#1a1a1a;border:1px solid #333;color:#e5e5e5;border-radius:4px;padding:8px;font-size:0.9rem;resize:vertical;"
-                              placeholder="Jane Smith, 20:00&#10;Panel Discussion, 45:00&#10;Andrew Fox, 30:00"></textarea>
+                              placeholder="Jane Smith, 20:00&#10;Panel Discussion, 45:00&#10;Priya Shah, 30:00"></textarea>
                     <div style="display:flex;gap:16px;margin:8px 0;flex-wrap:wrap;">
                         <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer;">
                             <input type="radio" name="rundownImportMode" value="append" checked onchange="updateImportModeUI()"> Add to the existing running order
@@ -1716,7 +1716,7 @@
             <summary data-view-ok style="cursor:pointer;font-size:1.1rem;color:#f5f5f5;font-weight:600;margin-bottom:12px;">Message to Display Screen</summary>
             <div style="display:flex;gap:8px;margin-bottom:10px;">
                 <input type="text" id="messageInput" maxlength="500"
-                       placeholder="Type a message for the output screen…"
+                       placeholder="Type a message for the display…"
                        style="flex:1;padding:12px;font-size:1rem;"
                        oninput="renderMessageControls()"
                        onkeydown="if(event.key==='Enter'&&this.value.trim())sendMessage(lastMessageMode);">
@@ -2371,7 +2371,7 @@
                 if (err) {
                     endAtError = 'The server did not acknowledge Apply - nothing was changed. If this keeps happening the timer server is probably running older software: restart it.';
                 } else if (!res || !res.ok) {
-                    endAtError = res && res.reason === 'observer' ? 'Another operator is in control - use Take Over, then Apply again. Nothing was changed.'
+                    endAtError = res && res.reason === 'observer' ? 'Another operator is in control - use Take over, then Apply again. Nothing was changed.'
                         : res && res.reason === 'invalid' ? 'Not a valid time - nothing was changed.'
                         : 'The server refused Apply - nothing was changed.';
                 }

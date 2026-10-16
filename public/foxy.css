@@ -67,6 +67,7 @@ body.foxy {
 
 /* ---- Brand ---- */
 .brand { display: inline-flex; align-items: center; gap: 9px; font-weight: 700; font-size: 1.15rem; letter-spacing: 0.01em; color: var(--ink); text-decoration: none; }
+.brand img { flex: none; display: block; }
 .brand-mark { width: 11px; height: 11px; background: var(--fox); border-radius: 2px; flex: none; }
 
 /* ---- Panels ---- */

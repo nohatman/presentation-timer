@@ -550,11 +550,11 @@
                         <label><input type="checkbox" name="interest" value="call"> A quick call</label>
                     </div>
                 </div>
-                <label>Your message<textarea name="message" placeholder="e.g. the ticker is hard to read from the back of the room, or: 3-day conference with 6 breakout rooms"></textarea></label>
+                <label>Your message<textarea name="message" placeholder="e.g. a sound at zero would help my speakers, or: 3-day conference with 6 breakout rooms"></textarea></label>
                 <input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
                 <button class="btn btn-primary" type="submit" id="contactSubmit">Send</button>
                 <p class="form-status" id="formStatus" role="status"></p>
-                <p class="form-note">We only use your details to reply to you.</p>
+                <p class="form-note">I only use your details to reply to you.</p>
             </form>
         </div>
     </section>
@@ -672,7 +672,7 @@
             });
             if (!res.ok) throw new Error('HTTP ' + res.status);
             form.reset();
-            setStatus('ok', "Thanks! We've got your message and will be in touch shortly.");
+            setStatus('ok', "Thanks, I've got your message and will reply soon.");
         } catch (err) {
             setStatus('err', "Sorry, that didn't send. Please try again in a moment.");
         } finally {
