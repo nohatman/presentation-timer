@@ -270,7 +270,8 @@
         /* Press-and-hold saves a preset on touch screens: no text selection or
            callout menu getting in the way of the hold. */
         .preset-button { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; touch-action: manipulation; }
-        .preset-button.saved { background: var(--go-key); color: #fff; font-family: var(--ui); font-size: 1rem; }
+        .preset-button.saved, .preset-button.refused { background: var(--go-key); color: #fff; font-family: var(--ui); font-size: 1rem; line-height: 1.1; }
+        .preset-button.refused { background: var(--warn-key); color: #1a1000; }
         .presets-save-hint .touch { display: none; }
         @media (pointer: coarse) {
             .presets-save-hint .mouse { display: none; }
@@ -1752,11 +1753,11 @@
                     <div class="setup-heading" style="margin-bottom:8px;">Warning thresholds</div>
                     <div class="threshold-row">
                         <div>
-                            <label for="amberThreshold" style="font-size: 0.95rem;">Amber</label>
+                            <label for="amberThreshold" style="font-size: 0.95rem;">First warning</label>
                             <input type="text" id="amberThreshold" class="time-text" placeholder="0:00" pattern="\d{1,3}:\d{2}" title="Format: MM:SS" maxlength="6" inputmode="numeric">
                         </div>
                         <div>
-                            <label for="redThreshold" style="font-size: 0.95rem;">Red</label>
+                            <label for="redThreshold" style="font-size: 0.95rem;">Final warning</label>
                             <input type="text" id="redThreshold" class="time-text" placeholder="0:00" pattern="\d{1,3}:\d{2}" title="Format: MM:SS" maxlength="6" inputmode="numeric">
                         </div>
                     </div>
@@ -1798,7 +1799,7 @@
                     <div style="font-size:0.88rem;color:var(--ink-2);margin-bottom:10px;">Keying green or blue? Glow can leave a halo round the digits, so Off keys cleanest.</div>
                     <label class="checkbox-label" style="margin-bottom:8px;">
                         <input type="checkbox" id="displayRedPulse" checked>
-                        <span>Pulse in the red</span>
+                        <span>Pulse during the final warning</span>
                     </label>
                     <label class="checkbox-label" style="margin-bottom:0;">
                         <input type="checkbox" id="displayZeroFlash" checked>
@@ -1806,7 +1807,7 @@
                     </label>
                 </div>
                 <div>
-                    <div class="setup-heading" style="margin-bottom:8px;">Timer text color</div>
+                    <div class="setup-heading" style="margin-bottom:8px;">Timer text colour</div>
                     <div style="display:flex;flex-direction:column;gap:8px;">
                         <label style="display:flex;align-items:center;gap:8px;font-weight:500;color:var(--ink);">
                             <input type="color" id="timerColorNormal" value="#4caf50" style="width:36px;height:30px;padding:0;border:1px solid #3a3c40;border-radius:var(--radius);background:var(--well);cursor:pointer;">
@@ -1816,12 +1817,12 @@
                         <label style="display:flex;align-items:center;gap:8px;font-weight:500;color:var(--ink);">
                             <input type="color" id="timerColorAmber" value="#ffb300" style="width:36px;height:30px;padding:0;border:1px solid #3a3c40;border-radius:var(--radius);background:var(--well);cursor:pointer;">
                             <input type="text" class="hex-input" id="timerColorAmberHex" data-color-for="timerColorAmber" maxlength="7" spellcheck="false" autocomplete="off" aria-label="Hex colour">
-                            Amber
+                            First warning
                         </label>
                         <label style="display:flex;align-items:center;gap:8px;font-weight:500;color:var(--ink);">
                             <input type="color" id="timerColorRed" value="#f44336" style="width:36px;height:30px;padding:0;border:1px solid #3a3c40;border-radius:var(--radius);background:var(--well);cursor:pointer;">
                             <input type="text" class="hex-input" id="timerColorRedHex" data-color-for="timerColorRed" maxlength="7" spellcheck="false" autocomplete="off" aria-label="Hex colour">
-                            Red
+                            Final warning
                         </label>
                         <label style="display:flex;align-items:center;gap:8px;font-weight:500;color:var(--ink);">
                             <input type="color" id="timerColorOver" value="#9c27b0" style="width:36px;height:30px;padding:0;border:1px solid #3a3c40;border-radius:var(--radius);background:var(--well);cursor:pointer;">
@@ -3223,8 +3224,11 @@
         }
         // Save the Duration field's time into preset idx (Ctrl+click, or a hold).
         function savePresetAt(idx, btn) {
+            // A preset is a length of time; with End at showing, the Duration
+            // box (whose value would be saved) isn't visible, so save nothing.
+            if (!document.getElementById('endAtEditor').hidden) { flashPreset(btn, 'Use Duration', 'refused'); return; }
             const newMs = getDurationMs();
-            if (!(newMs > 0)) { flashPreset(btn, 'Set a time'); return; }
+            if (!(newMs > 0)) { flashPreset(btn, 'Set a time', 'refused'); return; }
             const updated = loadPresets();
             updated[idx] = newMs;
             savePresets(updated);
@@ -3232,11 +3236,11 @@
             const fresh = document.getElementById('presetsGrid').children[idx];
             if (fresh) flashPreset(fresh, 'Saved');
         }
-        function flashPreset(btn, text) {
+        function flashPreset(btn, text, kind = 'saved') {
             const label = btn.textContent;
             btn.textContent = text;
-            btn.classList.add('saved');
-            setTimeout(() => { btn.textContent = label; btn.classList.remove('saved'); }, 1200);
+            btn.classList.add(kind);
+            setTimeout(() => { btn.textContent = label; btn.classList.remove(kind); }, 1200);
         }
         // Press and hold (touch or pen) for 600 ms saves; moving the finger
         // (a scroll) or lifting early cancels, and the tap then applies as usual.
@@ -4059,11 +4063,27 @@
             const current = countStyleOptions.find((o) => o.dataset.value === value) || countStyleOptions[0];
             document.getElementById('countStyleText').textContent = current.querySelector('b').textContent;
         }
+        // The menu floats (position: fixed) so the timer-controls box, which
+        // clips its contents on phones, can't cut off the last option. It
+        // opens upwards when there isn't room below the button.
+        function placeCountStyleMenu() {
+            const b = countStyleBtn.getBoundingClientRect();
+            const m = countStyleMenu;
+            m.style.position = 'fixed';
+            m.style.left = 'auto';
+            m.style.right = Math.max(8, window.innerWidth - b.right) + 'px';
+            const h = m.offsetHeight;
+            const below = window.innerHeight - b.bottom - 6;
+            m.style.top = (below >= h || below >= b.top ? b.bottom + 6 : Math.max(8, b.top - 6 - h)) + 'px';
+        }
         function openCountStyleMenu() {
             countStyleMenu.hidden = false;
+            placeCountStyleMenu();
             countStyleBtn.setAttribute('aria-expanded', 'true');
-            (countStyleOptions.find((o) => o.getAttribute('aria-selected') === 'true') || countStyleOptions[0]).focus();
+            (countStyleOptions.find((o) => o.getAttribute('aria-selected') === 'true') || countStyleOptions[0]).focus({ preventScroll: true });
         }
+        window.addEventListener('scroll', () => closeCountStyleMenu(false), { passive: true });
+        window.addEventListener('resize', () => closeCountStyleMenu(false));
         function closeCountStyleMenu(refocus) {
             if (countStyleMenu.hidden) return;
             countStyleMenu.hidden = true;
