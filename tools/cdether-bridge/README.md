@@ -118,6 +118,7 @@ Environment variables (or matching `--flags`). Copy `.env.example` to `.env`.
 |---|---|
 | `SERVER_URL` | **required** — Presentation Timer origin |
 | `DISPLAY_TOKEN` | **required** — the room's **DISPLAY** token (not control) |
+| `ZERO_FLASH` | `true` = flash 00:00 at zero (red / OFF each second) when the room has **Flash at zero** ticked. Off by default until rig-checked. Flag: `--zero-flash` |
 | `CDETHER_INTERFACE` | adapter **name** — derives the directed broadcast **and** binds the UDP socket to that NIC. List names: `node bridge.js --list-adapters` |
 | `BROADCAST_ADDRESS` | alternative to `CDETHER_INTERFACE`: an explicit directed-broadcast address. Binds to a matching adapter if one exists, else unbound (warned). |
 | `CDETHER_PORT` | default `36700` |

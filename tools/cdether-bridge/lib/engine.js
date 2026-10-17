@@ -37,6 +37,7 @@ class BridgeEngine extends EventEmitter {
     this.deriveFrame = deriveFrame;
     this.frameIntervalMs = options.frameIntervalMs || 1000;
     this.idleBehaviour = options.idleBehaviour || 'duration';
+    this.zeroFlash = !!options.zeroFlash;
     this.serverRetryMs = options.serverRetryMs || SERVER_INITIATED_RETRY_MS;
 
     // P2.1: bridge -> Presentation Timer status heartbeat, riding the same
@@ -222,7 +223,7 @@ class BridgeEngine extends EventEmitter {
       this.pt.lastState,
       Date.now(),
       this.pt.clockOffsetMs,
-      { idleBehaviour: this.idleBehaviour },
+      { idleBehaviour: this.idleBehaviour, zeroFlash: this.zeroFlash },
     );
     const buf = encodeFrame(frame);
 

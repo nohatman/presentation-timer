@@ -88,6 +88,9 @@ function loadConfig(env = process.env, argv = []) {
   const frameIntervalMs = Number(pick('FRAME_INTERVAL_MS', 'interval') ?? 1000);
   const idleBehaviour = String(pick('IDLE_BEHAVIOUR', 'idle') ?? 'duration').toLowerCase();
   const dryRun = truthy(pick('DRY_RUN', 'dry-run'));
+  // Flash 00:00 (alternating with OFF) when the room's "Flash at zero" is on.
+  // Opt-in until the alternation has been checked on the rig.
+  const zeroFlash = truthy(pick('ZERO_FLASH', 'zero-flash'));
   const logLevel = String(pick('LOG_LEVEL', 'log-level') ?? 'info').toLowerCase();
 
   const missing = [];
@@ -125,6 +128,7 @@ function loadConfig(env = process.env, argv = []) {
     cdetherPort,
     frameIntervalMs,
     idleBehaviour,
+    zeroFlash,
     dryRun,
     logLevel,
     // destination (null in dry-run):

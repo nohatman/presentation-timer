@@ -52,6 +52,9 @@ display.
 | 21 | Soak: leave a countdown + idle room running ~30–60 min | steady 1 Hz, no drift vs the room's own display screen, no crash |
 | 22 | Start a duration > 99:59 (e.g. 150:00) from control | display shows **H:MM** (e.g. `2:30`), not held at `99:59` - builds on the same field-reuse trick clock mode already proved (row 9), but this specific "count down by the minute in hours mode" behaviour hasn't itself been on the rig yet |
 | 23 | Let it count down through the 99:59 boundary | display switches from `H:MM` back to normal `MM:SS` the instant it drops under 100 minutes, no glitch/flicker at the transition |
+| 24 | Room set to **Down, then up**; run a short countdown past zero | at zero the display carries on **counting up** `00:01`, `00:02`… in **red** (no minus sign: still unproven) |
+| 25 | Room set to **Count up**; start | display counts up from `00:00` in green (amber/red only if "Also use in count up mode" is ticked) |
+| 26 | Bridge run with `--zero-flash`, room on **Count down** with **Flash at zero** ticked; let it reach zero | `00:00` red alternates with OFF once a second, cleanly, and the display comes back at full brightness each time; untick Flash at zero on the Control page -> steady `00:00` red |
 
 ## Report back
 

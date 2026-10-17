@@ -21,6 +21,8 @@ const MAX_MINUTES = 99;
 function computeRemaining(s, nowCorrectedMs) {
   let remainingMs = s.durationMs || 0;
   let finished = false;
+  let elapsedMs = 0;
+  let overMs = 0;
 
   if (s.startTime) {
     const speed = s.speed || 1.0;
@@ -28,16 +30,17 @@ function computeRemaining(s, nowCorrectedMs) {
     const pausedOffset = s.pauseTime
       ? (s.pauseTime - s.startTime) - accumulatedPauseMs
       : (nowCorrectedMs - s.startTime) - accumulatedPauseMs;
-    const elapsedMs = Math.max(0, pausedOffset) * speed;
+    elapsedMs = Math.max(0, pausedOffset) * speed;
     remainingMs = s.durationMs - elapsedMs;
 
     if (remainingMs <= 0) {
       finished = true;
-      remainingMs = 0; // POC: overtime/count-up is unverified on CDEther -> hold 00:00
+      overMs = -remainingMs; // how far past zero (the overrun)
+      remainingMs = 0;
     }
   }
 
-  return { remainingMs, finished };
+  return { remainingMs, finished, elapsedMs, overMs };
 }
 
 /**
@@ -67,7 +70,10 @@ function clampToDisplay(ms) {
  * @param {object} s              latest authoritative timerState
  * @param {number} nowMs          Date.now()
  * @param {number} clockOffsetMs  serverNow - Date.now(), captured when the state arrived
- * @param {{idleBehaviour?: 'duration'|'off'}} opts
+ * @param {{idleBehaviour?: 'duration'|'off', zeroFlash?: boolean}} opts
+ *   zeroFlash: flash 00:00 by alternating with the OFF frame, when the room's
+ *   own "Flash at zero" is on. Off by default: OFF itself is rig-proven, but a
+ *   once-a-second red/OFF alternation has not been tried on the hardware.
  * @returns {{minutes:number, seconds:number, colour:'green'|'red'|'amber'|'off',
  *            finished?:boolean, remainingMs?:number, hoursMode?:boolean, reason:string}}
  */
@@ -99,14 +105,42 @@ function deriveFrame(s, nowMs, clockOffsetMs = 0, opts = {}) {
   if (idle && idleBehaviour === 'off') return off('idle-off');
 
   // --- normal timer output ---
-  const { remainingMs, finished } = computeRemaining(s, nowCorrected);
+  const { remainingMs, finished, elapsedMs, overMs } = computeRemaining(s, nowCorrected);
 
   const amber = Number.isFinite(s.amberThresholdMs) ? s.amberThresholdMs : 0;
   const red = Number.isFinite(s.redThresholdMs) ? s.redThresholdMs : 0;
+  const reason = idle ? 'idle-duration' : s.mode;
+
+  // Count up (stopwatch): elapsed time from 00:00, mirroring display.html.
+  // Green, unless the room uses its warning colours when counting up too
+  // (measured against the set length; red once past it). Only ordinary MM:SS
+  // values and the three proven colours - nothing new on the wire.
+  if (s.countDirection === 'up') {
+    let colour = 'green';
+    if (s.upWarnings && s.durationMs > 0) {
+      const left = s.durationMs - elapsedMs;
+      colour = left <= red ? 'red' : left <= amber ? 'amber' : 'green';
+    }
+    const shown = clampToDisplay(elapsedMs);
+    return { ...shown, colour, finished: false, remainingMs, reason: idle ? 'idle-duration' : 'count-up' };
+  }
+
+  // "Down, then up": past zero, count the overrun up from 00:00 in red, like
+  // the display (which also shows it in its overrun colour). No minus sign:
+  // that encoding is still unproven on the hardware (P1.1).
+  if (finished && s.countUp) {
+    const shown = clampToDisplay(overMs);
+    return { ...shown, colour: 'red', finished: true, remainingMs: 0, overMs, reason: 'overrun' };
+  }
+
+  // Stopped at zero, with flashing on: every other second is the OFF frame.
+  if (finished && opts.zeroFlash && s.displayZeroFlash !== false && Math.floor(overMs / 1000) % 2 === 1) {
+    return { ...off('zero-flash'), finished: true, remainingMs: 0 };
+  }
 
   let colour;
   if (finished) {
-    colour = 'red'; // finished countdown (and unverified overtime) -> 00:00 red
+    colour = 'red'; // finished countdown -> 00:00 red
   } else if (remainingMs <= red) {
     colour = 'red';
   } else if (remainingMs <= amber) {
@@ -123,7 +157,7 @@ function deriveFrame(s, nowMs, clockOffsetMs = 0, opts = {}) {
     finished,
     remainingMs,
     hoursMode,
-    reason: idle ? 'idle-duration' : s.mode,
+    reason,
   };
 }
 

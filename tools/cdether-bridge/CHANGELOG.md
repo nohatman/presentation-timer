@@ -5,6 +5,17 @@ Hive protocol implementation.
 
 ## Unreleased
 
+### Overrun count-up, Count up mode, optional flash at zero (2026-10-17)
+- **Down, then up:** past zero the display counts the overrun up from `00:00`
+  in red (was: held `00:00` red). Ordinary MM:SS values only; no minus sign.
+- **Count up (stopwatch):** the display now counts elapsed time up from
+  `00:00` (it used to show a countdown), green, or amber/red against the set
+  length when the room uses warnings when counting up.
+- **Flash at zero (opt-in):** `ZERO_FLASH=true` / `--zero-flash` alternates
+  `00:00` red with the proven OFF frame each second, when the room has
+  "Flash at zero" ticked. Off by default until rig rows 24-26 pass.
+- Verified end-to-end on loopback against the real server (frames sniffed).
+
 ### P2.1 — bridge status heartbeat + Control page indicator — IMPLEMENTED, COMMITTED (2026-09-10)
 - Design: `P2-PLAN.md` — architecture, heartbeat wire format, and security
   analysis for the bridge-to-server status channel.

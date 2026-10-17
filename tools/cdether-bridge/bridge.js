@@ -63,6 +63,7 @@ async function main() {
   line('info', `  interval     ${cfg.frameIntervalMs} ms`);
   line('info', `  bridge id    ${bridgeId}  (v${BRIDGE_VERSION}) - reported to the Presentation Timer for the Control page's compact status indicator`);
   line('info', `  idle         ${cfg.idleBehaviour}`);
+  line('info', `  zero flash   ${cfg.zeroFlash ? 'on (when the room has Flash at zero ticked)' : 'off (--zero-flash to try it)'}`);
   line('warn', 'CDEther protocol here is EMPIRICAL (rig-derived), not an official Hive spec.');
 
   // --- UDP transport ---
@@ -100,6 +101,7 @@ async function main() {
     options: {
       frameIntervalMs: cfg.frameIntervalMs,
       idleBehaviour: cfg.idleBehaviour,
+      zeroFlash: cfg.zeroFlash,
       bridgeId,
       bridgeVersion: BRIDGE_VERSION,
       getInterfaceName: () => cfg.interfaceName || null,

@@ -62,9 +62,43 @@ test('finished countdown -> 00:00 red', () => {
   assert.deepEqual(mss(deriveFrame(s, NOW, 0, {})), [0, 0, 'red']);
 });
 
-test('unverified overtime (countUp) still -> 00:00 red in POC', () => {
+test('Down, then up: past zero the overrun counts up from 00:00 in red', () => {
   const s = state({ mode: 'running', countUp: true, durationMs: 60000, startTime: NOW - 120000 });
-  assert.deepEqual(mss(deriveFrame(s, NOW, 0, {})), [0, 0, 'red']);
+  const f = deriveFrame(s, NOW, 0, {});
+  assert.deepEqual(mss(f), [1, 0, 'red']);
+  assert.equal(f.reason, 'overrun');
+  // 7.5 s over -> 00:07 (floored, like the display)
+  assert.deepEqual(mss(deriveFrame(state({ mode: 'running', countUp: true, durationMs: 60000, startTime: NOW - 67500 }), NOW, 0, {})), [0, 7, 'red']);
+  // paused in the overrun holds the value
+  const p = state({ mode: 'paused', countUp: true, durationMs: 60000, startTime: NOW - 200000, pauseTime: NOW - 100000 });
+  assert.deepEqual(mss(deriveFrame(p, NOW, 0, {})), mss(deriveFrame(p, NOW + 600000, 0, {})));
+  assert.deepEqual(mss(deriveFrame(p, NOW, 0, {})), [0, 40, 'red']);
+  // over 99:59 of overrun -> H:MM, same as the countdown
+  const long = deriveFrame(state({ mode: 'running', countUp: true, durationMs: 60000, startTime: NOW - 60000 - (2 * 3600 + 5 * 60) * 1000 }), NOW, 0, {});
+  assert.deepEqual([long.minutes, long.seconds, long.hoursMode], [2, 5, true]);
+});
+
+test('Count up (stopwatch): elapsed from 00:00, green; warning colours only when the room asks', () => {
+  const s = state({ mode: 'running', countDirection: 'up', durationMs: 10 * 60000, startTime: NOW - (9 * 60000 + 5000) });
+  assert.deepEqual(mss(deriveFrame(s, NOW, 0, {})), [9, 5, 'green']);
+  const w = { ...s, upWarnings: true };
+  assert.deepEqual(mss(deriveFrame(w, NOW, 0, {})), [9, 5, 'red'], '55 s before the length -> red threshold (2:00)');
+  assert.deepEqual(mss(deriveFrame({ ...w, startTime: NOW - 6 * 60000 }, NOW, 0, {})), [6, 0, 'amber']);
+  assert.deepEqual(mss(deriveFrame({ ...w, startTime: NOW - 12 * 60000 }, NOW, 0, {})), [12, 0, 'red'], 'past the length');
+  assert.deepEqual(mss(deriveFrame(state({ countDirection: 'up' }), NOW, 0, {})), [0, 0, 'green'], 'stopped stopwatch reads 00:00');
+});
+
+test('Flash at zero: off unless the bridge enables it; then every other second is OFF', () => {
+  const at = (overS) => state({ mode: 'running', durationMs: 60000, startTime: NOW - 60000 - overS * 1000 });
+  assert.deepEqual(mss(deriveFrame(at(1), NOW, 0, {})), [0, 0, 'red'], 'default: plain 00:00 red');
+  assert.deepEqual(mss(deriveFrame(at(0), NOW, 0, { zeroFlash: true })), [0, 0, 'red']);
+  assert.equal(deriveFrame(at(1), NOW, 0, { zeroFlash: true }).colour, 'off');
+  assert.deepEqual(mss(deriveFrame(at(2), NOW, 0, { zeroFlash: true })), [0, 0, 'red']);
+  assert.equal(deriveFrame(at(3), NOW, 0, { zeroFlash: true }).colour, 'off');
+  // the room's own setting wins
+  assert.deepEqual(mss(deriveFrame({ ...at(1), displayZeroFlash: false }, NOW, 0, { zeroFlash: true })), [0, 0, 'red']);
+  // Down, then up never flashes: it counts
+  assert.equal(deriveFrame({ ...at(1), countUp: true }, NOW, 0, { zeroFlash: true }).colour, 'red');
 });
 
 test('paused freezes the value regardless of wall-clock', () => {
