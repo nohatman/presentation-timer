@@ -166,3 +166,44 @@ test('Add, simulated end to end: nothing active/selected still appends at the en
   next.splice(insertAt, 0, { name: '', durationMs: RT.DEFAULT_MS });
   assert.deepEqual(next.map((i) => i.name), ['A', 'B', 'C', '']);
 });
+
+test('spreadsheet paste: tab-separated cells (Excel / Google Sheets), time in the last time-like cell', () => {
+  const r = RT.parse('Jane Smith\t20:00\nPanel\tDiscussion\t45\nKeynote\t0:30:00\tStage A\nNo time\n');
+  assert.deepEqual(r.errors, []);
+  assert.deepEqual(r.items, [
+    item('Jane Smith', 20), item('Panel - Discussion', 45), item('Keynote', 30),
+    { name: 'No time', durationMs: RT.DEFAULT_MS },
+  ]);
+});
+
+test('H:MM:SS times are accepted; bad minutes or seconds are not', () => {
+  assert.equal(RT.parseDuration('1:20:00'), 80 * MIN);
+  assert.equal(RT.parseDuration('0:05:30'), (5 * 60 + 30) * 1000);
+  assert.equal(RT.parseDuration('1:75:00'), null);
+  assert.equal(RT.parseDuration('1:20:75'), null);
+});
+
+test('a heading row is skipped only when it reads like one, and only as the first row', () => {
+  const tabbed = RT.parse('Speaker\tDuration\nJane\t20:00');
+  assert.deepEqual(tabbed.items, [item('Jane', 20)]);
+  assert.equal(tabbed.warnings.length, 1);
+  const comma = RT.parse('Name, Time\nJane, 20');
+  assert.deepEqual(comma.items, [item('Jane', 20)]);
+  // a real first item with a bad time is still an error, never silently dropped
+  assert.equal(RT.parse('Opening, TBC\nJane, 20').errors.length, 1);
+  // and a heading-like row later on is an error too
+  assert.equal(RT.parse('Jane, 20\nName, Time').errors.length, 1);
+});
+
+test('CSV files: quoted names with commas, doubled quotes, CRLF, BOM, semicolons', () => {
+  const rows = RT.csvRows('\uFEFFName,Duration\r\n"Smith, John",20:00\r\n"Say ""hi""",5\r\n');
+  assert.deepEqual(rows, [['Name', 'Duration'], ['Smith, John', '20:00'], ['Say "hi"', '5']]);
+  const r = RT.parseRows(rows);
+  assert.deepEqual(r.items, [item('Smith, John', 20), item('Say "hi"', 5)]);
+  assert.deepEqual(RT.csvRows('Name;Duration\nJane;20:00'), [['Name', 'Duration'], ['Jane', '20:00']]);
+});
+
+test('toCsv round-trips through csvRows + parseRows (heading row included and skipped)', () => {
+  const items = [item('Smith, John', 20), item('Q&A "live"', 7, 30), item('Long', 125, 5)];
+  assert.deepEqual(RT.parseRows(RT.csvRows(RT.toCsv(items))).items, items);
+});
