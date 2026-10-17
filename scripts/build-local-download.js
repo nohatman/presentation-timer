@@ -19,6 +19,7 @@
 //                    prebuilt binary matches it
 //   app/             server, pages, launcher, production node_modules
 //   support/         text-menu .bat, for troubleshooting only
+//   Companion module/ the Foxy Timer Companion module, ready to import
 // Rooms are kept per Windows user in %LOCALAPPDATA%\Foxy Timer\data.
 //
 // Needs network access at build time (npm installs the production
@@ -152,12 +153,12 @@ fs.writeFileSync(path.join(OUT, 'README.txt'), [
   '  If the dashboard says Windows Firewall is blocking other devices, press',
   '  "Allow through firewall" and answer Yes. (The installer does this for you.)',
   '',
-  'STREAM DECK (COMPANION)',
-  '  On the dashboard, press "Companion / Stream Deck" and copy the three',
-  '  settings it shows into the Foxy Presentation Timer connection in',
-  '  Companion. The module itself: Help > Companion / Stream Deck >',
-  '  "Download the Foxy Timer Companion module", then in Companion:',
-  '  Modules > Import module package.',
+  'COMPANION',
+  '  The Companion module is included: the "Companion module" folder next to',
+  '  this file (Start menu > Foxy Timer Companion module). In Companion:',
+  '  Modules > Import module package, and choose the .tgz file there.',
+  '  Then add a "Foxy Presentation Timer" connection; on the dashboard, press',
+  '  Companion and copy the three settings it shows into that connection.',
   '',
   'STOP',
   '  Close the Foxy Timer window and choose "Stop Foxy Timer and close", or',
@@ -170,6 +171,29 @@ fs.writeFileSync(path.join(OUT, 'README.txt'), [
   '',
   'Foxy Timer is made by Business Shows Limited - https://foxytimer.com',
   `Build ${commit}`,
+  ''
+].join('\r\n'));
+
+// The Companion module, ready for Companion's "Import module package" (also
+// served by the app itself at /download/companion-module).
+const moduleDir = path.join(OUT, 'Companion module');
+fs.mkdirSync(moduleDir, { recursive: true });
+const modules = fs.readdirSync(path.join(ROOT, 'public', 'downloads')).filter((f) => /\.tgz$/.test(f));
+for (const f of modules) fs.copyFileSync(path.join(ROOT, 'public', 'downloads', f), path.join(moduleDir, f));
+fs.writeFileSync(path.join(moduleDir, 'How to install.txt'), [
+  'FOXY TIMER COMPANION MODULE',
+  '',
+  modules.join(', ') || '(no module file in this build)',
+  '',
+  '1. Open Companion (on this laptop or another computer on the same network).',
+  "2. Modules > Import module package, and choose the .tgz file in this folder.",
+  "   Don't unzip it.",
+  '3. Connections > add a "Foxy Presentation Timer" connection.',
+  '4. On the Foxy Timer dashboard, press Companion and copy the Server URL,',
+  "   Client API key and Room IDs into the connection's settings.",
+  '',
+  'Updating: import the new file the same way. If the connection still shows the',
+  "old version, choose the new one in the connection's settings.",
   ''
 ].join('\r\n'));
 
@@ -237,6 +261,7 @@ if (!iscc) {
     '',
     '[Icons]',
     'Name: "{autoprograms}\\Foxy Timer"; Filename: "{app}\\Foxy Timer.exe"',
+    'Name: "{autoprograms}\\Foxy Timer Companion module"; Filename: "{app}\\Companion module"',
     'Name: "{autodesktop}\\Foxy Timer"; Filename: "{app}\\Foxy Timer.exe"; Tasks: desktopicon',
     '',
     '[Run]',

@@ -1,6 +1,6 @@
 {
   "name": "presentation-timer",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Foxy's Presentation Timer - Web-based multi-room timer with control and display screens",
   "main": "server.js",
   "bin": "server.js",
