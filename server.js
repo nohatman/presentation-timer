@@ -332,6 +332,7 @@ function attachTimerState(req, res, next) {
 // (room name, "type" param) is ever trusted.
 io.on('connection', (socket) => {
   noteRemotePeer(socket.handshake.address);
+  if (socket.handshake.auth && socket.handshake.auth.screenToken) return handleScreenSocket(socket);
   const token = (socket.handshake.auth && socket.handshake.auth.token) || socket.handshake.query.token;
   const access = auth.resolveSocketAccess(token);
 
@@ -1025,7 +1026,9 @@ app.delete('/api/rooms/:roomId', auth.requireDashboardAuth, auth.resolveOwnedRoo
 
   timerRooms.delete(roomId);
   forgetRoomController(roomId);
+  const screensShowingRoom = db.listScreensForRoom(room.id);
   db.deleteRoom(room.id);
+  screensShowingRoom.forEach((sc) => notifyScreen(sc.id));
 
 
   const socketsInRoom = io.sockets.adapter.rooms.get(roomId);
@@ -1056,10 +1059,166 @@ app.post('/api/rooms/:roomId/regenerate-tokens', auth.requireDashboardAuth, auth
     }
   }
 
+  db.listScreensForRoom(updated.id).forEach((sc) => notifyScreen(sc.id)); // they follow the new display link
+
   const baseUrl = shareBaseUrl(req.protocol, req.get('host'));
   const links = buildRoomLinks(baseUrl, updated);
   res.json({ ok: true, roomId: req.roomId, ...links });
 });
+
+// ============================================
+// Paired screens
+//
+// A browser opens /screen (one fixed address, e.g. a Raspberry Pi kiosk), gets
+// a random token it keeps, and shows a pairing code. Someone enters the code on
+// their dashboard, names the screen and picks a room; from then on the screen
+// shows that room's display and follows any change made on the dashboard,
+// including New links, without anyone touching it.
+// ============================================
+
+const screenSockets = new Map(); // screen id -> Set of socket ids
+const screenNewLimiter = demoRooms.createHourlyLimiter(30);  // pending screens per IP per hour
+const screenPairLimiter = demoRooms.createHourlyLimiter(60); // pairing attempts per client per hour
+
+function screenIsOnline(id) {
+  const set = screenSockets.get(Number(id));
+  return !!set && set.size > 0;
+}
+
+// What a screen should show now.
+function screenPayload(screen) {
+  if (!screen) return { state: 'unknown' };
+  if (!screen.client_id) return { state: 'pending', code: screen.pair_code };
+  const client = db.getClientById(screen.client_id);
+  const room = screen.room_id ? db.getRoomById(screen.room_id) : null;
+  const base = { name: screen.name || 'Screen' };
+  if (!client || client.status !== 'active') return { ...base, state: 'idle', note: 'This account is paused.' };
+  if (!room) return { ...base, state: 'idle' };
+  if (!licenceAllowsRoom(String(room.id))) return { ...base, state: 'idle', note: LIMITED_ROOM_MESSAGE };
+  return { ...base, state: 'room', roomName: room.slug, displayToken: room.display_token };
+}
+
+function notifyScreen(id) {
+  const screen = db.getScreenById(id);
+  io.to(`screen:${id}`).emit('screenAssignment', screenPayload(screen));
+}
+
+function handleScreenSocket(socket) {
+  const screen = db.getScreenByToken(socket.handshake.auth.screenToken);
+  if (!screen) {
+    socket.emit('screenAssignment', { state: 'unknown' }); // the page asks for a new code
+    socket.disconnect(true);
+    return;
+  }
+  const id = Number(screen.id);
+  socket.join(`screen:${id}`);
+  if (!screenSockets.has(id)) screenSockets.set(id, new Set());
+  screenSockets.get(id).add(socket.id);
+  db.touchScreen(id);
+  socket.emit('screenAssignment', screenPayload(screen));
+  socket.on('disconnect', () => {
+    const set = screenSockets.get(id);
+    if (set) { set.delete(socket.id); if (!set.size) screenSockets.delete(id); }
+    if (db.getScreenById(id)) db.touchScreen(id);
+  });
+}
+
+function summarizeScreen(sc) {
+  return {
+    id: String(sc.id),
+    name: sc.name || 'Screen',
+    roomId: sc.room_id ? String(sc.room_id) : null,
+    roomName: sc.room_slug || null,
+    online: screenIsOnline(sc.id),
+    lastSeenAt: sc.last_seen_at || null,
+  };
+}
+
+function cleanScreenName(name) {
+  return typeof name === 'string' ? name.replace(/[\u0000-\u001f]/g, '').trim().slice(0, 60) : '';
+}
+
+// roomId from the dashboard: null/'' = show nothing; otherwise one of this client's rooms.
+function resolveScreenRoom(req, roomId) {
+  if (roomId === null || roomId === undefined || roomId === '') return { ok: true, roomId: null };
+  const room = db.getRoomById(Number(roomId));
+  if (!room || !db.getRoomsForClient(req.client.id).some((r) => r.id === room.id)) {
+    return { ok: false, error: 'That room is not one of yours.' };
+  }
+  return { ok: true, roomId: room.id };
+}
+
+// A screen asks for a pairing code. No account needed (that's the point), so
+// limited per IP; unpaired screens are deleted after an hour.
+app.post('/api/screens/new', async (req, res) => {
+  if (!screenNewLimiter.take(req.ip)) {
+    return res.status(429).json({ ok: false, error: 'Too many new screens from this network. Try again later.' });
+  }
+  const pending = db.createPendingScreen();
+  const pairUrl = `${shareBaseUrl(req.protocol, req.get('host'))}/dashboard?pair=${pending.code}`;
+  const qrSvg = await QRCode.toString(pairUrl, { type: 'svg', margin: 1, errorCorrectionLevel: 'M' });
+  res.json({ ok: true, token: pending.token, code: pending.code, qrSvg });
+});
+
+app.get('/api/screens', auth.requireDashboardAuth, (req, res) => {
+  const screenUrl = `${shareBaseUrl(req.protocol, req.get('host'))}/screen`;
+  res.json({ ok: true, screenUrl, screens: db.listScreensForClient(req.client.id).map(summarizeScreen) });
+});
+
+app.post('/api/screens/pair', auth.requireDashboardAuth, (req, res) => {
+  if (!screenPairLimiter.take(String(req.client.id))) {
+    return res.status(429).json({ ok: false, error: 'Too many pairing attempts. Wait a few minutes and try again.' });
+  }
+  const { code, name, roomId } = req.body || {};
+  const pending = db.getPendingScreenByCode(code);
+  if (!pending) {
+    return res.status(404).json({ ok: false, error: 'No screen is showing that code. Check it, or reload the screen to get a new one.' });
+  }
+  const room = resolveScreenRoom(req, roomId);
+  if (!room.ok) return res.status(400).json({ ok: false, error: room.error });
+  const paired = db.pairScreen(pending.id, req.client.id, cleanScreenName(name) || 'Screen', room.roomId);
+  notifyScreen(paired.id);
+  console.log(`🖥️  Screen "${paired.name}" (id=${paired.id}) paired to client "${req.client.name}"`);
+  res.json({ ok: true, screen: summarizeScreen({ ...paired, room_slug: room.roomId ? db.getRoomById(room.roomId).slug : null }) });
+});
+
+app.patch('/api/screens/:id', auth.requireDashboardAuth, (req, res) => {
+  const screen = db.getScreenForClient(Number(req.params.id), req.client.id);
+  if (!screen) return res.status(404).json({ ok: false, error: 'Screen not found' });
+  const body = req.body || {};
+  const changes = {};
+  if (body.name !== undefined) {
+    const name = cleanScreenName(body.name);
+    if (!name) return res.status(400).json({ ok: false, error: 'Give the screen a name.' });
+    changes.name = name;
+  }
+  if (body.roomId !== undefined) {
+    const room = resolveScreenRoom(req, body.roomId);
+    if (!room.ok) return res.status(400).json({ ok: false, error: room.error });
+    changes.roomId = room.roomId;
+  }
+  db.updateScreen(screen.id, changes);
+  notifyScreen(screen.id);
+  const updated = db.listScreensForClient(req.client.id).find((sc) => sc.id === screen.id);
+  res.json({ ok: true, screen: summarizeScreen(updated) });
+});
+
+app.delete('/api/screens/:id', auth.requireDashboardAuth, (req, res) => {
+  const screen = db.getScreenForClient(Number(req.params.id), req.client.id);
+  if (!screen) return res.status(404).json({ ok: false, error: 'Screen not found' });
+  db.deleteScreen(screen.id);
+  io.to(`screen:${screen.id}`).emit('screenAssignment', { state: 'unknown' }); // it shows a new code
+  io.in(`screen:${screen.id}`).disconnectSockets(true);
+  res.json({ ok: true });
+});
+
+// Unpaired screens expire after an hour; one still open gets a fresh code.
+setInterval(() => {
+  for (const id of db.deleteExpiredPendingScreens()) {
+    io.to(`screen:${id}`).emit('screenAssignment', { state: 'unknown' });
+    io.in(`screen:${id}`).disconnectSockets(true);
+  }
+}, 5 * 60 * 1000).unref();
 
 // ============================================
 // REST API - platform admin only (cross-client room actions)
@@ -1120,7 +1279,9 @@ app.delete('/api/admin/rooms/:id', auth.requireDashboardAuth, auth.requirePlatfo
 
   timerRooms.delete(roomId);
   forgetRoomController(roomId);
+  const screensShowingRoom = db.listScreensForRoom(room.id);
   db.deleteRoom(room.id);
+  screensShowingRoom.forEach((sc) => notifyScreen(sc.id));
 
 
   const socketsInRoom = io.sockets.adapter.rooms.get(roomId);
@@ -1146,6 +1307,8 @@ app.post('/api/admin/rooms/:id/regenerate-tokens', auth.requireDashboardAuth, au
       if (socket) socket.disconnect(true);
     }
   }
+
+  db.listScreensForRoom(updated.id).forEach((sc) => notifyScreen(sc.id));
 
   const baseUrl = shareBaseUrl(req.protocol, req.get('host'));
   const links = buildRoomLinks(baseUrl, updated);
@@ -2126,7 +2289,9 @@ function sweepExpiredDemoRooms() {
     }
     timerRooms.delete(roomId);
     forgetRoomController(roomId);
+    const screensShowingRoom = db.listScreensForRoom(room.id);
     db.deleteRoom(room.id);
+    screensShowingRoom.forEach((sc) => notifyScreen(sc.id));
     console.log(`🧪 Demo room ${room.slug} (id=${room.id}) expired and was deleted`);
   }
 }
@@ -2179,6 +2344,10 @@ app.get('/control', (req, res) => {
 
 app.get('/display', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'display.html'));
+});
+
+app.get('/screen', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'screen.html'));
 });
 
 app.get('/dashboard', (req, res) => {

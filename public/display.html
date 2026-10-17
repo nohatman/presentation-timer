@@ -378,7 +378,9 @@
         // iframe, so rather than chase exactly why their idle timer isn't
         // settling in that context, simplest correct fix is to not render
         // operator/setup controls that don't apply there in the first place.
-        if (urlParams.get('preview') === '1') {
+        // Also inside a paired screen (/screen, ?screen=1), which has its own
+        // full-screen key and must never offer Home.
+        if (urlParams.get('preview') === '1' || urlParams.get('screen') === '1') {
             document.documentElement.classList.add('preview-embed');
         }
 

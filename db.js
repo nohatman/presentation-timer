@@ -163,6 +163,23 @@ ensureColumn('clients', 'api_key_rotated_at', 'INTEGER');
 // and never expires.
 ensureColumn('rooms', 'expires_at', 'INTEGER');
 
+// Paired screens (see "Paired screens" below): a browser that opened /screen.
+// Pending until a dashboard pairs it with its code; then it belongs to a client
+// and shows the room in room_id (or nothing, while room_id is NULL).
+db.exec(`
+  CREATE TABLE IF NOT EXISTS screens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    token_hash TEXT NOT NULL UNIQUE,
+    pair_code TEXT UNIQUE,
+    client_id INTEGER REFERENCES clients(id),
+    name TEXT,
+    room_id INTEGER REFERENCES rooms(id),
+    created_at INTEGER NOT NULL,
+    paired_at INTEGER,
+    last_seen_at INTEGER
+  );
+`);
+
 // ============================================
 // Tokens / API keys
 // ============================================
@@ -1063,6 +1080,7 @@ function saveRoomStates(timerRooms) {
 }
 
 function deleteRoom(id) {
+  db.prepare('UPDATE screens SET room_id = NULL WHERE room_id = ?').run(id);
   db.prepare('DELETE FROM room_backgrounds WHERE room_id = ?').run(id);
   db.prepare('DELETE FROM rooms WHERE id = ?').run(id);
 }
@@ -1093,6 +1111,95 @@ function countUnexpiredRoomsForClient(clientId, now = Date.now()) {
     JOIN events ON events.id = rooms.event_id
     WHERE events.client_id = ? AND (rooms.expires_at IS NULL OR rooms.expires_at > ?)
   `).get(clientId, now).n;
+}
+
+// ============================================
+// Paired screens
+// ============================================
+// The screen keeps a random token (only its hash is stored) and shows a short
+// pairing code until someone enters it on their dashboard. Codes avoid
+// look-alike characters (0/O, 1/I) and expire with the pending screen.
+
+const SCREEN_PENDING_TTL_MS = 60 * 60 * 1000;
+const PAIR_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // 32 characters: an even split of a byte
+
+function normalizePairCode(code) {
+  return String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+function createPendingScreen(now = Date.now()) {
+  const token = crypto.randomBytes(32).toString('base64url');
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const code = [...crypto.randomBytes(6)].map((b) => PAIR_ALPHABET[b % 32]).join('');
+    try {
+      const info = db.prepare('INSERT INTO screens (token_hash, pair_code, created_at, last_seen_at) VALUES (?, ?, ?, ?)')
+        .run(hashApiKey(token), code, now, now);
+      return { id: info.lastInsertRowid, token, code };
+    } catch (err) {
+      if (!/UNIQUE/.test(err.message)) throw err; // code clash: try another
+    }
+  }
+  throw new Error('Could not make a pairing code');
+}
+
+function getScreenByToken(rawToken) {
+  if (!rawToken || typeof rawToken !== 'string') return null;
+  return db.prepare('SELECT * FROM screens WHERE token_hash = ?').get(hashApiKey(rawToken)) || null;
+}
+
+function getScreenById(id) {
+  return db.prepare('SELECT * FROM screens WHERE id = ?').get(id) || null;
+}
+
+function getPendingScreenByCode(code, now = Date.now()) {
+  const clean = normalizePairCode(code);
+  if (clean.length !== 6) return null;
+  return db.prepare('SELECT * FROM screens WHERE pair_code = ? AND client_id IS NULL AND created_at > ?')
+    .get(clean, now - SCREEN_PENDING_TTL_MS) || null;
+}
+
+function pairScreen(id, clientId, name, roomId, now = Date.now()) {
+  db.prepare('UPDATE screens SET client_id = ?, name = ?, room_id = ?, pair_code = NULL, paired_at = ? WHERE id = ? AND client_id IS NULL')
+    .run(clientId, name, roomId, now, id);
+  return getScreenById(id);
+}
+
+function listScreensForClient(clientId) {
+  return db.prepare(`
+    SELECT screens.*, rooms.slug AS room_slug FROM screens
+    LEFT JOIN rooms ON rooms.id = screens.room_id
+    WHERE screens.client_id = ?
+    ORDER BY screens.paired_at ASC, screens.id ASC
+  `).all(clientId);
+}
+
+function listScreensForRoom(roomId) {
+  return db.prepare('SELECT * FROM screens WHERE room_id = ?').all(roomId);
+}
+
+function getScreenForClient(id, clientId) {
+  return db.prepare('SELECT * FROM screens WHERE id = ? AND client_id = ?').get(id, clientId) || null;
+}
+
+function updateScreen(id, { name, roomId }) {
+  if (name !== undefined) db.prepare('UPDATE screens SET name = ? WHERE id = ?').run(name, id);
+  if (roomId !== undefined) db.prepare('UPDATE screens SET room_id = ? WHERE id = ?').run(roomId, id);
+  return getScreenById(id);
+}
+
+function deleteScreen(id) {
+  db.prepare('DELETE FROM screens WHERE id = ?').run(id);
+}
+
+function touchScreen(id, now = Date.now()) {
+  db.prepare('UPDATE screens SET last_seen_at = ? WHERE id = ?').run(now, id);
+}
+
+// Pending screens nobody paired within the hour. -> their ids (already deleted).
+function deleteExpiredPendingScreens(now = Date.now()) {
+  const rows = db.prepare('SELECT id FROM screens WHERE client_id IS NULL AND created_at <= ?').all(now - SCREEN_PENDING_TTL_MS);
+  db.prepare('DELETE FROM screens WHERE client_id IS NULL AND created_at <= ?').run(now - SCREEN_PENDING_TTL_MS);
+  return rows.map((r) => r.id);
 }
 
 module.exports = {
@@ -1168,5 +1275,20 @@ module.exports = {
   deleteRoom,
   setRoomBackground,
   getRoomBackground,
-  deleteRoomBackground
+  deleteRoomBackground,
+  // paired screens
+  SCREEN_PENDING_TTL_MS,
+  normalizePairCode,
+  createPendingScreen,
+  getScreenByToken,
+  getScreenById,
+  getPendingScreenByCode,
+  pairScreen,
+  listScreensForClient,
+  listScreensForRoom,
+  getScreenForClient,
+  updateScreen,
+  deleteScreen,
+  touchScreen,
+  deleteExpiredPendingScreens
 };

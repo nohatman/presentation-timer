@@ -141,6 +141,23 @@
         .link-field .qrbox { margin-top: 10px; width: 180px; height: 180px; background: #fff; border-radius: 2px; padding: 6px; }
         .dialog .room-title { margin: -4px 0 12px; font-weight: 700; color: var(--ink); font-size: 1.05rem; }
 
+        /* Paired screens */
+        .screens-list { display: flex; flex-direction: column; gap: 4px; }
+        .screen-row { display: grid; grid-template-columns: 20px minmax(140px, 1fr) minmax(160px, 260px) auto auto; align-items: center; gap: 10px; padding: 8px 10px; }
+        .screen-row .room-name { font-size: 1.05rem; }
+        .screen-sub { font-size: 0.9rem; color: var(--ink-2); }
+        .screen-row select.field { width: 100%; min-height: 36px; padding: 4px 8px; }
+        .screens-empty { padding: 14px; color: var(--ink-2); line-height: 1.5; }
+        .screens-empty code { color: var(--info); font-family: var(--mono); font-size: 0.9em; overflow-wrap: anywhere; }
+        .pair-code-input { font-family: var(--ui); font-weight: 700; font-size: 1.8rem; letter-spacing: 0.12em; text-transform: uppercase; text-align: center; width: 100%; }
+        .dialog .field-row { display: grid; gap: 5px; margin-bottom: 12px; }
+        .dialog .field-row .field { width: 100%; }
+        .dialog .form-error { color: #ff8a80; margin: 0 0 10px; min-height: 1.2em; }
+        @media (max-width: 760px) {
+            .screen-row { grid-template-columns: 20px 1fr auto; grid-template-areas: "lamp name name" "room room room" "ren ren rem"; }
+            .screen-row > .tally { grid-area: lamp; } .screen-row > .name-wrap { grid-area: name; }
+            .screen-row > select { grid-area: room; } .screen-row > .ren { grid-area: ren; justify-self: start; } .screen-row > .rem { grid-area: rem; }
+        }
         .empty-state { grid-column: 1 / -1; padding: 40px 20px; text-align: center; color: var(--ink-2); }
         .empty-state-text { font-size: 1.2rem; font-weight: 700; color: var(--ink); margin-bottom: 4px; }
         .loading { padding: 24px; color: var(--ink-2); }
@@ -247,6 +264,16 @@
     <div id="roomsContainer" class="rooms-grid">
         <div class="loading">Loading rooms...</div>
     </div>
+
+    <!-- Paired screens: browsers that opened /screen and were paired here.
+         Each shows the room chosen for it, and follows changes straight away. -->
+    <section id="screensSection" aria-labelledby="screensTitle">
+        <div class="rooms-toolbar">
+            <h2 id="screensTitle">Paired screens</h2>
+            <button type="button" class="key small" onclick="openAddScreen(this)">+ Add a screen</button>
+        </div>
+        <div id="screensList" class="screens-list"><div class="loading">Loading screens...</div></div>
+    </section>
 
     <!-- One shared ⋯ menu for List and Mini layouts: kept outside
          #roomsContainer, which is redrawn every second. -->
@@ -1378,9 +1405,173 @@
             return `${hours}:${minutes}:${seconds}`;
         }
 
+        // ---- Paired screens ----
+        // A screen opens /screen, shows a code, and is paired here with a name and
+        // a room. The list refreshes every few seconds (online / offline), but never
+        // while a room picker on it is open.
+        let screensData = [];
+        let screenUrl = '';
+        let screensRenderedKey = '';
+
+        async function fetchScreens() {
+            try {
+                const response = await authFetch('/api/screens');
+                const data = await response.json();
+                if (!data.ok) return;
+                screensData = data.screens;
+                screenUrl = data.screenUrl;
+                renderScreens();
+            } catch (err) { /* keep the last list */ }
+        }
+
+        function screenSubline(sc) {
+            const showing = sc.roomName ? `showing ${escapeHtml(sc.roomName)}` : 'showing nothing';
+            if (sc.online) return `Online · ${showing}`;
+            if (!sc.lastSeenAt) return `Offline · ${showing}`;
+            const seen = new Date(sc.lastSeenAt);
+            const sameDay = seen.toDateString() === new Date().toDateString();
+            const when = sameDay ? seen.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : seen.toLocaleDateString([], { day: 'numeric', month: 'short' });
+            return `Offline since ${when} · ${showing}`;
+        }
+
+        function roomOptions(selectedId) {
+            const rooms = sortRoomsByOrder(roomsData.filter((r) => !r.clientName));
+            return `<option value="">Nothing (standby)</option>` + rooms.map((r) =>
+                `<option value="${escapeHtml(r.id)}"${r.id === selectedId ? ' selected' : ''}>${escapeHtml(r.slug)}</option>`).join('');
+        }
+
+        function renderScreens(force) {
+            const list = document.getElementById('screensList');
+            if (!force && list.contains(document.activeElement) && document.activeElement.tagName === 'SELECT') return;
+            const key = JSON.stringify([screensData, roomsData.map((r) => [r.id, r.slug])]);
+            if (!force && key === screensRenderedKey) return;
+            screensRenderedKey = key;
+            if (!screensData.length) {
+                list.innerHTML = `<div class="screens-empty panel">No screens yet. On any screen with a browser (a TV, a spare laptop, a Raspberry Pi), open <code>${escapeHtml(screenUrl)}</code>. It shows a pairing code: press <b>Add a screen</b> and type it in.</div>`;
+                return;
+            }
+            list.innerHTML = screensData.map((sc) => {
+                const id = escapeHtml(sc.id);
+                return `<div class="screen-row panel">
+                    <span class="tally ${sc.online ? 'go' : ''}" aria-hidden="true"></span>
+                    <div class="name-wrap"><div class="room-name">${escapeHtml(sc.name)}</div><div class="screen-sub">${screenSubline(sc)}</div></div>
+                    <select class="field" aria-label="Room shown on ${escapeHtml(sc.name)}" onchange="setScreenRoom('${id}', this.value, this)">${roomOptions(sc.roomId)}</select>
+                    <button type="button" class="key small ren" onclick="renameScreen('${id}', this)">Rename</button>
+                    <button type="button" class="key small flat danger rem" onclick="removeScreen('${id}', this)">Remove</button>
+                </div>`;
+            }).join('');
+        }
+
+        async function setScreenRoom(id, roomId, select) {
+            const response = await authFetch(`/api/screens/${encodeURIComponent(id)}`, {
+                method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ roomId: roomId || null })
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!data.ok) { uiNotice("Couldn't change the screen", data.error || 'Please try again.'); }
+            if (select) select.blur();
+            await fetchScreens();
+            renderScreens(true);
+        }
+
+        function screenDialog({ title, intro, fields, okLabel, onSubmit }, triggerEl) {
+            openModal(`
+                <h2 id="modalTitle">${escapeHtml(title)}</h2>
+                ${intro ? `<p>${intro}</p>` : ''}
+                <form id="screenForm" novalidate>
+                    ${fields}
+                    <p class="form-error" id="screenFormError" role="alert"></p>
+                    <div class="actions">
+                        <button type="button" class="key flat" onclick="closeModal()">Cancel</button>
+                        <button type="submit" class="key lit">${escapeHtml(okLabel)}</button>
+                    </div>
+                </form>`, triggerEl);
+            const form = document.getElementById('screenForm');
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const error = await onSubmit(form);
+                if (error) document.getElementById('screenFormError').textContent = error;
+                else closeModal();
+            });
+            const first = form.querySelector('input, select');
+            if (first) first.focus();
+        }
+
+        function openAddScreen(triggerEl, code = '') {
+            screenDialog({
+                title: 'Add a screen',
+                intro: `On the screen, open <code style="color:var(--info);">${escapeHtml(screenUrl || location.origin + '/screen')}</code>. Type the code it shows, give it a name and choose its room.`,
+                okLabel: 'Pair screen',
+                fields: `
+                    <div class="field-row"><label class="label" for="pairCode">Code on the screen</label>
+                        <input id="pairCode" class="field pair-code-input" maxlength="7" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABC-123" value="${escapeHtml(code)}"></div>
+                    <div class="field-row"><label class="label" for="pairName">Name</label>
+                        <input id="pairName" class="field" maxlength="60" autocomplete="off" placeholder="e.g. Lectern bar, Stage left"></div>
+                    <div class="field-row"><label class="label" for="pairRoom">Shows</label>
+                        <select id="pairRoom" class="field">${roomOptions(roomsData.length === 1 ? roomsData[0].id : null)}</select></div>`,
+                onSubmit: async (form) => {
+                    const codeValue = form.querySelector('#pairCode').value.trim();
+                    if (codeValue.replace(/[^a-z0-9]/gi, '').length !== 6) return 'Type the 6-character code shown on the screen.';
+                    const response = await authFetch('/api/screens/pair', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ code: codeValue, name: form.querySelector('#pairName').value.trim(), roomId: form.querySelector('#pairRoom').value || null })
+                    });
+                    const data = await response.json().catch(() => ({}));
+                    if (!data.ok) return data.error || "Couldn't pair the screen.";
+                    uiToast(`Paired "${data.screen.name}"`);
+                    await fetchScreens();
+                    return null;
+                }
+            }, triggerEl);
+            if (code) document.getElementById('pairName').focus();
+        }
+
+        function renameScreen(id, triggerEl) {
+            const sc = screensData.find((x) => x.id === id);
+            if (!sc) return;
+            screenDialog({
+                title: 'Rename screen',
+                okLabel: 'Save',
+                fields: `<div class="field-row"><label class="label" for="screenNewName">Name</label>
+                    <input id="screenNewName" class="field" maxlength="60" autocomplete="off" value="${escapeHtml(sc.name)}"></div>`,
+                onSubmit: async (form) => {
+                    const name = form.querySelector('#screenNewName').value.trim();
+                    if (!name) return 'Give the screen a name.';
+                    const response = await authFetch(`/api/screens/${encodeURIComponent(id)}`, {
+                        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name })
+                    });
+                    const data = await response.json().catch(() => ({}));
+                    if (!data.ok) return data.error || "Couldn't rename the screen.";
+                    await fetchScreens();
+                    return null;
+                }
+            }, triggerEl);
+        }
+
+        async function removeScreen(id, triggerEl) {
+            const sc = screensData.find((x) => x.id === id);
+            if (!sc) return;
+            const ok = await uiConfirm({
+                title: `Remove "${sc.name}"?`,
+                body: 'It stops showing the timer and goes back to showing a pairing code, so it can be paired again.',
+                okLabel: 'Remove screen', danger: true
+            }, triggerEl);
+            if (!ok) return;
+            await authFetch(`/api/screens/${encodeURIComponent(id)}`, { method: 'DELETE' });
+            await fetchScreens();
+        }
+
         // Initial fetch
         loadCardOrder();
-        refreshWhoAmI().then(fetchRooms);
+        refreshWhoAmI().then(fetchRooms).then(() => {
+            fetchScreens();
+            // Scanning a screen's QR code opens the dashboard with ?pair=CODE.
+            const pairCode = new URLSearchParams(location.search).get('pair');
+            if (pairCode) {
+                history.replaceState(null, '', location.pathname);
+                fetchScreens().then(() => openAddScreen(document.getElementById('screensTitle'), pairCode));
+            }
+        });
+        setInterval(fetchScreens, 3000);
 
         // Auto-refresh every 1 second for live updates
         setInterval(fetchRooms, 1000);

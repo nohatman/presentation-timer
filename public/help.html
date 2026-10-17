@@ -85,6 +85,7 @@
     <nav class="toc" aria-label="Help topics">
         <a href="#start">Getting started</a>
         <a href="#connect">Connecting phones &amp; screens</a>
+        <a href="#screens">Paired screens</a>
         <a href="#not-connecting">Phone won't connect</a>
         <a href="#companion">Companion</a>
         <a href="#windows">Foxy Timer for Windows</a>
@@ -124,6 +125,18 @@
             <p>The links look like <code>http://192.168.1.13:3000/control?token=…</code>. <b>192.168.1.13</b> is the laptop's address on that network; <b>3000</b> is the door Foxy Timer listens on. The <b>This laptop</b> panel on the dashboard shows the current address.</p>
             <div class="tip" style="margin-bottom:0"><b>"localhost" only works on the laptop itself.</b> It means "this computer", so a phone can't use it. The dashboard always gives links with the network address instead.</div>
         </div>
+    </section>
+
+    <section id="screens">
+        <h2>Paired screens</h2>
+        <p>A paired screen always opens the same address and shows whichever room you choose for it on the dashboard. It suits a TV, a spare laptop or a Raspberry Pi that stays in place: you never have to send it a new link.</p>
+        <ol>
+            <li>On the screen, open your Foxy Timer address followed by <code>/screen</code>: <code>https://foxytimer.com/screen</code> <span class="ver online">Online</span>, or the laptop's address shown on the dashboard <span class="ver win">Windows</span>.</li>
+            <li>It shows a 6-character code and a QR code. On the dashboard, under <b>Paired screens</b>, press <b>Add a screen</b>, type the code, give the screen a name and choose its room. Or scan the QR code with a phone that's logged in to the dashboard.</li>
+            <li>Change its room any time from the dashboard: the screen switches straight away. It also follows <b>New links</b> by itself.</li>
+        </ol>
+        <p>The dashboard shows which screens are online. Remove one and it goes back to showing a code. A code that isn't used within an hour is replaced with a new one.</p>
+        <div class="tip"><b>Foxy Timer for Windows:</b> a screen stays paired to the laptop's address. If that address changes (a different venue or network), open the new address on the screen and pair it again.</div>
     </section>
 
     <section id="not-connecting">

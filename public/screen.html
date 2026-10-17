@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Foxy Timer - Screen</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="stylesheet" href="/foxy.css">
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        /* A paired screen: one fixed address (handy for a Raspberry Pi kiosk or a
+           TV browser). Shows a pairing code until someone pairs it on their
+           dashboard, then the chosen room's display, following any change made
+           there. Sizes use vmin so it reads from across a room on any shape. */
+        html, body { height: 100%; margin: 0; overflow: hidden; background: #000; }
+        body.idle-cursor, body.idle-cursor * { cursor: none; }
+        /* pointer-events: none so taps and mouse moves reach this page (for the
+           Full screen key); the display needs no input here anyway. */
+        #frame { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; display: none; background: #000; pointer-events: none; }
+        body.showing-room #frame { display: block; }
+        .card-screen {
+            position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+            gap: 4vmin; padding: 6vmin; text-align: center; background: var(--desk);
+        }
+        .card-screen[hidden], body.showing-room .card-screen { display: none; }
+        .brand-line { display: flex; align-items: center; gap: 1.6vmin; font-size: 4vmin; font-weight: 700; color: var(--ink-2); }
+        .brand-line img { width: 6vmin; height: 6vmin; }
+        .pair-row { display: flex; align-items: center; justify-content: center; gap: 7vmin; flex-wrap: wrap; }
+        .code-label { font-size: 3.4vmin; color: var(--ink-2); font-weight: 600; margin-bottom: 1vmin; }
+        .code { font-size: 15vmin; font-weight: 700; letter-spacing: 0.06em; line-height: 1; color: var(--ink); white-space: nowrap; }
+        .qr { width: 26vmin; height: 26vmin; background: #fff; padding: 1.2vmin; border-radius: 2px; }
+        .qr:empty { display: none; }
+        .qr svg { width: 100%; height: 100%; display: block; }
+        .lead { font-size: 3.4vmin; color: var(--ink-2); max-width: 46em; line-height: 1.4; }
+        .lead b { color: var(--ink); }
+        .name { font-size: 9vmin; font-weight: 700; color: var(--ink); }
+        .tally-big { width: 9vmin; height: 2.4vmin; border-radius: 2px; background: #44464b; }
+        .fs-key { position: fixed; top: 2vmin; right: 2vmin; z-index: 5; transition: opacity 0.4s; }
+        .fs-key.hide { opacity: 0; pointer-events: none; }
+        .offline { position: fixed; left: 2vmin; bottom: 2vmin; z-index: 6; color: var(--warn); font-size: 2.6vmin; font-weight: 600; }
+        .offline[hidden], body.showing-room .offline { display: none; }
+    </style>
+</head>
+<body class="foxy">
+    <iframe id="frame" title="Timer display"></iframe>
+
+    <div class="card-screen" id="starting">
+        <div class="brand-line"><img src="/favicon.svg" alt="">Foxy Timer</div>
+        <div class="lead" id="startingText">Starting…</div>
+    </div>
+
+    <div class="card-screen" id="pairing" hidden>
+        <div class="brand-line"><img src="/favicon.svg" alt="">Foxy Timer</div>
+        <div class="pair-row">
+            <div>
+                <div class="code-label">Pairing code</div>
+                <div class="code" id="code"></div>
+            </div>
+            <div class="qr" id="qr" aria-hidden="true"></div>
+        </div>
+        <div class="lead">On the Foxy Timer dashboard, press <b>Add a screen</b> and type this code, or scan the QR code with a phone that's logged in to it.</div>
+    </div>
+
+    <div class="card-screen" id="idle" hidden>
+        <div class="brand-line"><img src="/favicon.svg" alt="">Foxy Timer</div>
+        <div class="tally-big" aria-hidden="true"></div>
+        <div class="name" id="idleName"></div>
+        <div class="lead" id="idleNote"></div>
+    </div>
+
+    <button type="button" class="key fs-key" id="fsKey" onclick="toggleFullscreen()">Full screen</button>
+    <div class="offline" id="offline" hidden>Reconnecting…</div>
+
+    <script>
+        const TOKEN_KEY = 'foxyScreenToken';
+        const QR_KEY = 'foxyScreenQr';
+        const store = {
+            get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+            set(k, v) { try { localStorage.setItem(k, v); } catch { /* kept for this visit only */ } },
+            del(k) { try { localStorage.removeItem(k); } catch { /* nothing kept */ } },
+        };
+        const frame = document.getElementById('frame');
+        let token = store.get(TOKEN_KEY);
+        let socket = null;
+        let shownDisplayToken = null;
+
+        function show(id) {
+            ['starting', 'pairing', 'idle'].forEach((x) => { document.getElementById(x).hidden = x !== id; });
+            document.body.classList.toggle('showing-room', id === 'room');
+            wakeKey();
+        }
+
+        async function getNewCode() {
+            show('starting');
+            document.getElementById('startingText').textContent = 'Getting a pairing code…';
+            try {
+                const res = await fetch('/api/screens/new', { method: 'POST' });
+                const data = await res.json();
+                if (!data.ok) throw new Error(data.error || 'no code');
+                token = data.token;
+                store.set(TOKEN_KEY, token);
+                store.set(QR_KEY, data.qrSvg || '');
+                connect();
+            } catch (err) {
+                document.getElementById('startingText').textContent = `Couldn't get a pairing code (${err.message}). Trying again in 15 seconds…`;
+                setTimeout(getNewCode, 15000);
+            }
+        }
+
+        function connect() {
+            if (socket) socket.disconnect();
+            socket = io({ auth: { screenToken: token } });
+            socket.on('screenAssignment', apply);
+            let offlineTimer = null;
+            socket.on('connect', () => { clearTimeout(offlineTimer); document.getElementById('offline').hidden = true; });
+            socket.on('disconnect', () => {
+                clearTimeout(offlineTimer);
+                offlineTimer = setTimeout(() => { document.getElementById('offline').hidden = false; }, 4000);
+            });
+        }
+
+        // What the server says this screen should show (see screenPayload in server.js).
+        function apply(a) {
+            if (!a || a.state === 'unknown') {
+                // Not paired any more (removed on the dashboard, or the code expired).
+                store.del(TOKEN_KEY); store.del(QR_KEY);
+                token = null; shownDisplayToken = null;
+                frame.removeAttribute('src');
+                if (socket) { socket.off('screenAssignment', apply); socket.disconnect(); socket = null; }
+                getNewCode();
+                return;
+            }
+            if (a.state === 'pending') {
+                const code = String(a.code || '');
+                document.getElementById('code').textContent = code.length === 6 ? `${code.slice(0, 3)}-${code.slice(3)}` : code;
+                document.getElementById('qr').innerHTML = store.get(QR_KEY) || ''; // made by our own server
+                document.title = `Foxy Timer - pairing code ${code}`;
+                show('pairing');
+                return;
+            }
+            if (a.state === 'room' && a.displayToken) {
+                if (a.displayToken !== shownDisplayToken) {
+                    shownDisplayToken = a.displayToken;
+                    frame.src = `/display?token=${encodeURIComponent(a.displayToken)}&screen=1`;
+                }
+                document.title = `${a.name} - ${a.roomName}`;
+                show('room');
+                return;
+            }
+            // Paired, nothing to show yet.
+            shownDisplayToken = null;
+            frame.removeAttribute('src');
+            document.getElementById('idleName').textContent = a.name || 'Screen';
+            document.getElementById('idleNote').textContent = a.note || 'Paired. Waiting for a room: choose one for this screen on the dashboard.';
+            document.title = `${a.name || 'Screen'} - Foxy Timer`;
+            show('idle');
+        }
+
+        // Full screen key: shows on a tap, a mouse move or a state change, then
+        // hides itself (with the mouse pointer) so nothing sits on the stage.
+        const fsKey = document.getElementById('fsKey');
+        let keyTimer = null;
+        function wakeKey() {
+            document.body.classList.remove('idle-cursor');
+            fsKey.classList.toggle('hide', !!document.fullscreenElement || !document.fullscreenEnabled);
+            clearTimeout(keyTimer);
+            keyTimer = setTimeout(() => { fsKey.classList.add('hide'); document.body.classList.add('idle-cursor'); }, 4000);
+        }
+        function toggleFullscreen() {
+            if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+            else document.documentElement.requestFullscreen().catch(() => {});
+        }
+        ['mousemove', 'pointerdown', 'keydown'].forEach((type) => document.addEventListener(type, wakeKey, { passive: true }));
+        document.addEventListener('keydown', (e) => { if (e.key === 'f' || e.key === 'F') toggleFullscreen(); });
+        document.addEventListener('fullscreenchange', wakeKey);
+
+        // Keep the screen awake where the browser allows it (secure pages only).
+        async function keepAwake() {
+            try { if (navigator.wakeLock && document.visibilityState === 'visible') await navigator.wakeLock.request('screen'); } catch { /* not allowed here */ }
+        }
+        document.addEventListener('visibilitychange', keepAwake);
+        keepAwake();
+
+        if (token) connect(); else getNewCode();
+        wakeKey();
+    </script>
+</body>
+</html>
