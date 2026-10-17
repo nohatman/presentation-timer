@@ -89,6 +89,15 @@
                check measured nothing wrong and never shrank the font. */
             flex-shrink: 0;
         }
+        /* The clip above also cut the glow off in a hard-edged box. Where the
+           browser can, let the glow spill 60px past it (still clipping
+           anything further); elsewhere it stays as it was. */
+        @supports (overflow-clip-margin: 1px) {
+            #timerDisplay, #clockDisplay {
+                overflow: clip;
+                overflow-clip-margin: 60px;
+            }
+        }
         #timerDisplayText, #clockDisplayText {
             display: inline-block;
             white-space: nowrap;
@@ -159,50 +168,44 @@
         html.preview-embed .settings {
             display: none;
         }
+        /* Setup key (hidden on the stage once idle; see controls-idle). */
         .control-button {
             padding: 0.5rem 1rem;
-            background: rgba(255,255,255,0.15);
-            color: white;
-            border: 1px solid rgba(255,255,255,0.3);
-            border-radius: 6px;
+            background: rgba(42, 43, 46, 0.85);
+            color: #e4e5e7;
+            border: 1px solid #121314;
+            border-radius: 3px;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), inset 0 -2px 0 rgba(0, 0, 0, 0.25);
             cursor: pointer;
+            font: inherit;
             font-size: 1rem;
-            backdrop-filter: blur(10px);
-            transition: all 0.2s;
-            font-weight: 500;
+            font-weight: 600;
+            transition: background 0.12s;
         }
         .control-button:hover {
-            background: rgba(255,255,255,0.25);
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-        }
-        .control-button:active {
-            transform: translateY(0);
+            background: rgba(71, 73, 78, 0.95);
         }
         .settings {
             position: absolute;
             top: max(2rem, env(safe-area-inset-top, 0px));
             right: max(2rem, env(safe-area-inset-right, 0px));
         }
+        /* Setup key (hidden on the stage once idle; see controls-idle). */
         .fullscreen-button {
             padding: 0.5rem 1rem;
-            background: rgba(255,255,255,0.15);
-            color: white;
-            border: 1px solid rgba(255,255,255,0.3);
-            border-radius: 6px;
+            background: rgba(42, 43, 46, 0.85);
+            color: #e4e5e7;
+            border: 1px solid #121314;
+            border-radius: 3px;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), inset 0 -2px 0 rgba(0, 0, 0, 0.25);
             cursor: pointer;
+            font: inherit;
             font-size: 1rem;
-            backdrop-filter: blur(10px);
-            transition: all 0.2s;
-            font-weight: 500;
+            font-weight: 600;
+            transition: background 0.12s;
         }
         .fullscreen-button:hover {
-            background: rgba(255,255,255,0.25);
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-        }
-        .fullscreen-button:active {
-            transform: translateY(0);
+            background: rgba(71, 73, 78, 0.95);
         }
         /* Color themes */
         .color-normal {
@@ -358,8 +361,8 @@
             <button class="control-button" onclick="window.open('/', '_blank')">Home</button>
         </div>
         
-        <div class="room-badge" id="roomBadge" style="position: absolute; bottom: max(1rem, env(safe-area-inset-bottom, 0px)); right: max(1.5rem, env(safe-area-inset-right, 0px)); background: rgba(255,255,255,0.08); padding: 5px 12px; border-radius: 5px; font-size: 0.8rem; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.12); opacity: 0.6;">
-            <span>Room:</span> <span style="font-family: monospace; color: #90caf9; font-weight: 600;" id="roomDisplay"></span>
+        <div class="room-badge" id="roomBadge" style="position: absolute; bottom: max(1rem, env(safe-area-inset-bottom, 0px)); right: max(1.5rem, env(safe-area-inset-right, 0px)); background: rgba(42, 43, 46, 0.7); padding: 4px 10px; border-radius: 3px; font-size: 0.85rem; border: 1px solid rgba(0, 0, 0, 0.6); color: #a4a7ad; opacity: 0.7;">
+            <span>Room</span> <span style="color: #e4e5e7; font-weight: 600;" id="roomDisplay"></span>
         </div>
     </div>
 
