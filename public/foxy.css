@@ -62,6 +62,8 @@ body.foxy {
     line-height: 1.45;
     -webkit-font-smoothing: antialiased;
 }
+/* Form controls use the page font (browsers default them to the system one). */
+:where(.foxy) :where(button, input, select, textarea) { font-family: inherit; }
 /* Zero-weight selector, so any page rule for its own links wins. */
 :where(.foxy) a:where(:not(.key)) { color: var(--info); }
 .foxy :focus-visible { outline: 2px solid var(--info); outline-offset: 2px; }

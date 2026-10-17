@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Foxy's Presentation Timer - Client Management</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="stylesheet" href="/foxy.css">
     <style>
         * {
             margin: 0;
@@ -12,18 +13,17 @@
             box-sizing: border-box;
         }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #0a0a0a;
-            color: #e5e5e5;
+            background: var(--desk);
+            color: var(--ink);
             padding: 20px;
             min-height: 100vh;
         }
         .header {
-            background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+            background: var(--panel);
             padding: 2rem;
-            border-radius: 12px;
+            border-radius: var(--radius);
             margin-bottom: 2rem;
-            border: 1px solid #333;
+            border: 1px solid #3a3c40;
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -32,7 +32,7 @@
         }
         .header h1 {
             font-size: 2rem;
-            color: #fafafa;
+            color: var(--ink);
         }
         .badge-platform-admin {
             font-size: 0.8rem;
@@ -40,7 +40,7 @@
             background: #6a1b9a;
             color: white;
             padding: 3px 10px;
-            border-radius: 5px;
+            border-radius: var(--radius);
             vertical-align: middle;
             margin-left: 8px;
         }
@@ -51,10 +51,10 @@
         }
         .nav-link {
             padding: 10px 16px;
-            border: 1px solid #333;
-            border-radius: 6px;
-            background: #1a1a1a;
-            color: #e5e5e5;
+            border: 1px solid #3a3c40;
+            border-radius: var(--radius);
+            background: var(--panel);
+            color: var(--ink);
             text-decoration: none;
             font-size: 0.9rem;
             font-weight: 500;
@@ -62,8 +62,8 @@
             transition: background 0.2s, border-color 0.2s;
         }
         .nav-link:hover {
-            background: #252525;
-            border-color: #4caf50;
+            background: var(--key);
+            border-color: var(--go);
         }
         .clients-grid {
             display: grid;
@@ -71,9 +71,9 @@
             gap: 1.5rem;
         }
         .client-card {
-            background: linear-gradient(135deg, #1a1a1a 0%, #252525 100%);
-            border: 2px solid #333;
-            border-radius: 12px;
+            background: var(--panel);
+            border: 2px solid #3a3c40;
+            border-radius: var(--radius);
             padding: 1.5rem;
             text-decoration: none;
             color: inherit;
@@ -81,7 +81,7 @@
             transition: border-color 0.2s, transform 0.2s;
         }
         .client-card:hover {
-            border-color: #4caf50;
+            border-color: var(--go);
             transform: translateY(-2px);
         }
         .client-card-header {
@@ -91,30 +91,29 @@
             gap: 0.75rem;
             margin-bottom: 1rem;
             padding-bottom: 1rem;
-            border-bottom: 1px solid #333;
+            border-bottom: 1px solid #3a3c40;
         }
         .client-name {
             font-size: 1.2rem;
             font-weight: 600;
-            color: #f5f5f5;
+            color: var(--ink);
             word-break: break-word;
         }
         .status-badge {
             display: inline-block;
             padding: 4px 10px;
-            border-radius: 6px;
+            border-radius: var(--radius);
             font-size: 0.7rem;
             font-weight: 700;
-            text-transform: uppercase;
             letter-spacing: 0.5px;
             white-space: nowrap;
         }
         .status-badge.active {
-            background: #2e7d32;
+            background: var(--go-key);
             color: white;
         }
         .status-badge.suspended {
-            background: #b71c1c;
+            background: var(--stop-key);
             color: white;
         }
         .client-counts {
@@ -128,59 +127,58 @@
         .count-value {
             font-size: 1.3rem;
             font-weight: bold;
-            color: #4caf50;
+            color: var(--go);
         }
         .count-label {
             font-size: 0.7rem;
-            color: #999;
-            text-transform: uppercase;
-        }
+            color: var(--ink-2);
+            }
         /* Enquiries from the landing-page contact form */
         .enquiries { margin-bottom: 2rem; }
-        .enquiries h2 { font-size: 1.2rem; color: #fafafa; margin-bottom: 0.9rem; display: flex; align-items: center; gap: 10px; }
-        .enq-count { background: #ff6a1a; color: #140800; font-size: 0.75rem; font-weight: 700; padding: 2px 9px; border-radius: 20px; }
+        .enquiries h2 { font-size: 1.2rem; color: var(--ink); margin-bottom: 0.9rem; display: flex; align-items: center; gap: 10px; }
+        .enq-count { background: var(--key); color: #140800; font-size: 0.75rem; font-weight: 700; padding: 2px 9px; border-radius: var(--radius); }
         .enq-list { display: grid; gap: 0.75rem; }
         .enq {
-            background: #161618; border: 1px solid #333; border-left: 4px solid #ff6a1a;
-            border-radius: 10px; padding: 1rem 1.2rem;
+            background: var(--panel); border: 1px solid #3a3c40; border-left: 4px solid var(--key);
+            border-radius: var(--radius); padding: 1rem 1.2rem;
         }
-        .enq.handled { border-left-color: #444; opacity: 0.75; }
+        .enq.handled { border-left-color: #4a4d52; opacity: 0.75; }
         .enq-top { display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; align-items: baseline; }
-        .enq-who { font-weight: 600; color: #f5f5f5; }
+        .enq-who { font-weight: 600; color: var(--ink); }
         .enq-who a { color: #90caf9; font-weight: 500; }
-        .enq-meta { color: #888; font-size: 0.8rem; }
+        .enq-meta { color: var(--ink-2); font-size: 0.8rem; }
         .enq-tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 0.6rem 0; }
-        .enq-tags span { font-size: 0.75rem; border: 1px solid #444; border-radius: 20px; padding: 2px 9px; color: #ccc; }
-        .enq-msg { color: #ccc; white-space: pre-wrap; word-break: break-word; font-size: 0.92rem; }
+        .enq-tags span { font-size: 0.75rem; border: 1px solid #4a4d52; border-radius: var(--radius); padding: 2px 9px; color: var(--ink); }
+        .enq-msg { color: var(--ink); white-space: pre-wrap; word-break: break-word; font-size: 0.92rem; }
         .enq-actions { margin-top: 0.75rem; }
-        .enq-actions button { padding: 7px 14px; border-radius: 6px; border: 1px solid #444; background: #1f1f1f; color: #e5e5e5; cursor: pointer; font-size: 0.85rem; }
-        .enq-actions button:hover { border-color: #4caf50; }
-        .enquiries details summary { cursor: pointer; color: #999; margin: 0.9rem 0 0.6rem; }
+        .enq-actions button { padding: 7px 14px; border-radius: var(--radius); border: 1px solid #4a4d52; background: var(--panel-hi); color: var(--ink); cursor: pointer; font-size: 0.85rem; }
+        .enq-actions button:hover { border-color: var(--go); }
+        .enquiries details summary { cursor: pointer; color: var(--ink-2); margin: 0.9rem 0 0.6rem; }
         /* Foxy Timer for Windows trials */
         .wintrials { margin-bottom: 2rem; }
-        .wintrials h2 { font-size: 1.2rem; color: #fafafa; margin-bottom: 0.9rem; }
-        .wt-box { background: #161618; border: 1px solid #333; border-radius: 10px; padding: 1rem 1.2rem; }
+        .wintrials h2 { font-size: 1.2rem; color: var(--ink); margin-bottom: 0.9rem; }
+        .wt-box { background: var(--panel); border: 1px solid #3a3c40; border-radius: var(--radius); padding: 1rem 1.2rem; }
         .wt-settings { display: grid; grid-template-columns: auto 1fr; gap: 0.7rem 1rem; align-items: center; }
         .wt-settings label { color: #bbb; font-size: 0.9rem; }
-        .wt-settings input { padding: 8px 10px; border-radius: 6px; border: 1px solid #444; background: #0f0f10; color: #eee; font-size: 0.9rem; min-width: 0; }
+        .wt-settings input { padding: 8px 10px; border-radius: var(--radius); border: 1px solid #4a4d52; background: var(--well); color: var(--ink); font-size: 0.9rem; min-width: 0; }
         .wt-settings input[type=number] { width: 90px; }
         .wt-row-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 0.9rem; }
-        .wt-row-actions button, .wt-table button { padding: 7px 14px; border-radius: 6px; border: 1px solid #444; background: #1f1f1f; color: #e5e5e5; cursor: pointer; font-size: 0.85rem; }
-        .wt-row-actions button:hover, .wt-table button:hover { border-color: #4caf50; }
-        .wt-note { color: #888; font-size: 0.85rem; }
+        .wt-row-actions button, .wt-table button { padding: 7px 14px; border-radius: var(--radius); border: 1px solid #4a4d52; background: var(--panel-hi); color: var(--ink); cursor: pointer; font-size: 0.85rem; }
+        .wt-row-actions button:hover, .wt-table button:hover { border-color: var(--go); }
+        .wt-note { color: var(--ink-2); font-size: 0.85rem; }
         .wt-note.warn { color: #ffb74d; }
         .wt-table { width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.88rem; }
-        .wt-table th { text-align: left; color: #888; font-weight: 500; padding: 6px 8px; border-bottom: 1px solid #333; }
-        .wt-table td { padding: 8px; border-bottom: 1px solid #222; color: #ddd; vertical-align: middle; }
-        .wt-table input { width: 60px; padding: 5px 6px; border-radius: 6px; border: 1px solid #444; background: #0f0f10; color: #eee; }
-        .wt-status-active { color: #81c784; }
+        .wt-table th { text-align: left; color: var(--ink-2); font-weight: 500; padding: 6px 8px; border-bottom: 1px solid #3a3c40; }
+        .wt-table td { padding: 8px; border-bottom: 1px solid #222; color: var(--ink); vertical-align: middle; }
+        .wt-table input { width: 60px; padding: 5px 6px; border-radius: var(--radius); border: 1px solid #4a4d52; background: var(--well); color: var(--ink); }
+        .wt-status-active { color: var(--go); }
         .wt-status-expired { color: #e57373; }
         .wt-scroll { overflow-x: auto; }
         @media (max-width: 700px) { .wt-settings { grid-template-columns: 1fr; } }
         .empty-state, .loading {
             text-align: center;
             padding: 4rem 2rem;
-            color: #666;
+            color: var(--ink-3);
         }
         @media (max-width: 700px) {
             body {
@@ -200,28 +198,28 @@
         }
     </style>
 </head>
-<body>
+<body class="foxy">
     <div class="header">
         <div>
-            <h1>🏢 Client Management
+            <h1>Client Management
                 <span class="badge-platform-admin">PLATFORM ADMIN</span>
             </h1>
-            <p style="color: #999; margin-top: 0.5rem;">All clients on this platform</p>
+            <p style="color: var(--ink-2); margin-top: 0.5rem;">All clients on this platform</p>
         </div>
         <div class="nav-links">
-            <button id="createClientBtn" onclick="openCreateClientWizard(this)" class="nav-link" style="cursor:pointer;background:#2e7d32;border-color:#2e7d32;color:white;">➕ Create Client</button>
+            <button id="createClientBtn" onclick="openCreateClientWizard(this)" class="nav-link" style="cursor:pointer;background:var(--go-key);border-color:var(--go-key);color:white;">Create Client</button>
             <a href="/dashboard" class="nav-link">← Back to Dashboard</a>
-            <button onclick="logout()" class="nav-link" style="cursor:pointer;">🚪 Logout</button>
+            <button onclick="logout()" class="nav-link" style="cursor:pointer;">Logout</button>
         </div>
     </div>
 
     <section class="enquiries" id="enquiriesSection" style="display:none;">
-        <h2>📨 Enquiries <span class="enq-count" id="enqCount"></span></h2>
+        <h2>Enquiries <span class="enq-count" id="enqCount"></span></h2>
         <div id="enquiriesContainer"></div>
     </section>
 
     <section class="wintrials" id="winTrialsSection" style="display:none;">
-        <h2>💻 Foxy Timer for Windows trials</h2>
+        <h2>Foxy Timer for Windows trials</h2>
         <div class="wt-box">
             <div class="wt-settings">
                 <label for="wtDays">Trial length (days)</label>
@@ -249,7 +247,7 @@
          Escape and click-outside both close safely. Content is swapped per
          step by the wizard functions below. -->
     <div id="modalOverlay" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 1000; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box;" onclick="if (event.target === this) closeModal();">
-        <div id="modalBox" role="dialog" aria-modal="true" aria-labelledby="modalTitle" tabindex="-1" style="background: #1a1a1a; border: 1px solid #333; border-radius: 12px; padding: 24px; max-width: 440px; width: 100%; box-sizing: border-box; box-shadow: 0 8px 32px rgba(0,0,0,0.5); outline: none;">
+        <div id="modalBox" role="dialog" aria-modal="true" aria-labelledby="modalTitle" tabindex="-1" style="background: var(--panel); border: 1px solid #3a3c40; border-radius: var(--radius); padding: 24px; max-width: 440px; width: 100%; box-sizing: border-box; box-shadow: 0 8px 32px rgba(0,0,0,0.5); outline: none;">
             <div id="modalContent"></div>
         </div>
     </div>
@@ -391,7 +389,7 @@
             try {
                 await navigator.clipboard.writeText(text);
                 const original = buttonEl.textContent;
-                buttonEl.textContent = '✅ Copied';
+                buttonEl.textContent = 'Copied';
                 setTimeout(() => { buttonEl.textContent = original; }, 1500);
             } catch (error) {
                 console.error('Copy failed:', error);
@@ -401,8 +399,8 @@
         function modalButtonRow(html) {
             return `<div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;">${html}</div>`;
         }
-        const CANCEL_BTN_STYLE = 'padding:10px 18px;border-radius:8px;border:1px solid #444;background:transparent;color:#ccc;cursor:pointer;font-size:0.9rem;';
-        const PRIMARY_BTN_STYLE = 'padding:10px 18px;border-radius:8px;border:none;background:#2e7d32;color:#fff;cursor:pointer;font-weight:600;font-size:0.9rem;';
+        const CANCEL_BTN_STYLE = 'padding:10px 18px;border-radius: var(--radius);border:1px solid #4a4d52;background:transparent;color:var(--ink);cursor:pointer;font-size:0.9rem;';
+        const PRIMARY_BTN_STYLE = 'padding:10px 18px;border-radius: var(--radius);border:none;background:var(--go-key);color:#fff;cursor:pointer;font-weight:600;font-size:0.9rem;';
 
         // ============================================================
         // Guided Create Client wizard: name -> API key result -> create
@@ -412,11 +410,11 @@
 
         function renderCreateClientStep(errorMsg) {
             return `
-                <h2 id="modalTitle" style="margin:0 0 12px 0;font-size:1.2rem;color:#fafafa;">Create Client</h2>
-                <p style="margin:0 0 16px 0;color:#ccc;font-size:0.9rem;">This provisions a new client and a fresh API key for Companion/API integrations.</p>
-                ${errorMsg ? `<div style="background:#b71c1c;color:#fff;padding:8px 12px;border-radius:6px;margin-bottom:12px;font-size:0.85rem;">${escapeHtml(errorMsg)}</div>` : ''}
-                <label style="display:block;font-size:0.8rem;color:#999;margin-bottom:6px;">Client name</label>
-                <input id="newClientNameInput" type="text" style="width:100%;padding:10px 12px;border-radius:6px;border:1px solid #333;background:#0a0a0a;color:#e5e5e5;margin-bottom:20px;box-sizing:border-box;" placeholder="e.g. Acme Events" onkeypress="if(event.key==='Enter') submitCreateClient()">
+                <h2 id="modalTitle" style="margin:0 0 12px 0;font-size:1.2rem;color:var(--ink);">Create Client</h2>
+                <p style="margin:0 0 16px 0;color:var(--ink);font-size:0.9rem;">This provisions a new client and a fresh API key for Companion/API integrations.</p>
+                ${errorMsg ? `<div style="background:var(--stop-key);color:#fff;padding:8px 12px;border-radius: var(--radius);margin-bottom:12px;font-size:0.85rem;">${escapeHtml(errorMsg)}</div>` : ''}
+                <label style="display:block;font-size:0.8rem;color:var(--ink-2);margin-bottom:6px;">Client name</label>
+                <input id="newClientNameInput" type="text" style="width:100%;padding:10px 12px;border-radius: var(--radius);border:1px solid #3a3c40;background:var(--desk);color:var(--ink);margin-bottom:20px;box-sizing:border-box;" placeholder="e.g. Acme Events" onkeypress="if(event.key==='Enter') submitCreateClient()">
                 ${modalButtonRow(`
                     <button onclick="closeModal()" style="${CANCEL_BTN_STYLE}">Cancel</button>
                     <button onclick="submitCreateClient()" style="${PRIMARY_BTN_STYLE}">Create</button>
@@ -456,16 +454,16 @@
 
         function renderApiKeyResult(clientName, apiKey) {
             return `
-                <h2 id="modalTitle" style="margin:0 0 12px 0;font-size:1.2rem;color:#fafafa;">Client created — API key</h2>
-                <p style="margin:0 0 8px 0;color:#ccc;font-size:0.9rem;line-height:1.5;">"${escapeHtml(clientName)}" was created. This key is for <strong>Companion and other API integrations</strong> — not for human dashboard login.</p>
-                <div id="apiKeyText" style="background:#0a0a0a;border:1px solid #333;border-radius:6px;padding:12px;margin:12px 0;font-family:'Courier New',monospace;font-size:0.85rem;word-break:break-all;user-select:all;">${escapeHtml(apiKey)}</div>
-                <p style="margin:0 0 8px 0;color:#f44336;font-size:0.82rem;">⚠ This key will not be shown again. Copy it now - if lost, the recovery path is API key rotation.</p>
-                <p style="margin:0 0 20px 0;color:#999;font-size:0.82rem;line-height:1.5;">You don't need to send it to the customer: they can make their own key from <b>Dashboard → Companion</b>.</p>
+                <h2 id="modalTitle" style="margin:0 0 12px 0;font-size:1.2rem;color:var(--ink);">Client created — API key</h2>
+                <p style="margin:0 0 8px 0;color:var(--ink);font-size:0.9rem;line-height:1.5;">"${escapeHtml(clientName)}" was created. This key is for <strong>Companion and other API integrations</strong> — not for human dashboard login.</p>
+                <div id="apiKeyText" style="background:var(--desk);border:1px solid #3a3c40;border-radius: var(--radius);padding:12px;margin:12px 0;font-family:'Courier New',monospace;font-size:0.85rem;word-break:break-all;user-select:all;">${escapeHtml(apiKey)}</div>
+                <p style="margin:0 0 8px 0;color:#f44336;font-size:0.82rem;">This key will not be shown again. Copy it now - if lost, the recovery path is API key rotation.</p>
+                <p style="margin:0 0 20px 0;color:var(--ink-2);font-size:0.82rem;line-height:1.5;">You don't need to send it to the customer: they can make their own key from <b>Dashboard → Companion</b>.</p>
                 <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;">
-                    <button onclick="copyModalSecret('apiKeyText', this)" style="${CANCEL_BTN_STYLE}">📋 Copy</button>
+                    <button onclick="copyModalSecret('apiKeyText', this)" style="${CANCEL_BTN_STYLE}">Copy</button>
                     <div style="display:flex;gap:10px;flex-wrap:wrap;">
                         <button onclick="finishClientWizard()" style="${CANCEL_BTN_STYLE}">Done for now</button>
-                        <button onclick="goToCreateFirstUser()" style="padding:10px 18px;border-radius:8px;border:none;background:#1976d2;color:#fff;cursor:pointer;font-weight:600;font-size:0.9rem;">Continue → Add first user</button>
+                        <button onclick="goToCreateFirstUser()" style="padding:10px 18px;border-radius: var(--radius);border:none;background:var(--key);color:#fff;cursor:pointer;font-weight:600;font-size:0.9rem;">Continue → Add first user</button>
                     </div>
                 </div>
             `;
@@ -478,11 +476,11 @@
 
         function renderCreateFirstUserStep(errorMsg) {
             return `
-                <h2 id="modalTitle" style="margin:0 0 12px 0;font-size:1.2rem;color:#fafafa;">Create first user for "${escapeHtml(clientWizardState.clientName)}"</h2>
-                <p style="margin:0 0 16px 0;color:#ccc;font-size:0.9rem;">They'll receive a one-time temporary password and must change it on first login.</p>
-                ${errorMsg ? `<div style="background:#b71c1c;color:#fff;padding:8px 12px;border-radius:6px;margin-bottom:12px;font-size:0.85rem;">${escapeHtml(errorMsg)}</div>` : ''}
-                <label style="display:block;font-size:0.8rem;color:#999;margin-bottom:6px;">Email</label>
-                <input id="newUserEmailInput" type="email" style="width:100%;padding:10px 12px;border-radius:6px;border:1px solid #333;background:#0a0a0a;color:#e5e5e5;margin-bottom:20px;box-sizing:border-box;" placeholder="e.g. jamie@client.com" onkeypress="if(event.key==='Enter') submitCreateFirstUser()">
+                <h2 id="modalTitle" style="margin:0 0 12px 0;font-size:1.2rem;color:var(--ink);">Create first user for "${escapeHtml(clientWizardState.clientName)}"</h2>
+                <p style="margin:0 0 16px 0;color:var(--ink);font-size:0.9rem;">They'll receive a one-time temporary password and must change it on first login.</p>
+                ${errorMsg ? `<div style="background:var(--stop-key);color:#fff;padding:8px 12px;border-radius: var(--radius);margin-bottom:12px;font-size:0.85rem;">${escapeHtml(errorMsg)}</div>` : ''}
+                <label style="display:block;font-size:0.8rem;color:var(--ink-2);margin-bottom:6px;">Email</label>
+                <input id="newUserEmailInput" type="email" style="width:100%;padding:10px 12px;border-radius: var(--radius);border:1px solid #3a3c40;background:var(--desk);color:var(--ink);margin-bottom:20px;box-sizing:border-box;" placeholder="e.g. jamie@client.com" onkeypress="if(event.key==='Enter') submitCreateFirstUser()">
                 ${modalButtonRow(`
                     <button onclick="finishClientWizard()" style="${CANCEL_BTN_STYLE}">Skip</button>
                     <button onclick="submitCreateFirstUser()" style="${PRIMARY_BTN_STYLE}">Create User</button>
@@ -517,12 +515,12 @@
 
         function renderWizardRecovery(errorDetail) {
             document.getElementById('modalContent').innerHTML = `
-                <h2 id="modalTitle" style="margin:0 0 12px 0;font-size:1.2rem;color:#fafafa;">Client created — user creation failed</h2>
-                <p style="margin:0 0 8px 0;color:#ccc;font-size:0.9rem;line-height:1.5;">"${escapeHtml(clientWizardState.clientName)}" was created, but creating the first user failed${errorDetail ? ': ' + escapeHtml(errorDetail) : ' unexpectedly'}.</p>
-                <p style="margin:0 0 20px 0;color:#ccc;font-size:0.9rem;">You can create a user from the client's detail page.</p>
+                <h2 id="modalTitle" style="margin:0 0 12px 0;font-size:1.2rem;color:var(--ink);">Client created — user creation failed</h2>
+                <p style="margin:0 0 8px 0;color:var(--ink);font-size:0.9rem;line-height:1.5;">"${escapeHtml(clientWizardState.clientName)}" was created, but creating the first user failed${errorDetail ? ': ' + escapeHtml(errorDetail) : ' unexpectedly'}.</p>
+                <p style="margin:0 0 20px 0;color:var(--ink);font-size:0.9rem;">You can create a user from the client's detail page.</p>
                 <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;">
                     <button onclick="finishClientWizard()" style="${CANCEL_BTN_STYLE}">Close</button>
-                    <a href="/admin/clients/${clientWizardState.clientId}" style="padding:10px 18px;border-radius:8px;border:none;background:#1976d2;color:#fff;cursor:pointer;font-weight:600;font-size:0.9rem;text-decoration:none;display:inline-block;">Go to client →</a>
+                    <a href="/admin/clients/${clientWizardState.clientId}" style="padding:10px 18px;border-radius: var(--radius);border:none;background:var(--key);color:#fff;cursor:pointer;font-weight:600;font-size:0.9rem;text-decoration:none;display:inline-block;">Go to client →</a>
                 </div>
             `;
         }
@@ -532,12 +530,12 @@
         // convention of no shared JS file between pages).
         function renderTempPasswordResult(titleContext, email, tempPassword, onDoneCall) {
             return `
-                <h2 id="modalTitle" style="margin:0 0 12px 0;font-size:1.2rem;color:#fafafa;">${escapeHtml(titleContext)} — temporary password</h2>
-                <p style="margin:0 0 8px 0;color:#ccc;font-size:0.9rem;">Email: <strong>${escapeHtml(email)}</strong></p>
-                <div id="tempPasswordText" style="background:#0a0a0a;border:1px solid #333;border-radius:6px;padding:12px;margin:12px 0;font-family:'Courier New',monospace;font-size:0.85rem;word-break:break-all;user-select:all;">${escapeHtml(tempPassword)}</div>
-                <p style="margin:0 0 20px 0;color:#f44336;font-size:0.82rem;">⚠ This password will not be shown again. Share it with the user via a secure channel - they must change it on first login.</p>
+                <h2 id="modalTitle" style="margin:0 0 12px 0;font-size:1.2rem;color:var(--ink);">${escapeHtml(titleContext)} — temporary password</h2>
+                <p style="margin:0 0 8px 0;color:var(--ink);font-size:0.9rem;">Email: <strong>${escapeHtml(email)}</strong></p>
+                <div id="tempPasswordText" style="background:var(--desk);border:1px solid #3a3c40;border-radius: var(--radius);padding:12px;margin:12px 0;font-family:'Courier New',monospace;font-size:0.85rem;word-break:break-all;user-select:all;">${escapeHtml(tempPassword)}</div>
+                <p style="margin:0 0 20px 0;color:#f44336;font-size:0.82rem;">This password will not be shown again. Share it with the user via a secure channel - they must change it on first login.</p>
                 <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;">
-                    <button onclick="copyModalSecret('tempPasswordText', this)" style="${CANCEL_BTN_STYLE}">📋 Copy</button>
+                    <button onclick="copyModalSecret('tempPasswordText', this)" style="${CANCEL_BTN_STYLE}">Copy</button>
                     <button onclick="${onDoneCall}" style="${PRIMARY_BTN_STYLE}">Done</button>
                 </div>
             `;

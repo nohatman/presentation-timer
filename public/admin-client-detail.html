@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Foxy's Presentation Timer - Client Detail</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="stylesheet" href="/foxy.css">
     <style>
         * {
             margin: 0;
@@ -12,18 +13,17 @@
             box-sizing: border-box;
         }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #0a0a0a;
-            color: #e5e5e5;
+            background: var(--desk);
+            color: var(--ink);
             padding: 20px;
             min-height: 100vh;
         }
         .header {
-            background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+            background: var(--panel);
             padding: 2rem;
-            border-radius: 12px;
+            border-radius: var(--radius);
             margin-bottom: 2rem;
-            border: 1px solid #333;
+            border: 1px solid #3a3c40;
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -32,7 +32,7 @@
         }
         .header h1 {
             font-size: 1.7rem;
-            color: #fafafa;
+            color: var(--ink);
             display: flex;
             align-items: center;
             gap: 0.6rem;
@@ -45,10 +45,10 @@
         }
         .nav-link {
             padding: 10px 16px;
-            border: 1px solid #333;
-            border-radius: 6px;
-            background: #1a1a1a;
-            color: #e5e5e5;
+            border: 1px solid #3a3c40;
+            border-radius: var(--radius);
+            background: var(--panel);
+            color: var(--ink);
             text-decoration: none;
             font-size: 0.9rem;
             font-weight: 500;
@@ -56,39 +56,38 @@
             transition: background 0.2s, border-color 0.2s;
         }
         .nav-link:hover {
-            background: #252525;
-            border-color: #4caf50;
+            background: var(--key);
+            border-color: var(--go);
         }
         .status-badge {
             display: inline-block;
             padding: 4px 10px;
-            border-radius: 6px;
+            border-radius: var(--radius);
             font-size: 0.7rem;
             font-weight: 700;
-            text-transform: uppercase;
             letter-spacing: 0.5px;
         }
         .status-badge.active {
-            background: #2e7d32;
+            background: var(--go-key);
             color: white;
         }
         .status-badge.suspended {
-            background: #b71c1c;
+            background: var(--stop-key);
             color: white;
         }
         .section {
-            background: linear-gradient(135deg, #1a1a1a 0%, #252525 100%);
-            border: 2px solid #333;
-            border-radius: 12px;
+            background: var(--panel);
+            border: 2px solid #3a3c40;
+            border-radius: var(--radius);
             padding: 1.5rem;
             margin-bottom: 1.5rem;
         }
         .section h2 {
             font-size: 1.1rem;
-            color: #f5f5f5;
+            color: var(--ink);
             margin-bottom: 1rem;
             padding-bottom: 0.75rem;
-            border-bottom: 1px solid #333;
+            border-bottom: 1px solid #3a3c40;
         }
         .profile-grid {
             display: flex;
@@ -100,14 +99,13 @@
         }
         .profile-label {
             font-size: 0.75rem;
-            color: #999;
-            text-transform: uppercase;
+            color: var(--ink-2);
             margin-bottom: 0.25rem;
         }
         .profile-value {
             font-size: 1rem;
             font-weight: 600;
-            color: #e5e5e5;
+            color: var(--ink);
         }
         .data-table {
             display: flex;
@@ -118,14 +116,13 @@
             display: grid;
             gap: 1rem;
             padding: 0.75rem 1rem;
-            background: #0a0a0a;
-            border-radius: 8px;
+            background: var(--desk);
+            border-radius: var(--radius);
             align-items: center;
         }
         .data-row.header-row {
-            color: #999;
+            color: var(--ink-2);
             font-size: 0.72rem;
-            text-transform: uppercase;
             font-weight: 700;
             background: transparent;
             padding: 0 1rem;
@@ -139,14 +136,14 @@
         .event-name {
             font-size: 0.9rem;
             font-weight: 600;
-            color: #ccc;
+            color: var(--ink);
             margin: 1rem 0 0.5rem;
         }
         .event-name:first-child {
             margin-top: 0;
         }
         .empty-hint {
-            color: #666;
+            color: var(--ink-3);
             padding: 1rem;
             text-align: center;
         }
@@ -158,7 +155,7 @@
             gap: 0.75rem;
             margin-bottom: 1rem;
             padding-bottom: 0.75rem;
-            border-bottom: 1px solid #333;
+            border-bottom: 1px solid #3a3c40;
         }
         .section-header-row h2 {
             margin-bottom: 0;
@@ -167,16 +164,16 @@
         }
         .mini-btn {
             padding: 6px 12px;
-            border-radius: 6px;
-            border: 1px solid #444;
-            background: #1a1a1a;
-            color: #ccc;
+            border-radius: var(--radius);
+            border: 1px solid #4a4d52;
+            background: var(--panel);
+            color: var(--ink);
             font-size: 0.78rem;
             cursor: pointer;
             white-space: nowrap;
         }
         .mini-btn:hover {
-            border-color: #4caf50;
+            border-color: var(--go);
             color: #fff;
         }
         .row-actions {
@@ -187,7 +184,7 @@
         .loading {
             text-align: center;
             padding: 4rem 2rem;
-            color: #999;
+            color: var(--ink-2);
         }
         @media (max-width: 700px) {
             body {
@@ -212,22 +209,22 @@
             }
             .data-row:not(.header-row) [data-label]::before {
                 content: attr(data-label) ": ";
-                color: #999;
+                color: var(--ink-2);
                 font-weight: 600;
             }
         }
     </style>
 </head>
-<body>
+<body class="foxy">
     <div class="header">
         <div>
             <h1 id="clientTitle">Loading…</h1>
-            <p style="color: #999; margin-top: 0.5rem;" id="clientSubtitle"></p>
+            <p style="color: var(--ink-2); margin-top: 0.5rem;" id="clientSubtitle"></p>
         </div>
         <div class="nav-links">
             <a href="/admin/clients" class="nav-link">← Back to Clients</a>
-            <a href="/dashboard" class="nav-link">🏠 Dashboard</a>
-            <button onclick="logout()" class="nav-link" style="cursor:pointer;">🚪 Logout</button>
+            <a href="/dashboard" class="nav-link">Dashboard</a>
+            <button onclick="logout()" class="nav-link" style="cursor:pointer;">Logout</button>
         </div>
     </div>
 
@@ -241,7 +238,7 @@
          open and back to the trigger element on close, Escape and
          click-outside both close safely. -->
     <div id="modalOverlay" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 1000; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box;" onclick="if (event.target === this) closeModal();">
-        <div id="modalBox" role="dialog" aria-modal="true" aria-labelledby="modalTitle" tabindex="-1" style="background: #1a1a1a; border: 1px solid #333; border-radius: 12px; padding: 24px; max-width: 440px; width: 100%; box-sizing: border-box; box-shadow: 0 8px 32px rgba(0,0,0,0.5); outline: none;">
+        <div id="modalBox" role="dialog" aria-modal="true" aria-labelledby="modalTitle" tabindex="-1" style="background: var(--panel); border: 1px solid #3a3c40; border-radius: var(--radius); padding: 24px; max-width: 440px; width: 100%; box-sizing: border-box; box-shadow: 0 8px 32px rgba(0,0,0,0.5); outline: none;">
             <div id="modalContent"></div>
         </div>
     </div>
@@ -339,13 +336,13 @@
             currentUsers = users;
             const statusClass = client.status === 'active' ? 'active' : 'suspended';
             document.getElementById('clientTitle').innerHTML = `
-                🏢 ${escapeHtml(client.name)}
+                ${escapeHtml(client.name)}
                 <span class="status-badge ${statusClass}">${escapeHtml(statusLabel(client.status))}</span>
                 ${client.is_platform_admin ? '<span class="status-badge" style="background:#6a1b9a;">PLATFORM ADMIN</span>' : ''}
-                <button id="editNameBtn" onclick="openEditNameModal(this)" class="mini-btn">✏️ Edit name</button>
+                <button id="editNameBtn" onclick="openEditNameModal(this)" class="mini-btn">Edit name</button>
                 ${client.status === 'active'
-                    ? `<button id="suspendBtn" onclick="openSuspendConfirm(this)" class="mini-btn" style="border-color:#b71c1c;color:#ff8a80;">⏸ Pause Access</button>`
-                    : `<button id="reactivateBtn" onclick="submitReactivate(this)" class="mini-btn" style="border-color:#2e7d32;color:#81c784;">▶ Restore Access</button>`}
+                    ? `<button id="suspendBtn" onclick="openSuspendConfirm(this)" class="mini-btn" style="border-color:var(--stop-key);color:#ff8a80;">⏸ Pause Access</button>`
+                    : `<button id="reactivateBtn" onclick="submitReactivate(this)" class="mini-btn" style="border-color:var(--go-key);color:var(--go);">▶ Restore Access</button>`}
             `;
             document.getElementById('clientSubtitle').textContent = `Client since ${formatDate(client.created_at)}`;
 
@@ -376,7 +373,7 @@
                         </div>
                         <div class="profile-item">
                             <div class="profile-label">Licence / plan</div>
-                            <div class="profile-value" style="color:#666;">Not configured</div>
+                            <div class="profile-value" style="color:var(--ink-3);">Not configured</div>
                         </div>
                     </div>
                 </div>
@@ -384,9 +381,9 @@
                 <div class="section">
                     <div class="section-header-row">
                         <h2>API Key</h2>
-                        <button id="rotateKeyBtn" onclick="openRotateKeyConfirm(this)" class="mini-btn">🔄 Rotate API Key</button>
+                        <button id="rotateKeyBtn" onclick="openRotateKeyConfirm(this)" class="mini-btn">Rotate API Key</button>
                     </div>
-                    <p style="margin:0 0 1rem 0;color:#999;font-size:0.85rem;">Used by Companion and other API integrations - not for human dashboard login. The key itself is never shown again after creation or rotation.</p>
+                    <p style="margin:0 0 1rem 0;color:var(--ink-2);font-size:0.85rem;">Used by Companion and other API integrations - not for human dashboard login. The key itself is never shown again after creation or rotation.</p>
                     <div class="profile-grid">
                         <div class="profile-item">
                             <div class="profile-label">Key created</div>
@@ -402,7 +399,7 @@
                 <div class="section">
                     <div class="section-header-row">
                         <h2>Users (${users.length})</h2>
-                        <button id="addUserBtn" onclick="openAddUserModal(this)" class="mini-btn" style="background:#2e7d32;border-color:#2e7d32;color:#fff;">➕ Add User</button>
+                        <button id="addUserBtn" onclick="openAddUserModal(this)" class="mini-btn" style="background:var(--go-key);border-color:var(--go-key);color:#fff;">Add User</button>
                     </div>
                     ${renderUsersTable(users)}
                 </div>
@@ -434,8 +431,8 @@
                             <div data-label="Must change password">${user.must_change_password ? 'Yes' : 'No'}</div>
                             <div data-label="Created">${formatDate(user.created_at)}</div>
                             <div data-label="Actions" class="row-actions">
-                                <button onclick="openChangeEmailModal(this, ${user.id})" class="mini-btn">✉️ Email</button>
-                                <button onclick="openResetPasswordConfirm(this, ${user.id})" class="mini-btn">🔑 Reset</button>
+                                <button onclick="openChangeEmailModal(this, ${user.id})" class="mini-btn">Email</button>
+                                <button onclick="openResetPasswordConfirm(this, ${user.id})" class="mini-btn">Reset</button>
                             </div>
                         </div>
                     `).join('')}
@@ -452,7 +449,7 @@
                 const eventRooms = rooms.filter(r => r.event_id === event.id);
                 return `
                     <div class="event-group">
-                        <div class="event-name">📅 ${escapeHtml(event.name)} (${eventRooms.length} room${eventRooms.length === 1 ? '' : 's'})</div>
+                        <div class="event-name">${escapeHtml(event.name)} (${eventRooms.length} room${eventRooms.length === 1 ? '' : 's'})</div>
                         ${eventRooms.length === 0 ? '<div class="empty-hint">No rooms in this event.</div>' : `
                             <div class="data-table">
                                 <div class="data-row header-row rooms-row">
@@ -512,7 +509,7 @@
             try {
                 await navigator.clipboard.writeText(text);
                 const original = buttonEl.textContent;
-                buttonEl.textContent = '✅ Copied';
+                buttonEl.textContent = 'Copied';
                 setTimeout(() => { buttonEl.textContent = original; }, 1500);
             } catch (error) {
                 console.error('Copy failed:', error);
@@ -522,18 +519,18 @@
         function modalButtonRow(html) {
             return `<div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;">${html}</div>`;
         }
-        const CANCEL_BTN_STYLE = 'padding:10px 18px;border-radius:8px;border:1px solid #444;background:transparent;color:#ccc;cursor:pointer;font-size:0.9rem;';
-        const PRIMARY_BTN_STYLE = 'padding:10px 18px;border-radius:8px;border:none;background:#2e7d32;color:#fff;cursor:pointer;font-weight:600;font-size:0.9rem;';
-        const DANGER_BTN_STYLE = 'padding:10px 18px;border-radius:8px;border:none;background:#b71c1c;color:#fff;cursor:pointer;font-weight:600;font-size:0.9rem;';
+        const CANCEL_BTN_STYLE = 'padding:10px 18px;border-radius: var(--radius);border:1px solid #4a4d52;background:transparent;color:var(--ink);cursor:pointer;font-size:0.9rem;';
+        const PRIMARY_BTN_STYLE = 'padding:10px 18px;border-radius: var(--radius);border:none;background:var(--go-key);color:#fff;cursor:pointer;font-weight:600;font-size:0.9rem;';
+        const DANGER_BTN_STYLE = 'padding:10px 18px;border-radius: var(--radius);border:none;background:var(--stop-key);color:#fff;cursor:pointer;font-weight:600;font-size:0.9rem;';
 
         function renderTempPasswordResult(titleContext, email, tempPassword, onDoneCall) {
             return `
-                <h2 id="modalTitle" style="margin:0 0 12px 0;font-size:1.2rem;color:#fafafa;">${escapeHtml(titleContext)} — temporary password</h2>
-                <p style="margin:0 0 8px 0;color:#ccc;font-size:0.9rem;">Email: <strong>${escapeHtml(email)}</strong></p>
-                <div id="tempPasswordText" style="background:#0a0a0a;border:1px solid #333;border-radius:6px;padding:12px;margin:12px 0;font-family:'Courier New',monospace;font-size:0.85rem;word-break:break-all;user-select:all;">${escapeHtml(tempPassword)}</div>
-                <p style="margin:0 0 20px 0;color:#f44336;font-size:0.82rem;">⚠ This password will not be shown again. Share it with the user via a secure channel - they must change it on first login.</p>
+                <h2 id="modalTitle" style="margin:0 0 12px 0;font-size:1.2rem;color:var(--ink);">${escapeHtml(titleContext)} — temporary password</h2>
+                <p style="margin:0 0 8px 0;color:var(--ink);font-size:0.9rem;">Email: <strong>${escapeHtml(email)}</strong></p>
+                <div id="tempPasswordText" style="background:var(--desk);border:1px solid #3a3c40;border-radius: var(--radius);padding:12px;margin:12px 0;font-family:'Courier New',monospace;font-size:0.85rem;word-break:break-all;user-select:all;">${escapeHtml(tempPassword)}</div>
+                <p style="margin:0 0 20px 0;color:#f44336;font-size:0.82rem;">This password will not be shown again. Share it with the user via a secure channel - they must change it on first login.</p>
                 <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;">
-                    <button onclick="copyModalSecret('tempPasswordText', this)" style="${CANCEL_BTN_STYLE}">📋 Copy</button>
+                    <button onclick="copyModalSecret('tempPasswordText', this)" style="${CANCEL_BTN_STYLE}">Copy</button>
                     <button onclick="${onDoneCall}" style="${PRIMARY_BTN_STYLE}">Done</button>
                 </div>
             `;
@@ -548,10 +545,10 @@
 
         function renderEditNameForm(errorMsg) {
             return `
-                <h2 id="modalTitle" style="margin:0 0 12px 0;font-size:1.2rem;color:#fafafa;">Edit client name</h2>
-                ${errorMsg ? `<div style="background:#b71c1c;color:#fff;padding:8px 12px;border-radius:6px;margin-bottom:12px;font-size:0.85rem;">${escapeHtml(errorMsg)}</div>` : ''}
-                <label style="display:block;font-size:0.8rem;color:#999;margin-bottom:6px;">Client name</label>
-                <input id="editNameInput" type="text" value="${escapeHtml(currentClientName)}" style="width:100%;padding:10px 12px;border-radius:6px;border:1px solid #333;background:#0a0a0a;color:#e5e5e5;margin-bottom:20px;box-sizing:border-box;" onkeypress="if(event.key==='Enter') submitEditName()">
+                <h2 id="modalTitle" style="margin:0 0 12px 0;font-size:1.2rem;color:var(--ink);">Edit client name</h2>
+                ${errorMsg ? `<div style="background:var(--stop-key);color:#fff;padding:8px 12px;border-radius: var(--radius);margin-bottom:12px;font-size:0.85rem;">${escapeHtml(errorMsg)}</div>` : ''}
+                <label style="display:block;font-size:0.8rem;color:var(--ink-2);margin-bottom:6px;">Client name</label>
+                <input id="editNameInput" type="text" value="${escapeHtml(currentClientName)}" style="width:100%;padding:10px 12px;border-radius: var(--radius);border:1px solid #3a3c40;background:var(--desk);color:var(--ink);margin-bottom:20px;box-sizing:border-box;" onkeypress="if(event.key==='Enter') submitEditName()">
                 ${modalButtonRow(`
                     <button onclick="closeModal()" style="${CANCEL_BTN_STYLE}">Cancel</button>
                     <button onclick="submitEditName()" style="${PRIMARY_BTN_STYLE}">Save</button>
@@ -593,11 +590,11 @@
 
         function renderAddUserForm(errorMsg) {
             return `
-                <h2 id="modalTitle" style="margin:0 0 12px 0;font-size:1.2rem;color:#fafafa;">Add user to "${escapeHtml(currentClientName)}"</h2>
-                <p style="margin:0 0 16px 0;color:#ccc;font-size:0.9rem;">They'll receive a one-time temporary password and must change it on first login.</p>
-                ${errorMsg ? `<div style="background:#b71c1c;color:#fff;padding:8px 12px;border-radius:6px;margin-bottom:12px;font-size:0.85rem;">${escapeHtml(errorMsg)}</div>` : ''}
-                <label style="display:block;font-size:0.8rem;color:#999;margin-bottom:6px;">Email</label>
-                <input id="addUserEmailInput" type="email" style="width:100%;padding:10px 12px;border-radius:6px;border:1px solid #333;background:#0a0a0a;color:#e5e5e5;margin-bottom:20px;box-sizing:border-box;" placeholder="e.g. jamie@client.com" onkeypress="if(event.key==='Enter') submitAddUser()">
+                <h2 id="modalTitle" style="margin:0 0 12px 0;font-size:1.2rem;color:var(--ink);">Add user to "${escapeHtml(currentClientName)}"</h2>
+                <p style="margin:0 0 16px 0;color:var(--ink);font-size:0.9rem;">They'll receive a one-time temporary password and must change it on first login.</p>
+                ${errorMsg ? `<div style="background:var(--stop-key);color:#fff;padding:8px 12px;border-radius: var(--radius);margin-bottom:12px;font-size:0.85rem;">${escapeHtml(errorMsg)}</div>` : ''}
+                <label style="display:block;font-size:0.8rem;color:var(--ink-2);margin-bottom:6px;">Email</label>
+                <input id="addUserEmailInput" type="email" style="width:100%;padding:10px 12px;border-radius: var(--radius);border:1px solid #3a3c40;background:var(--desk);color:var(--ink);margin-bottom:20px;box-sizing:border-box;" placeholder="e.g. jamie@client.com" onkeypress="if(event.key==='Enter') submitAddUser()">
                 ${modalButtonRow(`
                     <button onclick="closeModal()" style="${CANCEL_BTN_STYLE}">Cancel</button>
                     <button onclick="submitAddUser()" style="${PRIMARY_BTN_STYLE}">Create User</button>
@@ -639,11 +636,11 @@
 
         function renderChangeEmailForm(currentEmail, errorMsg) {
             return `
-                <h2 id="modalTitle" style="margin:0 0 12px 0;font-size:1.2rem;color:#fafafa;">Change user email</h2>
-                <p style="margin:0 0 16px 0;color:#ccc;font-size:0.9rem;">Current: <strong>${escapeHtml(currentEmail)}</strong>. Changing this will sign the user out of all active sessions.</p>
-                ${errorMsg ? `<div style="background:#b71c1c;color:#fff;padding:8px 12px;border-radius:6px;margin-bottom:12px;font-size:0.85rem;">${escapeHtml(errorMsg)}</div>` : ''}
-                <label style="display:block;font-size:0.8rem;color:#999;margin-bottom:6px;">New email</label>
-                <input id="changeEmailInput" type="email" style="width:100%;padding:10px 12px;border-radius:6px;border:1px solid #333;background:#0a0a0a;color:#e5e5e5;margin-bottom:20px;box-sizing:border-box;" onkeypress="if(event.key==='Enter') submitChangeEmail()">
+                <h2 id="modalTitle" style="margin:0 0 12px 0;font-size:1.2rem;color:var(--ink);">Change user email</h2>
+                <p style="margin:0 0 16px 0;color:var(--ink);font-size:0.9rem;">Current: <strong>${escapeHtml(currentEmail)}</strong>. Changing this will sign the user out of all active sessions.</p>
+                ${errorMsg ? `<div style="background:var(--stop-key);color:#fff;padding:8px 12px;border-radius: var(--radius);margin-bottom:12px;font-size:0.85rem;">${escapeHtml(errorMsg)}</div>` : ''}
+                <label style="display:block;font-size:0.8rem;color:var(--ink-2);margin-bottom:6px;">New email</label>
+                <input id="changeEmailInput" type="email" style="width:100%;padding:10px 12px;border-radius: var(--radius);border:1px solid #3a3c40;background:var(--desk);color:var(--ink);margin-bottom:20px;box-sizing:border-box;" onkeypress="if(event.key==='Enter') submitChangeEmail()">
                 ${modalButtonRow(`
                     <button onclick="closeModal()" style="${CANCEL_BTN_STYLE}">Cancel</button>
                     <button onclick="submitChangeEmail()" style="${PRIMARY_BTN_STYLE}">Save &amp; Sign Out Sessions</button>
@@ -689,8 +686,8 @@
 
         function renderResetPasswordConfirm(email) {
             return `
-                <h2 id="modalTitle" style="margin:0 0 12px 0;font-size:1.2rem;color:#fafafa;">Reset password?</h2>
-                <p style="margin:0 0 20px 0;color:#ccc;font-size:0.9rem;line-height:1.5;">Reset the password for <strong>${escapeHtml(email)}</strong>? This will sign them out of all devices immediately and they'll need to set a new password on next login.</p>
+                <h2 id="modalTitle" style="margin:0 0 12px 0;font-size:1.2rem;color:var(--ink);">Reset password?</h2>
+                <p style="margin:0 0 20px 0;color:var(--ink);font-size:0.9rem;line-height:1.5;">Reset the password for <strong>${escapeHtml(email)}</strong>? This will sign them out of all devices immediately and they'll need to set a new password on next login.</p>
                 ${modalButtonRow(`
                     <button onclick="closeModal()" style="${CANCEL_BTN_STYLE}">Cancel</button>
                     <button onclick="confirmResetPassword()" style="${DANGER_BTN_STYLE}">Reset Password</button>
@@ -727,8 +724,8 @@
 
         function renderSuspendConfirm(clientName) {
             return `
-                <h2 id="modalTitle" style="margin:0 0 12px 0;font-size:1.2rem;color:#fafafa;">Pause access for "${escapeHtml(clientName)}"?</h2>
-                <p style="margin:0 0 20px 0;color:#ccc;font-size:0.9rem;line-height:1.5;">This immediately blocks all access for this client: dashboard sessions are signed out, API requests are rejected, and any connected control/display screens are disconnected. Nothing is deleted - no clients, users, events, rooms, or credentials. Restoring access uses the same login and API key, with nothing to regenerate.</p>
+                <h2 id="modalTitle" style="margin:0 0 12px 0;font-size:1.2rem;color:var(--ink);">Pause access for "${escapeHtml(clientName)}"?</h2>
+                <p style="margin:0 0 20px 0;color:var(--ink);font-size:0.9rem;line-height:1.5;">This immediately blocks all access for this client: dashboard sessions are signed out, API requests are rejected, and any connected control/display screens are disconnected. Nothing is deleted - no clients, users, events, rooms, or credentials. Restoring access uses the same login and API key, with nothing to regenerate.</p>
                 ${modalButtonRow(`
                     <button onclick="closeModal()" style="${CANCEL_BTN_STYLE}">Cancel</button>
                     <button onclick="confirmSuspend()" style="${DANGER_BTN_STYLE}">Pause Access</button>
@@ -775,8 +772,8 @@
 
         function renderRotateKeyConfirm(clientName) {
             return `
-                <h2 id="modalTitle" style="margin:0 0 12px 0;font-size:1.2rem;color:#fafafa;">Rotate API key for "${escapeHtml(clientName)}"?</h2>
-                <p style="margin:0 0 20px 0;color:#ccc;font-size:0.9rem;line-height:1.5;">The current key stops working immediately. Any Companion connections or other integrations using it will need the new key.</p>
+                <h2 id="modalTitle" style="margin:0 0 12px 0;font-size:1.2rem;color:var(--ink);">Rotate API key for "${escapeHtml(clientName)}"?</h2>
+                <p style="margin:0 0 20px 0;color:var(--ink);font-size:0.9rem;line-height:1.5;">The current key stops working immediately. Any Companion connections or other integrations using it will need the new key.</p>
                 ${modalButtonRow(`
                     <button onclick="closeModal()" style="${CANCEL_BTN_STYLE}">Cancel</button>
                     <button onclick="confirmRotateKey()" style="${DANGER_BTN_STYLE}">Rotate Key</button>
@@ -805,12 +802,12 @@
 
         function renderApiKeyRotatedResult(clientName, apiKey) {
             return `
-                <h2 id="modalTitle" style="margin:0 0 12px 0;font-size:1.2rem;color:#fafafa;">API key rotated</h2>
-                <p style="margin:0 0 8px 0;color:#ccc;font-size:0.9rem;">New key for <strong>${escapeHtml(clientName)}</strong>:</p>
-                <div id="apiKeyText" style="background:#0a0a0a;border:1px solid #333;border-radius:6px;padding:12px;margin:12px 0;font-family:'Courier New',monospace;font-size:0.85rem;word-break:break-all;user-select:all;">${escapeHtml(apiKey)}</div>
-                <p style="margin:0 0 20px 0;color:#ccc;font-size:0.82rem;">For security, this key cannot be viewed again. If it is lost, generate a replacement with Rotate API Key.</p>
+                <h2 id="modalTitle" style="margin:0 0 12px 0;font-size:1.2rem;color:var(--ink);">API key rotated</h2>
+                <p style="margin:0 0 8px 0;color:var(--ink);font-size:0.9rem;">New key for <strong>${escapeHtml(clientName)}</strong>:</p>
+                <div id="apiKeyText" style="background:var(--desk);border:1px solid #3a3c40;border-radius: var(--radius);padding:12px;margin:12px 0;font-family:'Courier New',monospace;font-size:0.85rem;word-break:break-all;user-select:all;">${escapeHtml(apiKey)}</div>
+                <p style="margin:0 0 20px 0;color:var(--ink);font-size:0.82rem;">For security, this key cannot be viewed again. If it is lost, generate a replacement with Rotate API Key.</p>
                 <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;">
-                    <button onclick="copyModalSecret('apiKeyText', this)" style="${CANCEL_BTN_STYLE}">📋 Copy</button>
+                    <button onclick="copyModalSecret('apiKeyText', this)" style="${CANCEL_BTN_STYLE}">Copy</button>
                     <button onclick="afterMutation()" style="${PRIMARY_BTN_STYLE}">Done</button>
                 </div>
             `;
