@@ -3,9 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Foxy's Presentation Timer - Control</title>
+    <title>Foxy Timer - Control</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <script src="/socket.io/socket.io.js"></script>
+    <link rel="stylesheet" href="/foxy.css">
     <style>
         /* Nothing on this page is meant to scroll sideways. Without this, a
            single element overflowing its box anywhere (nothing here clips
@@ -18,12 +19,10 @@
         html, body {
             overflow-x: hidden;
         }
+        /* Colours, fonts and keys come from /foxy.css (body.foxy). */
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             margin: 0;
             padding: 0;
-            background: #121212;
-            color: #e5e5e5;
         }
         .wrapper {
             max-width: 1400px;
@@ -38,7 +37,8 @@
             gap: 16px;
         }
         h1 {
-            color: #fafafa;
+            color: var(--ink);
+            font-size: 1.4rem;
             text-align: left;
             margin: 0 0 8px 0;
             grid-column: 1 / -1;
@@ -48,18 +48,16 @@
         .section {
             margin: 0;
             padding: 14px;
-            border: 1px solid #2a2a2a;
-            border-radius: 8px;
-            background: #1a1a1a;
-            transition: border-color 0.2s;
+            border: 1px solid var(--seam);
+            border-radius: var(--radius);
+            background: var(--panel);
+            box-shadow: inset 0 1px 0 var(--bevel);
         }
-        .section:hover {
-            border-color: #3a3a3a;
-        }
-        .section h3 {
+        .section h3, .section > summary {
             margin: 0 0 12px 0;
-            font-size: 1.1rem;
-            color: #f5f5f5;
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: var(--ink);
         }
         .form-group {
             margin-bottom: 10px;
@@ -68,62 +66,70 @@
             display: block;
             margin-bottom: 6px;
             font-weight: 500;
-            color: #cfcfcf;
+            color: var(--ink);
         }
         label.radio-label {
             display: flex;
             align-items: center;
             padding: 12px;
-            background: #1a1a1a;
-            border: 2px solid #333;
-            border-radius: 8px;
+            background: var(--well);
+            border: 1px solid #3a3c40;
+            border-radius: var(--radius);
             cursor: pointer;
             transition: all 0.2s;
             font-size: 1.05rem;
         }
         label.radio-label:hover {
-            border-color: #90caf9;
-            background: #202020;
+            border-color: var(--ink-3);
         }
         label.radio-label input[type="radio"] {
             width: 20px;
             height: 20px;
             margin-right: 10px;
             cursor: pointer;
+            accent-color: var(--go);
         }
         label.checkbox-label {
             display: flex;
             align-items: center;
             padding: 12px;
-            background: #1a1a1a;
-            border: 2px solid #333;
-            border-radius: 8px;
+            background: var(--well);
+            border: 1px solid #3a3c40;
+            border-radius: var(--radius);
             cursor: pointer;
             transition: all 0.2s;
             font-size: 1.05rem;
             margin-bottom: 10px;
         }
         label.checkbox-label:hover {
-            border-color: #90caf9;
-            background: #202020;
+            border-color: var(--ink-3);
         }
         label.checkbox-label input[type="checkbox"] {
             width: 20px;
             height: 20px;
             margin-right: 10px;
             cursor: pointer;
+            accent-color: var(--go);
         }
         input[type="number"],
         input[type="time"],
         input[type="text"] {
             max-width: 100%;
             padding: 12px;
-            border: 1px solid #333;
-            border-radius: 6px;
+            border: 1px solid #3a3c40;
+            border-radius: var(--radius);
+            font: inherit;
             font-size: 1rem;
-            background: #101010;
-            color: #e5e5e5;
-            transition: border-color 0.2s, background 0.2s;
+            background: var(--well);
+            color: var(--ink);
+            transition: border-color 0.2s;
+        }
+        select, textarea {
+            font: inherit;
+            background: var(--well);
+            color: var(--ink);
+            border: 1px solid #3a3c40;
+            border-radius: var(--radius);
         }
         input[type="number"],
         input[type="time"],
@@ -136,10 +142,9 @@
         input#speed {
             max-width: 80px;
         }
-        input:focus, select:focus {
+        input:focus, select:focus, textarea:focus {
             outline: none;
-            border-color: #90caf9;
-            background: #151515;
+            border-color: var(--info);
         }
         input[type="number"] {
             -moz-appearance: textfield;
@@ -161,57 +166,33 @@
             justify-content: flex-start;
             margin-top: 6px;
         }
+        /* Every .button is a key (see .key in foxy.css). primary = ready to go
+           (green legend), danger = destructive (red legend, lights red on hover),
+           lit-go / lit-warn = lit to show what is happening now. */
         .button {
             padding: 12px 16px;
-            border: none;
-            border-radius: 4px;
+            border: 1px solid var(--seam);
+            border-radius: var(--radius);
+            font: inherit;
             font-size: 1rem;
+            font-weight: 600;
             cursor: pointer;
-            transition: background 0.2s, box-shadow 0.2s, transform 0.1s;
-            background: #2a2a2a;
-            color: #e5e5e5;
-            font-weight: 500;
+            transition: background 0.12s, color 0.12s;
+            background: var(--key);
+            color: var(--ink);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), inset 0 -2px 0 rgba(0, 0, 0, 0.25);
+            -webkit-tap-highlight-color: transparent;
         }
-        .button:active {
-            transform: scale(0.97);
-        }
-        .button.primary {
-            background: #2e7d32; /* green */
-            color: #fff;
-            box-shadow: 0 2px 4px rgba(46, 125, 50, 0.3);
-        }
-        .button.primary:hover {
-            background: #256628;
-            box-shadow: 0 4px 8px rgba(46, 125, 50, 0.4);
-        }
-        .button.secondary {
-            background: #3a3a3a;
-            color: #e5e5e5;
-        }
-        .button.secondary:hover {
-            background: #4a4a4a;
-        }
-        .button.danger {
-            background: #b71c1c;
-            color: #fff;
-            box-shadow: 0 2px 4px rgba(183, 28, 28, 0.3);
-        }
-        .button.danger:hover {
-            background: #941616;
-            box-shadow: 0 4px 8px rgba(183, 28, 28, 0.4);
-        }
-        /* Pause: amber, matching the amber already used for "paused" everywhere
-           else (status-badge.paused, warning thresholds) - a running timer is
-           green like status-badge.running, Reset is red like status-badge.stopped. */
-        .button.warn {
-            background: #ff8f00;
-            color: #1a1a1a;
-            box-shadow: 0 2px 4px rgba(255, 143, 0, 0.3);
-        }
-        .button.warn:hover {
-            background: #ffa726;
-            box-shadow: 0 4px 8px rgba(255, 143, 0, 0.4);
-        }
+        .button:hover { background: var(--key-hi); }
+        .button:active { box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4); }
+        .button.primary { color: var(--go); }
+        .button.secondary { color: var(--ink); }
+        .button.danger { color: #ff8a80; }
+        .button.danger:hover { background: var(--stop-key); color: #fff; }
+        .button.lit-go { background: var(--go-key); color: #fff; }
+        .button.lit-go:hover { background: #35a046; }
+        .button.lit-warn { background: var(--warn-key); color: #1a1000; }
+        .button.lit-warn:hover { background: #d99317; }
         /* Start/Pause/Resume/Reset: a big, bold, app-icon-style button - the
            glyph fills most of it, state label in bold small-caps underneath -
            for the controls reached for constantly during a live show. The
@@ -234,7 +215,7 @@
             justify-content: center;
             gap: 6px;
             line-height: 1;
-            border-radius: 20px;
+            border-radius: var(--radius);
             /* Explicit width+height, not aspect-ratio: aspect-ratio combined
                with max-width in a flex item was verified (via a direct fetch
                of the deployed CSS, and confirmed correct in local testing) to
@@ -252,10 +233,9 @@
             flex-shrink: 0;
         }
         .main-action-button .label {
-            font-size: 0.85rem;
+            font-size: 1.05rem;
             font-weight: 700;
-            letter-spacing: 0.04em;
-            text-transform: uppercase;
+            color: inherit;
         }
         .nudge-button {
             font-size: 0.9rem;
@@ -268,29 +248,29 @@
         }
         .preset-button {
             padding: 12px 10px;
-            background: #2a2a2a;
-            border: 1px solid #3a3a3a;
-            border-radius: 6px;
+            background: var(--key);
+            border: 1px solid var(--seam);
+            border-radius: var(--radius);
             cursor: pointer;
-            font-size: 1.05rem;
-            color: #e5e5e5;
+            font-family: var(--digits);
+            font-weight: 700;
+            font-size: 1.25rem;
+            font-variant-numeric: tabular-nums;
+            color: var(--ink);
             text-align: center;
-            transition: background 0.2s, border-color 0.2s, transform 0.2s, box-shadow 0.2s;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), inset 0 -2px 0 rgba(0, 0, 0, 0.25);
+            transition: background 0.12s;
         }
         .preset-button:hover {
-            background: #3a3a3a;
-            border-color: #90caf9;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
-            animation: none !important;
+            background: var(--key-hi);
         }
         .preset-button:active {
-            transform: translateY(0);
+            box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4);
         }
         /* Press-and-hold saves a preset on touch screens: no text selection or
            callout menu getting in the way of the hold. */
         .preset-button { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; touch-action: manipulation; }
-        .preset-button.saved { border-color: #4caf50; color: #81c784; }
+        .preset-button.saved { background: var(--go-key); color: #fff; font-family: var(--ui); font-size: 1rem; }
         .presets-save-hint .touch { display: none; }
         @media (pointer: coarse) {
             .presets-save-hint .mouse { display: none; }
@@ -299,33 +279,33 @@
         .status {
             display: none;
         }
+        /* Timer state: a tally lamp and a word, as on the dashboard. */
         .status-badge {
-            display: inline-block;
-            padding: 4px 10px;
-            border-radius: 4px;
-            font-size: 0.75rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 3px 8px;
+            border-radius: 2px;
+            background: rgba(0, 0, 0, 0.55);
+            font-size: 0.95rem;
             font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
+            color: var(--ink);
             margin-left: 10px;
         }
-        .status-badge.running {
-            background: rgba(46, 125, 50, 0.3);
-            color: #9be7a1;
+        .status-badge::before {
+            content: '';
+            width: 18px;
+            height: 7px;
+            border-radius: 1px;
+            background: #44464b;
         }
-        .status-badge.paused {
-            background: rgba(255, 193, 7, 0.25);
-            color: #ffda6a;
-        }
-        .status-badge.stopped {
-            background: rgba(220, 53, 69, 0.25);
-            color: #f1aeb5;
-        }
+        .status-badge.running::before { background: var(--go); box-shadow: 0 0 6px rgba(63, 185, 80, 0.55); }
+        .status-badge.paused::before { background: var(--warn); }
         /* Physical Display Output (CDEther) compact status pill - P2.1 */
         .pdo-badge {
             display: inline-block;
             padding: 3px 10px;
-            border-radius: 5px;
+            border-radius: 2px;
             font-weight: 700;
             font-size: 0.72rem;
             letter-spacing: 0.5px;
@@ -379,8 +359,9 @@
             aspect-ratio: 16 / 9;
             overflow: hidden;
             position: relative;
-            border-radius: 8px;
-            background: #0a0a0a;
+            border-radius: 2px;
+            background: var(--well);
+            border: 1px solid var(--seam);
         }
         .display-preview-frame {
             width: 1280px;
@@ -439,22 +420,22 @@
         }
         .mode-button {
             padding: 8px 12px;
-            background: #2a2a2a;
-            border: 2px solid #3a3a3a;
-            border-radius: 4px;
+            background: var(--key);
+            border: 1px solid var(--seam);
+            border-radius: var(--radius);
             cursor: pointer;
-            font-size: 0.9rem;
-            color: #e5e5e5;
-            transition: background 0.2s, border-color 0.2s;
+            font: inherit;
+            font-size: 1rem;
+            color: var(--ink);
+            transition: background 0.12s;
             white-space: nowrap;
         }
         .mode-button:hover {
-            border-color: #90caf9;
+            background: var(--key-hi);
         }
         .mode-button.active {
-            background: #1565c0;
-            border-color: #1976d2;
-            color: #fff;
+            background: var(--lit);
+            color: #121314;
         }
         .threshold-row {
             display: grid;
@@ -466,17 +447,15 @@
         /* Timer Setup: one segmented Duration | End at control over ONE editor
            row, instead of two always-visible input rows. */
         .setup-heading {
-            font-size: 0.8rem;
-            color: #999;
+            font-size: 0.95rem;
+            color: var(--ink-2);
             margin-bottom: 6px;
-            font-weight: 500;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
+            font-weight: 600;
         }
         .mode-segment {
             display: flex;
-            border: 1px solid #3a3a3a;
-            border-radius: 6px;
+            border: 1px solid var(--seam);
+            border-radius: var(--radius);
             overflow: hidden;
             margin-bottom: 8px;
         }
@@ -484,17 +463,17 @@
             flex: 1 1 0;
             border: 0;
             border-radius: 0;
-            background: #202020;
-            color: #aaa;
+            background: var(--key);
+            color: var(--ink-2);
             padding: 10px 8px;
             font-weight: 600;
         }
         .mode-segment .mode-button + .mode-button {
-            border-left: 1px solid #3a3a3a;
+            border-left: 1px solid var(--seam);
         }
         .mode-segment .mode-button.active {
-            background: #1565c0;
-            color: #fff;
+            background: var(--lit);
+            color: #121314;
         }
         /* End at opened for typing, but no valid time yet: shown, not armed -
            Start/Reset still use Duration until a complete time is entered. */
@@ -527,16 +506,18 @@
             flex: 1 1 auto;
             min-width: 0;
             max-width: 170px;
-            font-size: 1.1rem;
-            font-family: monospace;
+            font-family: var(--digits);
+            font-weight: 700;
+            font-size: 1.5rem;
+            font-variant-numeric: tabular-nums;
         }
         .setup-apply {
             padding: 8px 16px;
             font-weight: 600;
         }
         .setup-apply:disabled {
-            background: #2a2a2a;
-            color: #777;
+            background: var(--key);
+            color: var(--ink-3);
             box-shadow: none;
             cursor: default;
         }
@@ -545,28 +526,29 @@
         }
         .setup-live {
             margin-top: 8px;
-            font-size: 0.85rem;
-            color: #cfcfcf;
+            font-size: 0.95rem;
+            color: var(--ink-2);
             display: flex;
             align-items: center;
             gap: 8px;
             min-height: 1.4em;
         }
         .setup-live-tag {
-            font-size: 0.68rem;
+            font-size: 0.78rem;
             font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-            padding: 2px 7px;
-            border-radius: 4px;
-            background: rgba(144, 202, 249, 0.15);
-            color: #90caf9;
+            letter-spacing: 0.04em;
+            padding: 1px 6px;
+            border-radius: 2px;
+            border: 1px solid #4a4d52;
+            color: var(--ink-2);
         }
-        .setup-live-tag.running { background: rgba(46, 125, 50, 0.3); color: #9be7a1; }
-        .setup-live-tag.paused { background: rgba(255, 193, 7, 0.25); color: #ffda6a; }
+        .setup-live-tag.running { border-color: var(--go); color: var(--go); }
+        .setup-live-tag.paused { border-color: var(--warn); color: var(--warn); }
         .setup-live-value {
-            font-family: monospace;
-            font-size: 0.95rem;
+            font-family: var(--digits);
+            font-weight: 700;
+            font-size: 1.1rem;
+            color: var(--ink);
         }
         /* NEW row: the draft, laid out exactly like the LIVE row above it so the
            two read as a before/after pair. What will apply it is shown ON the
@@ -577,31 +559,31 @@
             flex-wrap: wrap;
             align-items: center;
             gap: 4px 8px;
-            font-size: 0.85rem;
+            font-size: 0.95rem;
             line-height: 1.4;
-            color: #bdbdbd;
+            color: var(--ink-2);
         }
         .setup-hint[hidden] {
             display: none;
         }
         .setup-new-tag {
-            font-size: 0.68rem;
+            font-size: 0.78rem;
             font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-            padding: 2px 7px;
-            border-radius: 4px;
-            background: rgba(255, 152, 0, 0.22);
-            color: #ffb74d;
+            letter-spacing: 0.04em;
+            padding: 1px 6px;
+            border-radius: 2px;
+            border: 1px solid var(--warn);
+            color: var(--warn);
         }
         .setup-new-value {
-            font-family: monospace;
-            font-size: 0.95rem;
+            font-family: var(--digits);
+            font-weight: 700;
+            font-size: 1.1rem;
             color: #ffcc80;
         }
         .setup-new-note {
-            color: #9e9e9e;
-            font-size: 0.8rem;
+            color: var(--ink-2);
+            font-size: 0.9rem;
         }
         .setup-hint.error {
             display: block;
@@ -614,17 +596,19 @@
         /* "-> 23:00" on Start / Reset: what that button will load (a pending draft
            or mode switch). Amber = pending, same as the draft input's border. */
         .action-target {
-            font-family: monospace;
-            font-size: 0.78rem;
+            font-family: var(--digits);
+            font-size: 0.95rem;
             font-weight: 700;
             letter-spacing: 0;
             text-transform: none;
             padding: 1px 6px;
-            border-radius: 4px;
+            border-radius: 2px;
             background: rgba(0, 0, 0, 0.35);
             color: #ffcc80;
             white-space: nowrap;
         }
+        /* Timer / Clock: the selected one is lit. */
+        .output-mode-buttons .button.primary { background: var(--lit); color: #121314; }
         .action-target[hidden] {
             display: none;
         }
@@ -645,26 +629,27 @@
             min-height: 40px;
             display: flex; align-items: center; justify-content: space-between; gap: 8px;
             padding: 8px 12px;
-            border-radius: 8px;
-            border: 1px solid #333;
-            background: #1a1a1a;
-            color: #e5e5e5;
-            font: inherit; font-size: 0.9rem; font-weight: 600;
+            border-radius: var(--radius);
+            border: 1px solid var(--seam);
+            background: var(--key);
+            color: var(--ink);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), inset 0 -2px 0 rgba(0, 0, 0, 0.25);
+            font: inherit; font-size: 1rem; font-weight: 600;
             cursor: pointer;
             white-space: nowrap;
         }
-        .count-style-btn:hover, .count-style-btn[aria-expanded="true"] { border-color: #4caf50; }
-        .count-style-btn:focus-visible { outline: 2px solid #90caf9; outline-offset: 2px; }
-        .count-style-btn svg { flex-shrink: 0; color: #999; transition: transform 0.15s; }
+        .count-style-btn:hover, .count-style-btn[aria-expanded="true"] { background: var(--key-hi); }
+        .count-style-btn:focus-visible { outline: 2px solid var(--info); outline-offset: 2px; }
+        .count-style-btn svg { flex-shrink: 0; color: var(--ink-2); transition: transform 0.15s; }
         .count-style-btn[aria-expanded="true"] svg { transform: rotate(180deg); }
         .count-style-menu {
             position: absolute; right: 0; top: calc(100% + 6px); z-index: 50;
             min-width: 230px;
             padding: 6px;
-            background: #1a1a1a;
-            border: 1px solid #333;
-            border-radius: 10px;
-            box-shadow: 0 12px 32px rgba(0,0,0,0.55);
+            background: var(--panel);
+            border: 1px solid var(--seam);
+            border-radius: var(--radius);
+            box-shadow: inset 0 1px 0 var(--bevel), 0 12px 32px rgba(0,0,0,0.55);
             display: grid; gap: 2px;
         }
         /* display:grid above would otherwise beat the [hidden] attribute and
@@ -674,18 +659,18 @@
             display: grid; gap: 1px; text-align: left;
             padding: 9px 12px 9px 34px;
             position: relative;
-            border: 0; border-radius: 7px;
-            background: transparent; color: #e5e5e5;
+            border: 0; border-radius: 2px;
+            background: transparent; color: var(--ink);
             font: inherit; cursor: pointer;
         }
-        .count-style-menu [role="option"] b { font-size: 0.92rem; font-weight: 600; }
-        .count-style-menu [role="option"] small { font-size: 0.78rem; color: #999; }
+        .count-style-menu [role="option"] b { font-size: 1rem; font-weight: 600; }
+        .count-style-menu [role="option"] small { font-size: 0.88rem; color: var(--ink-2); }
         .count-style-menu [role="option"]:hover,
-        .count-style-menu [role="option"]:focus-visible { background: #252525; outline: none; }
+        .count-style-menu [role="option"]:focus-visible { background: var(--panel-hi); outline: none; }
         .count-style-menu [role="option"][aria-selected="true"]::before {
             content: ''; position: absolute; left: 13px; top: 15px;
             width: 9px; height: 5px;
-            border-left: 2px solid #4caf50; border-bottom: 2px solid #4caf50;
+            border-left: 2px solid var(--go); border-bottom: 2px solid var(--go);
             transform: rotate(-45deg);
         }
         /* Hex entry beside each colour swatch */
@@ -696,19 +681,20 @@
             margin: 0;
             box-sizing: border-box;
             padding: 4px 8px;
-            border-radius: 6px;
-            border: 1px solid #333;
-            background: #101010;
-            color: #e5e5e5;
-            font-family: 'Courier New', monospace;
+            border-radius: var(--radius);
+            border: 1px solid #3a3c40;
+            background: var(--well);
+            color: var(--ink);
+            font-family: var(--mono);
             font-size: 0.85rem;
             text-transform: uppercase;
         }
-        input[type="text"].hex-input:focus { outline: none; border-color: #90caf9; }
+        input[type="text"].hex-input:focus { outline: none; border-color: var(--info); }
         input[type="text"].hex-input.invalid { border-color: #f44336; }
         .presets-save-hint {
-            color: #444;
-            font-size: 0.75rem;
+            color: var(--ink-3);
+            font-size: 0.85rem;
+            font-weight: 500;
             text-transform: none;
             letter-spacing: 0;
         }
@@ -716,10 +702,11 @@
             grid-column: 1 / -1;
             min-width: 0;
             box-sizing: border-box;
-            background: rgba(144, 202, 249, 0.1);
-            border: 2px solid rgba(144, 202, 249, 0.3);
-            padding: 16px 20px;
-            border-radius: 8px;
+            background: var(--panel);
+            border: 1px solid var(--seam);
+            box-shadow: inset 0 1px 0 var(--bevel);
+            padding: 12px 16px;
+            border-radius: var(--radius);
             display: flex;
             flex-wrap: wrap;
             justify-content: space-between;
@@ -727,10 +714,9 @@
             gap: 12px;
         }
         .room-name-display {
-            font-size: 1.8rem;
-            font-weight: 600;
-            color: #90caf9;
-            font-family: monospace;
+            font-size: 1.7rem;
+            font-weight: 700;
+            color: var(--ink);
         }
         .room-status {
             display: flex;
@@ -747,15 +733,16 @@
         }
         #previewNowTime {
             margin-top: 8px;
-            font-size: 0.95rem;
-            color: #999;
-            font-family: monospace;
+            font-size: 1rem;
+            color: var(--ink-2);
+            font-variant-numeric: tabular-nums;
             text-align: center;
             width: 100%;
         }
         #endsAtDisplay {
-            font-size: 0.95rem;
-            color: #90caf9;
+            font-size: 1rem;
+            color: var(--ink);
+            font-variant-numeric: tabular-nums;
             text-align: center;
             min-height: 2.5em;
             line-height: 1.5;
@@ -777,11 +764,13 @@
             margin-top: 6px;
         }
         .links a {
-            color: #90caf9;
+            color: var(--ink-2);
+            font-weight: 600;
             text-decoration: none;
             margin: 0 1rem;
         }
         .links a:hover {
+            color: var(--ink);
             text-decoration: underline;
         }
 
@@ -794,7 +783,7 @@
             align-items: center;
             gap: 8px;
             padding: 3px 3px 3px 10px;
-            border-radius: 8px;
+            border-radius: var(--radius);
             border: 1px solid rgba(186, 104, 200, 0.55);
             background: rgba(186, 104, 200, 0.14);
         }
@@ -814,10 +803,10 @@
         .message-live-text::before {
             content: '';
             display: inline-block;
-            width: 8px;
-            height: 8px;
+            width: 16px;
+            height: 7px;
             margin-right: 8px;
-            border-radius: 50%;
+            border-radius: 1px;
             background: #ce93d8;
             vertical-align: 1px;
         }
@@ -826,10 +815,10 @@
             min-height: 32px;
             padding: 4px 14px;
             font-size: 0.85rem;
-            background: #ab47bc;
+            background: #8e3fa3;
             color: #fff;
             font-weight: 700;
-            border-radius: 6px;
+            border-radius: var(--radius);
         }
         .message-live-clear:hover {
             background: #9c27b0;
@@ -845,22 +834,21 @@
             align-items: center;
             justify-content: center;
             gap: 1px;
-            border: 2px solid transparent;
-            background: #2a2a2a;
-            color: #9e9e9e;
+            border: 1px solid var(--seam);
+            background: var(--key);
+            color: var(--ink-2);
             font-weight: 600;
         }
         .msg-btn-state {
-            font-size: 0.66rem;
+            font-size: 0.8rem;
             font-weight: 700;
-            letter-spacing: 0.08em;
+            letter-spacing: 0.04em;
         }
         .msg-btn-state:empty {
             display: none;
         }
         .msg-send-btn.state-show {
-            background: #1565c0;
-            color: #fff;
+            color: var(--ink);
         }
         .msg-send-btn.state-live {
             background: rgba(186, 104, 200, 0.28);
@@ -868,13 +856,13 @@
             color: #f3e5f5;
         }
         .msg-send-btn.state-update {
-            background: #ff9800;
-            color: #1a1a1a;
+            background: var(--warn-key);
+            color: #1a1000;
         }
         .msg-send-btn.state-switch {
-            background: #2a2a2a;
-            border-color: #616161;
-            color: #e0e0e0;
+            background: var(--key);
+            border-color: #6a6d72;
+            color: var(--ink);
         }
         .msg-send-btn:disabled,
         #msgClearBtn:disabled {
@@ -883,8 +871,8 @@
             box-shadow: none;
         }
         #msgClearBtn:disabled {
-            background: #3a3a3a;
-            color: #9e9e9e;
+            background: var(--key);
+            color: var(--ink-3);
         }
         #messageInput.draft {
             border-color: #ff9800;
@@ -919,12 +907,11 @@
         }
         .msg-live-tag {
             flex: 0 0 auto;
-            font-size: 0.68rem;
+            font-size: 0.78rem;
             font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-            padding: 2px 7px;
-            border-radius: 4px;
+            letter-spacing: 0.04em;
+            padding: 1px 6px;
+            border-radius: 2px;
             background: rgba(186, 104, 200, 0.3);
             color: #f3e5f5;
         }
@@ -936,22 +923,25 @@
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
-            padding: 3px 10px;
-            border: 1px solid rgba(144, 202, 249, 0.35);
-            border-radius: 5px;
-            background: rgba(144, 202, 249, 0.12);
-            color: #cfe6fb;
-            font-size: 0.8rem;
+            padding: 5px 10px;
+            border: 1px solid var(--seam);
+            border-radius: var(--radius);
+            background: var(--key);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), inset 0 -2px 0 rgba(0, 0, 0, 0.25);
+            color: var(--ink);
+            font: inherit;
+            font-size: 0.95rem;
             font-weight: 600;
             cursor: pointer;
         }
         .device-name-btn:hover {
-            border-color: #90caf9;
+            background: var(--key-hi);
         }
         .device-name-btn .panel-count {
-            color: #9fb3c8;
+            color: var(--ink-2);
             font-weight: 500;
         }
+        #controllerStatusBadge { border-radius: 2px !important; font-size: 0.8rem !important; letter-spacing: 0.04em; }
         /* An observer always has the pinned view-only strip, which carries its own
            Take over - a second one in the room card is just clutter. */
         body.view-only #controllerTakeOverBtn {
@@ -965,27 +955,28 @@
             gap: 6px 16px;
             margin: 0 0 16px 0;
             padding: 12px 14px;
-            background: #121212;
-            border: 1px solid #2a2a2a;
-            border-radius: 8px;
+            background: var(--well);
+            border: 1px solid var(--seam);
+            border-radius: var(--radius);
         }
         .confirm-rows dt {
-            color: #999;
-            font-size: 0.85rem;
+            color: var(--ink-2);
+            font-size: 0.95rem;
             align-self: center;
         }
         .confirm-rows dd {
             margin: 0;
-            color: #fafafa;
-            font-family: monospace;
-            font-size: 1.05rem;
+            color: var(--ink);
+            font-family: var(--digits);
+            font-weight: 700;
+            font-size: 1.25rem;
             text-align: right;
         }
         .confirm-rows dd.over {
             color: #ce93d8; /* overrun purple, as on the display */
         }
         .confirm-rows dd.new {
-            color: #90caf9;
+            color: var(--info);
             font-weight: 700;
         }
 
@@ -997,7 +988,7 @@
            header (Take over, name chip), the links row (incl. Share links),
            Rundown open/close, Text export. */
         body.view-only {
-            background: #15181f;
+            background: #191b20;
             padding-bottom: 72px; /* room for the pinned strip */
         }
         body.view-only::after {
@@ -1040,9 +1031,9 @@
             min-height: 44px;
             padding: 8px 18px;
             background: #fff;
-            color: #e65100;
+            color: #c43e00;
             font-weight: 700;
-            border-radius: 6px;
+            border-radius: var(--radius);
         }
         /* A tap on any greyed-out control flashes the strip - never a dead tap. */
         .view-only-bar.flash {
@@ -1186,14 +1177,15 @@
                 width: 9px;
                 height: 9px;
                 margin-right: 7px;
-                border-radius: 50%;
+                border-radius: 1px;
+                width: 16px;
+                height: 7px;
                 vertical-align: 1px;
-                background: #ff9800;
-                box-shadow: 0 0 0 2px rgba(255, 152, 0, 0.25);
+                background: #ff7a1a;
             }
             .device-name-btn.is-controller::before {
-                background: #4caf50;
-                box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.25);
+                background: var(--go);
+                box-shadow: 0 0 6px rgba(63, 185, 80, 0.55);
             }
 
             /* Preview: less card chrome so the display itself gets the width.
@@ -1218,8 +1210,7 @@
             .preview-head .status-badge {
                 margin-left: 0;
                 padding: 2px 8px;
-                font-size: 0.68rem;
-                box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+                font-size: 0.9rem;
             }
             .preview-times {
                 display: flex;
@@ -1282,7 +1273,7 @@
                 height: 38px;
             }
             #playPauseBtn .label {
-                font-size: 1.15rem;
+                font-size: 1.3rem;
             }
             .reset-button {
                 width: 88px;
@@ -1291,16 +1282,15 @@
             /* .button.danger's own specificity, so this outline wins over its fill */
             .button.danger.reset-button,
             .button.danger.reset-button:hover {
-                background: transparent;
-                color: #ef9a9a;
-                box-shadow: inset 0 0 0 2px #c62828;
+                background: var(--key);
+                color: #ff8a80;
             }
             .reset-button .icon-svg {
                 width: 26px;
                 height: 26px;
             }
             .reset-button .label {
-                font-size: 0.75rem;
+                font-size: 0.95rem;
             }
 
             /* Nudges: one row, read left-to-right as a number line -
@@ -1386,7 +1376,6 @@
             }
             .output-controls .count-style { flex: 1 1 0; min-width: 0; }
             .count-style-btn { min-height: 44px; padding: 8px 10px; }
-            .count-up-extra,
             .presets {
                 grid-template-columns: repeat(4, 1fr);
                 gap: 6px;
@@ -1394,12 +1383,12 @@
             .preset-button {
                 min-height: 44px;
                 padding: 8px 4px;
-                font-size: 0.95rem;
+                font-size: 1.15rem;
             }
         }
     </style>
 </head>
-<body>
+<body class="foxy">
     <!-- Demo room strip (see demoInfo) - hidden for every real room. -->
     <div id="demoBar" data-view-ok hidden style="background:#2a1608;border-bottom:1px solid #5a2e10;color:#ffcfae;font-size:0.85rem;padding:7px 12px;text-align:center;">
         Demo room · ends at <strong id="demoEnds"></strong> · <a href="/#contact" target="_blank" rel="noopener" style="color:#ff8a3d;font-weight:600;" data-view-ok>Get a trial account</a>
@@ -1408,24 +1397,23 @@
          Pinned to the bottom edge - always in reach, thumb-friendly on a phone -
          so taking control never means scrolling back to the room header. -->
     <div id="viewOnlyBar" class="view-only-bar" role="status" aria-live="polite" data-view-ok hidden>
-        <span class="view-only-icon" aria-hidden="true">👁</span>
         <span class="view-only-text"><strong>View only</strong> <span id="viewOnlyReason">- another panel is in control</span></span>
         <button type="button" class="button view-only-takeover" onclick="openTakeOverModal()">Take over</button>
     </div>
     <div class="wrapper">
     <div class="container">
         <div class="page-title-row" style="grid-column: 1 / -1; min-width: 0; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px;">
-            <h1 style="margin: 0;">Timer Control</h1>
+            <h1 style="margin: 0;">Control</h1>
             <!-- Setup/admin links, incl. Share links (moved out of the room card - it's
                  not a live-show action). Short labels on phones keep this one line.
                  data-view-ok: all of these still work for an observer. -->
             <div class="links" data-view-ok style="border: none; padding: 0; text-align: right; min-width: 0;">
-                <a href="#" id="displayLink" target="_blank"><span class="link-long">Open Display Screen</span><span class="link-short">Display</span></a>
-                <span style="color: #666; margin: 0 8px;">|</span>
-                <a href="/dashboard" target="foxy-dashboard" id="dashboardLink"><span class="link-long">Master Dashboard</span><span class="link-short">Dashboard</span></a>
-                <span style="color: #666; margin: 0 8px;" id="dashboardLinkSep">|</span>
+                <a href="#" id="displayLink" target="_blank"><span class="link-long">Open display</span><span class="link-short">Display</span></a>
+                <span style="color: var(--ink-3); margin: 0 8px;">|</span>
+                <a href="/dashboard" target="foxy-dashboard" id="dashboardLink"><span class="link-long">Dashboard</span><span class="link-short">Dashboard</span></a>
+                <span style="color: var(--ink-3); margin: 0 8px;" id="dashboardLinkSep">|</span>
                 <a href="/help" target="foxy-help" title="Help: connecting devices, Companion, show-day tips">Help</a>
-                <span style="color: #666; margin: 0 8px;">|</span>
+                <span style="color: var(--ink-3); margin: 0 8px;">|</span>
                 <a href="#" id="shareLinksLink" onclick="copyRoomLinks(event); return false;" title="Share or copy this room's control and display links">Share links</a>
             </div>
         </div>
@@ -1438,16 +1426,16 @@
              group itself), never causing horizontal overflow. -->
         <div class="room-header" data-view-ok>
             <div class="room-name-block">
-                <div class="room-label" style="font-size: 0.9rem; color: #999; margin-bottom: 4px;">Room</div>
+                <div class="room-label" style="font-size: 0.95rem; color: var(--ink-2); margin-bottom: 2px;">Room</div>
                 <div class="room-name-display" id="roomName"></div>
             </div>
             <div class="room-status">
-                <span id="controllerStatusBadge" style="padding: 3px 10px; border-radius: 5px; font-weight: 700; font-size: 0.72rem; letter-spacing: 0.5px; white-space: nowrap; background: #2e7d32; color: #fff;">CONTROLLER</span>
+                <span id="controllerStatusBadge" style="padding: 3px 8px; font-weight: 700; white-space: nowrap; background: var(--go-key); color: #fff;">In control</span>
                 <!-- This device's name + how many devices are connected. Tap: the list
                      of connected control panels, with "Rename this device". See the
                      device-name block in the script. -->
-                <button type="button" id="deviceNameBtn" class="device-name-btn" onclick="showConnectedPanels()" title="This device and the other connected control panels" aria-haspopup="dialog"><span class="chip-icon" aria-hidden="true">👤 </span><span id="deviceNameLabel"></span><span id="controllerStatusCount" class="panel-count"></span></button>
-                <button id="controllerTakeOverBtn" style="display: none; padding: 5px 14px; font-size: 0.8rem; border-radius: 5px; border: none; background: #1976d2; color: #fff; cursor: pointer; white-space: nowrap;" onclick="openTakeOverModal()">Take over</button>
+                <button type="button" id="deviceNameBtn" class="device-name-btn" onclick="showConnectedPanels()" title="This device and the other connected control panels" aria-haspopup="dialog"><span id="deviceNameLabel"></span><span id="controllerStatusCount" class="panel-count"></span></button>
+                <button id="controllerTakeOverBtn" class="key small" style="display: none;" onclick="openTakeOverModal()">Take over</button>
                 <!-- Physical Display Output (CDEther) compact status - P2.1. Hidden
                      until the room has ever reported bridge status this session (a
                      room with no bridge configured shows nothing extra). Never
@@ -1457,20 +1445,20 @@
             </div>
         </div>
 
-        <div id="serverBuildBanner" role="alert" hidden style="grid-column: 1 / -1; background: #b71c1c; color: #fff; padding: 12px 16px; border-radius: 8px; font-weight: 600; border: 2px solid #ff8a80;"></div>
-        <div id="controlRejectedNotice" role="alert" style="display: none; position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 1001; width: max-content; max-width: calc(100vw - 32px); box-sizing: border-box; background: #b71c1c; color: #fff; padding: 10px 16px; border-radius: 8px; font-weight: 500; box-shadow: 0 6px 20px rgba(0,0,0,0.5);"></div>
+        <div id="serverBuildBanner" role="alert" hidden style="grid-column: 1 / -1; background: #b71c1c; color: #fff; padding: 12px 16px; border-radius: var(--radius); font-weight: 600; border: 2px solid #ff8a80;"></div>
+        <div id="controlRejectedNotice" role="alert" style="display: none; position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 1001; width: max-content; max-width: calc(100vw - 32px); box-sizing: border-box; background: #b71c1c; color: #fff; padding: 10px 16px; border-radius: var(--radius); font-weight: 600; box-shadow: 0 6px 20px rgba(0,0,0,0.5);"></div>
 
         <!-- Custom Take Over confirmation modal - deliberately not window.confirm(),
              matches the dark interface, and supports focus management/Escape/
              click-outside as required. Confirming still performs the existing
              always-available immediate takeover (no approval step). -->
-        <div id="takeOverModalOverlay" data-view-ok style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 1000; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box;" onclick="if (event.target === this) closeTakeOverModal();">
-            <div id="takeOverModal" role="dialog" aria-modal="true" aria-labelledby="takeOverModalTitle" tabindex="-1" style="background: #1a1a1a; border: 1px solid #333; border-radius: 12px; padding: 24px; max-width: 400px; width: 100%; box-sizing: border-box; box-shadow: 0 8px 32px rgba(0,0,0,0.5); outline: none;">
-                <h2 id="takeOverModalTitle" style="margin: 0 0 12px 0; font-size: 1.2rem; color: #fafafa;">Take control of this room?</h2>
-                <p style="margin: 0 0 20px 0; color: #ccc; font-size: 0.9rem; line-height: 1.5;">This will immediately transfer control to this device. <span id="takeOverLoser">The current controller</span> will become an observer.</p>
-                <div style="display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap;">
-                    <button onclick="closeTakeOverModal()" style="padding: 10px 18px; border-radius: 8px; border: 1px solid #444; background: transparent; color: #ccc; cursor: pointer; font-size: 0.9rem;">Cancel</button>
-                    <button id="takeOverConfirmBtn" onclick="confirmTakeOver()" style="padding: 10px 18px; border-radius: 8px; border: none; background: #1976d2; color: #fff; cursor: pointer; font-weight: 600; font-size: 0.9rem;">Take Control</button>
+        <div id="takeOverModalOverlay" class="dialog-overlay" data-view-ok style="display: none;" onclick="if (event.target === this) closeTakeOverModal();">
+            <div id="takeOverModal" role="dialog" aria-modal="true" aria-labelledby="takeOverModalTitle" tabindex="-1" class="dialog" style="max-width: 420px;">
+                <h2 id="takeOverModalTitle">Take control of this room?</h2>
+                <p>This will immediately transfer control to this device. <span id="takeOverLoser">The current controller</span> will become an observer.</p>
+                <div class="actions">
+                    <button class="key flat" onclick="closeTakeOverModal()">Cancel</button>
+                    <button id="takeOverConfirmBtn" class="key lit" onclick="confirmTakeOver()">Take control</button>
                 </div>
             </div>
         </div>
@@ -1478,18 +1466,18 @@
         <!-- End-at change confirmation for a running/paused timer - same look and
              behaviour as the Take Over modal above (not window.confirm): Escape /
              click-outside / Cancel all send nothing. See openEndAtConfirm. -->
-        <div id="endAtConfirmOverlay" data-view-ok style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 1000; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box;" onclick="if (event.target === this) closeEndAtConfirm();">
-            <div id="endAtConfirmModal" role="dialog" aria-modal="true" aria-labelledby="endAtConfirmTitle" aria-describedby="endAtConfirmNote" tabindex="-1" style="background: #1a1a1a; border: 1px solid #333; border-radius: 12px; padding: 24px; max-width: 400px; width: 100%; box-sizing: border-box; box-shadow: 0 8px 32px rgba(0,0,0,0.5); outline: none;">
-                <h2 id="endAtConfirmTitle" style="margin: 0 0 14px 0; font-size: 1.2rem; color: #fafafa;">Change the end time?</h2>
+        <div id="endAtConfirmOverlay" class="dialog-overlay" data-view-ok style="display: none;" onclick="if (event.target === this) closeEndAtConfirm();">
+            <div id="endAtConfirmModal" role="dialog" aria-modal="true" aria-labelledby="endAtConfirmTitle" aria-describedby="endAtConfirmNote" tabindex="-1" class="dialog" style="max-width: 420px;">
+                <h2 id="endAtConfirmTitle">Change the end time?</h2>
                 <dl class="confirm-rows">
                     <dt>Remaining now</dt><dd id="endAtConfirmCurrent"></dd>
                     <dt>New remaining</dt><dd id="endAtConfirmProposed"></dd>
                     <dt>New end time</dt><dd id="endAtConfirmEnd"></dd>
                 </dl>
-                <p id="endAtConfirmNote" style="margin: 0 0 20px 0; color: #ccc; font-size: 0.9rem; line-height: 1.5;"></p>
-                <div style="display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap;">
-                    <button onclick="closeEndAtConfirm()" style="padding: 10px 18px; border-radius: 8px; border: 1px solid #444; background: transparent; color: #ccc; cursor: pointer; font-size: 0.9rem;">Cancel</button>
-                    <button id="endAtConfirmBtn" onclick="confirmEndAtChange()" style="padding: 10px 18px; border-radius: 8px; border: none; background: #1976d2; color: #fff; cursor: pointer; font-weight: 600; font-size: 0.9rem;">Change end time</button>
+                <p id="endAtConfirmNote"></p>
+                <div class="actions">
+                    <button class="key flat" onclick="closeEndAtConfirm()">Cancel</button>
+                    <button id="endAtConfirmBtn" class="key lit" onclick="confirmEndAtChange()">Change end time</button>
                 </div>
             </div>
         </div>
@@ -1497,14 +1485,14 @@
         <!-- Generic in-page confirm/notice dialog (uiConfirm / uiNotice) - same look
              as the Take Over modal; replaces the browser's own confirm()/alert()
              boxes on this page. Escape / click-outside = Cancel. -->
-        <div id="appDialogOverlay" data-view-ok style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 1000; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box;" onclick="if (event.target === this) closeAppDialog(false);">
-            <div id="appDialog" role="dialog" aria-modal="true" aria-labelledby="appDialogTitle" aria-describedby="appDialogBody" tabindex="-1" style="background: #1a1a1a; border: 1px solid #333; border-radius: 12px; padding: 24px; max-width: 400px; width: 100%; box-sizing: border-box; box-shadow: 0 8px 32px rgba(0,0,0,0.5); outline: none;">
-                <h2 id="appDialogTitle" style="margin: 0 0 12px 0; font-size: 1.2rem; color: #fafafa;"></h2>
-                <p id="appDialogBody" style="margin: 0 0 20px 0; color: #ccc; font-size: 0.9rem; line-height: 1.5; white-space: pre-line;"></p>
+        <div id="appDialogOverlay" class="dialog-overlay" data-view-ok style="display: none;" onclick="if (event.target === this) closeAppDialog(false);">
+            <div id="appDialog" role="dialog" aria-modal="true" aria-labelledby="appDialogTitle" aria-describedby="appDialogBody" tabindex="-1" class="dialog" style="max-width: 420px;">
+                <h2 id="appDialogTitle"></h2>
+                <p id="appDialogBody" style="white-space: pre-line;"></p>
                 <input type="text" id="appDialogInput" hidden maxlength="40" autocomplete="off" spellcheck="false" aria-labelledby="appDialogTitle" style="width: 100%; max-width: none; box-sizing: border-box; margin: -8px 0 20px 0; font-size: 1rem;">
-                <div style="display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap;">
-                    <button id="appDialogCancel" onclick="closeAppDialog(false)" style="padding: 10px 18px; border-radius: 8px; border: 1px solid #444; background: transparent; color: #ccc; cursor: pointer; font-size: 0.9rem;">Cancel</button>
-                    <button id="appDialogOk" onclick="closeAppDialog(true)" style="padding: 10px 18px; border-radius: 8px; border: none; background: #1976d2; color: #fff; cursor: pointer; font-weight: 600; font-size: 0.9rem;">OK</button>
+                <div class="actions">
+                    <button id="appDialogCancel" class="key flat" onclick="closeAppDialog(false)">Cancel</button>
+                    <button id="appDialogOk" class="key lit" onclick="closeAppDialog(true)">OK</button>
                 </div>
             </div>
         </div>
@@ -1517,7 +1505,7 @@
                  rather than centering with a gap above "Preview". -->
             <div class="section preview-section" style="display:flex;flex-direction:column;align-items:center;justify-content:flex-start;">
                 <div class="preview-head" style="align-self:flex-start;width:100%;display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-                    <span class="preview-label" style="font-size:0.85rem;color:#999;font-weight:500;">Preview</span>
+                    <span class="preview-label" style="font-size:0.95rem;color:var(--ink-2);font-weight:600;">Preview</span>
                     <span class="status-badge" id="statusBadge">Stopped</span>
                 </div>
                 <div class="display-preview-wrap" id="displayPreviewWrap">
@@ -1569,7 +1557,7 @@
                  Start/Reset will actually use. -->
             <div class="section timer-setup-section" style="display:flex;flex-direction:column;gap:10px;">
                 <div>
-                    <div class="setup-heading timer-setup-heading">Timer Setup</div>
+                    <div class="setup-heading timer-setup-heading">Timer setup</div>
                     <div class="mode-segment" role="group" aria-label="Timer mode">
                         <button class="mode-button active" id="modeDurationBtn" onclick="setTimerMode('duration')" aria-pressed="true">Duration</button>
                         <button class="mode-button" id="modeEndAtBtn" onclick="setTimerMode('endAt')" aria-pressed="false" title="Finish at a clock time">End at</button>
@@ -1589,11 +1577,11 @@
                     <div id="endAtDraftHint" class="setup-hint" role="status" hidden></div>
                 </div>
                 <div>
-                    <div class="setup-heading">Display Shows</div>
+                    <div class="setup-heading">Display shows</div>
                     <div class="output-controls">
                         <div class="output-mode-buttons">
-                            <button class="button" id="modeTimerBtn" onclick="setOutputMode('timer')" style="flex:1;">⏱️ Timer</button>
-                            <button class="button" id="modeClockBtn" onclick="setOutputMode('clock')" style="flex:1;">🕐 Clock</button>
+                            <button class="button" id="modeTimerBtn" onclick="setOutputMode('timer')" style="flex:1;">Timer</button>
+                            <button class="button" id="modeClockBtn" onclick="setOutputMode('clock')" style="flex:1;">Clock</button>
                         </div>
                         <!-- One choice for how the timer counts: down (stops at 0:00),
                              down then carrying on up into overrun, or up from 0:00
@@ -1613,22 +1601,22 @@
                     </div>
                 </div>
                 <div>
-                    <div class="setup-heading">Quick Presets <span class="presets-save-hint"><span class="mouse">· Ctrl+click to save</span><span class="touch">· Hold to save</span></span></div>
+                    <div class="setup-heading">Quick presets <span class="presets-save-hint"><span class="mouse">· Ctrl+click to save</span><span class="touch">· Hold to save</span></span></div>
                     <div class="presets" id="presetsGrid"></div>
                 </div>
             </div>
         </div>
 
         <div class="status" id="status">Loading...</div>
-        <div id="serverBuildLabel" style="grid-column: 1 / -1; color: #666; font-size: 0.75rem;"></div>
+        <div id="serverBuildLabel" style="grid-column: 1 / -1; color: var(--ink-3); font-size: 0.85rem;"></div>
 
         <!-- Programme / Rundown - Full Width -->
         <div class="section" style="grid-column:1/-1;">
             <h3 onclick="toggleRundownPanel()" data-view-ok
                 style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:10px;">
-                <span id="rundownToggleIcon" style="font-size:0.8rem;color:#999;">▶</span>
+                <span id="rundownToggleIcon" style="font-size:0.85rem;color:var(--ink-2);">▶</span>
                 Running order
-                <span id="rundownItemCount" style="font-size:0.8rem;color:#999;font-weight:normal;"></span>
+                <span id="rundownItemCount" style="font-size:0.95rem;color:var(--ink-2);font-weight:500;"></span>
             </h3>
             <div id="rundownPanel" style="display:none;margin-top:16px;">
                 <!-- Navigation controls. min-width:0 + flex-wrap:wrap are load-bearing
@@ -1641,28 +1629,28 @@
                      Rundown panel was open. That's what was forcing the whole page to
                      zoom/scroll oddly on mobile - this row was the widest thing on the
                      page, but only once uncollapsed. -->
-                <div style="background:#1a1a1a;border:1px solid #333;border-radius:8px;padding:12px;margin-bottom:10px;">
+                <div class="well" style="padding:12px;margin-bottom:10px;">
                     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
                         <button onclick="rundownPrev()" class="button secondary" style="flex:1;min-width:0;padding:12px 6px;">◀ Prev</button>
                         <button onclick="takeCurrentRundownItem()" class="button primary"
-                                style="flex:2;min-width:0;padding:12px 6px;background:#2e7d32;border-color:#2e7d32;">▶ Take</button>
+                                style="flex:2;min-width:0;padding:12px 6px;">Take</button>
                         <button onclick="rundownNext()" class="button secondary" style="flex:1;min-width:0;padding:12px 6px;">Next ▶</button>
                     </div>
-                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.9rem;color:#ccc;">
-                        <input type="checkbox" id="rundownAutoStart" style="width:16px;height:16px;">
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.95rem;color:var(--ink);">
+                        <input type="checkbox" id="rundownAutoStart" style="width:18px;height:18px;accent-color:var(--go);">
                         Auto-start when taking
                     </label>
-                    <small style="display:block;margin-top:6px;color:#666;">↑↓ or Prev/Next to browse · Take or Enter to load to display · Space starts/pauses</small>
+                    <small style="display:block;margin-top:6px;color:var(--ink-2);font-size:0.88rem;">↑↓ or Prev/Next to browse · Take or Enter to load to display · Space starts/pauses</small>
                 </div>
                 <!-- Scrollable speaker list -->
                 <div id="rundownList" style="max-height:260px;overflow-y:auto;margin-bottom:8px;"></div>
                 <!-- Copy-all panel: whole rundown as plain text -->
-                <div id="rundownExportPanel" data-view-ok style="display:none;border:1px solid #444;border-radius:6px;padding:12px;background:#111;margin-bottom:8px;">
-                    <div style="font-size:0.85rem;color:#999;margin-bottom:8px;">
-                        Whole running order as text (<code style="color:#90caf9;">Name, MM:SS</code> per line). Copy it, reorder it anywhere, then paste it back with <b>Replace</b>.
+                <div id="rundownExportPanel" data-view-ok class="well" style="display:none;padding:12px;margin-bottom:8px;">
+                    <div style="font-size:0.95rem;color:var(--ink-2);margin-bottom:8px;">
+                        Whole running order as text (<code style="color:var(--info);">Name, MM:SS</code> per line). Copy it, reorder it anywhere, then paste it back with <b>Replace</b>.
                     </div>
                     <textarea id="rundownExportText" readonly spellcheck="false"
-                              style="width:100%;height:150px;background:#1a1a1a;border:1px solid #333;color:#e5e5e5;border-radius:4px;padding:8px;font-size:0.9rem;font-family:monospace;resize:vertical;"
+                              style="width:100%;height:150px;padding:8px;font-size:0.9rem;font-family:var(--mono);resize:vertical;"
                               onfocus="this.select()" onclick="this.select()"></textarea>
                     <div style="display:flex;gap:8px;margin-top:8px;">
                         <button onclick="copyRundownText(this)" class="button primary" style="flex:1;">Copy</button>
@@ -1670,18 +1658,18 @@
                     </div>
                 </div>
                 <!-- Paste panel: Append or Replace -->
-                <div id="rundownImportPanel" style="display:none;border:1px solid #444;border-radius:6px;padding:12px;background:#111;margin-bottom:8px;">
-                    <div style="font-size:0.85rem;color:#999;margin-bottom:8px;">
-                        One item per line. Optional: comma + duration (e.g. <code style="color:#90caf9;">Jane Smith, 20:00</code> or <code style="color:#90caf9;">Jane Smith, 20</code> for minutes)
+                <div id="rundownImportPanel" class="well" style="display:none;padding:12px;margin-bottom:8px;">
+                    <div style="font-size:0.95rem;color:var(--ink-2);margin-bottom:8px;">
+                        One item per line. Optional: comma + duration (e.g. <code style="color:var(--info);">Jane Smith, 20:00</code> or <code style="color:var(--info);">Jane Smith, 20</code> for minutes)
                     </div>
                     <textarea id="rundownImportText" spellcheck="false"
-                              style="width:100%;height:110px;background:#1a1a1a;border:1px solid #333;color:#e5e5e5;border-radius:4px;padding:8px;font-size:0.9rem;resize:vertical;"
+                              style="width:100%;height:110px;padding:8px;font-size:1rem;resize:vertical;"
                               placeholder="Jane Smith, 20:00&#10;Panel Discussion, 45:00&#10;Priya Shah, 30:00"></textarea>
                     <div style="display:flex;gap:16px;margin:8px 0;flex-wrap:wrap;">
                         <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer;">
                             <input type="radio" name="rundownImportMode" value="append" checked onchange="updateImportModeUI()"> Add to the existing running order
                         </label>
-                        <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer;color:#ff9800;">
+                        <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer;color:var(--warn);">
                             <input type="radio" name="rundownImportMode" value="replace" onchange="updateImportModeUI()"> Replace the existing running order
                         </label>
                     </div>
@@ -1693,7 +1681,7 @@
                 </div>
                 <!-- Undo for the last Replace (this browser tab only) - mutating, observer-hidden -->
                 <div id="rundownUndoBar" style="display:none;margin-bottom:8px;">
-                    <button onclick="undoRundownReplace()" class="button secondary" style="width:100%;color:#ff9800;border-color:#ff9800;">↩ Undo last Replace (restore previous running order)</button>
+                    <button onclick="undoRundownReplace()" class="button secondary" style="width:100%;color:var(--warn);">Undo last Replace (restore the previous running order)</button>
                 </div>
                 <!-- Add / Paste / Text / Edit: sticky so it is reachable from anywhere in a long rundown.
                      Add/Paste/Edit mutate the rundown (server rejects these from an observer anyway -
@@ -1702,11 +1690,11 @@
                      "take" locally (the input kept the typed value) even though the server silently
                      dropped them, which read as a real bug. Text (copy-out) is read-only and stays
                      available to everyone. -->
-                <div id="rundownActionBar" style="display:flex;gap:8px;position:sticky;bottom:0;z-index:5;background:#1a1a1a;padding:8px 0 2px;border-top:1px solid #2a2a2a;">
+                <div id="rundownActionBar" style="display:flex;gap:8px;position:sticky;bottom:0;z-index:5;background:var(--panel);padding:8px 0 2px;border-top:1px solid var(--seam);">
                     <button id="rundownAddBtn" onclick="addRundownItem()" class="button secondary" style="flex:1;">+ Add</button>
-                    <button id="rundownPasteBtn" onclick="toggleImportPanel()" class="button secondary" style="flex:1;">📋 Paste</button>
-                    <button onclick="toggleExportPanel()" class="button secondary" style="flex:1;" data-view-ok>📄 Text</button>
-                    <button id="rundownEditBtn" onclick="toggleRundownEditMode()" class="button secondary" style="flex:1;">✏️ Edit</button>
+                    <button id="rundownPasteBtn" onclick="toggleImportPanel()" class="button secondary" style="flex:1;">Paste</button>
+                    <button onclick="toggleExportPanel()" class="button secondary" style="flex:1;" data-view-ok>Text</button>
+                    <button id="rundownEditBtn" onclick="toggleRundownEditMode()" class="button secondary" style="flex:1;">Edit</button>
                 </div>
             </div>
         </div>
@@ -1719,7 +1707,7 @@
              bar under the preview still shows a live message and its Clear. The
              summary is data-view-ok: an observer may open/close it to look. -->
         <details class="section" id="messageSection" style="grid-column: 1 / -1;" open>
-            <summary data-view-ok style="cursor:pointer;font-size:1.1rem;color:#f5f5f5;font-weight:600;margin-bottom:12px;">Message to Display Screen</summary>
+            <summary data-view-ok style="cursor:pointer;margin-bottom:12px;">Message to the display</summary>
             <div style="display:flex;gap:8px;margin-bottom:10px;">
                 <input type="text" id="messageInput" maxlength="500"
                        placeholder="Type a message for the display…"
@@ -1737,19 +1725,19 @@
                 <button class="button danger" id="msgClearBtn" onclick="clearMessage()" style="flex:1;" title="Take the message off the display">Clear</button>
             </div>
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-                <span style="font-size:0.85rem;color:#999;white-space:nowrap;">Ticker speed:</span>
+                <span style="font-size:0.95rem;color:var(--ink-2);white-space:nowrap;">Ticker speed</span>
                 <button class="button msg-speed-btn" data-speed="0.25" onclick="setTickerSpeed(0.25)"
-                        style="flex:1;font-size:0.8rem;padding:6px;">Slow</button>
+                        style="flex:1;font-size:0.9rem;padding:6px;">Slow</button>
                 <button class="button msg-speed-btn active" data-speed="0.5" onclick="setTickerSpeed(0.5)"
-                        style="flex:1;font-size:0.8rem;padding:6px;background:#1565c0;color:#fff;">Normal</button>
+                        style="flex:1;font-size:0.9rem;padding:6px;background:var(--lit);color:#121314;">Normal</button>
                 <button class="button msg-speed-btn" data-speed="1.0" onclick="setTickerSpeed(1.0)"
-                        style="flex:1;font-size:0.8rem;padding:6px;">Fast</button>
+                        style="flex:1;font-size:0.9rem;padding:6px;">Fast</button>
                 <button class="button msg-speed-btn" data-speed="2.0" onclick="setTickerSpeed(2.0)"
-                        style="flex:1;font-size:0.8rem;padding:6px;">Very Fast</button>
+                        style="flex:1;font-size:0.9rem;padding:6px;">Very Fast</button>
             </div>
             <div id="messageStatus" class="message-status"></div>
             <div id="messageHistory" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
-            <small style="color:#666;display:block;margin-top:6px;">Full Screen hides timer · Ticker scrolls above it · Enter resends in last mode · Click history to reload</small>
+            <small style="color:var(--ink-2);font-size:0.88rem;display:block;margin-top:6px;">Full Screen hides timer · Ticker scrolls above it · Enter resends in last mode · Click history to reload</small>
         </details>
 
         <!-- Display Settings (was "Display Appearance") - Full Width, collapsed by
@@ -1758,17 +1746,17 @@
              reached for repeatedly while running a room. id kept as
              appearanceSection. -->
         <details class="section" id="appearanceSection" style="grid-column: 1 / -1;">
-            <summary data-view-ok style="cursor:pointer;font-size:1.1rem;color:#f5f5f5;font-weight:600;">Display Settings</summary>
+            <summary data-view-ok style="cursor:pointer;margin-bottom:0;">Display settings</summary>
             <div style="margin-top:12px;display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:16px;">
                 <div>
-                    <div style="font-size:0.8rem;color:#999;margin-bottom:8px;font-weight:500;text-transform:uppercase;letter-spacing:0.05em;">Warning thresholds</div>
+                    <div class="setup-heading" style="margin-bottom:8px;">Warning thresholds</div>
                     <div class="threshold-row">
                         <div>
-                            <label for="amberThreshold" style="font-size: 0.9rem;">Amber</label>
+                            <label for="amberThreshold" style="font-size: 0.95rem;">Amber</label>
                             <input type="text" id="amberThreshold" class="time-text" placeholder="0:00" pattern="\d{1,3}:\d{2}" title="Format: MM:SS" maxlength="6" inputmode="numeric">
                         </div>
                         <div>
-                            <label for="redThreshold" style="font-size: 0.9rem;">Red</label>
+                            <label for="redThreshold" style="font-size: 0.95rem;">Red</label>
                             <input type="text" id="redThreshold" class="time-text" placeholder="0:00" pattern="\d{1,3}:\d{2}" title="Format: MM:SS" maxlength="6" inputmode="numeric">
                         </div>
                     </div>
@@ -1778,21 +1766,21 @@
                     </label>
                 </div>
                 <div>
-                    <div style="font-size:0.8rem;color:#999;margin-bottom:8px;font-weight:500;text-transform:uppercase;letter-spacing:0.05em;">Display size &amp; speed</div>
-                    <div style="font-size:0.8rem;color:#999;margin-bottom:4px;">Display size: <span id="displayScaleValue" style="color:#90caf9;font-weight:bold;">1.5×</span></div>
+                    <div class="setup-heading" style="margin-bottom:8px;">Display size &amp; speed</div>
+                    <div style="font-size:0.95rem;color:var(--ink-2);margin-bottom:4px;">Display size: <span id="displayScaleValue" style="color:var(--ink);font-weight:700;">1.5×</span></div>
                     <input type="range" id="displayScaleSlider" min="0.5" max="3.0" step="0.1" value="1.5"
-                           style="width:100%;height:5px;accent-color:#90caf9;margin-bottom:6px;"
+                           style="width:100%;height:5px;accent-color:var(--lit);margin-bottom:6px;"
                            oninput="updateDisplayScalePreview()">
-                    <button onclick="applyDisplayScale()" class="button" style="width:100%;background:#2196f3;color:white;padding:8px;font-size:0.85rem;margin-bottom:12px;">Apply Size</button>
-                    <div style="font-size:0.8rem;color:#999;margin-bottom:4px;">Speed: <span id="speedValue" style="color:#4caf50;font-weight:bold;">1.0×</span></div>
+                    <button onclick="applyDisplayScale()" class="button" style="width:100%;padding:8px;margin-bottom:12px;">Apply size</button>
+                    <div style="font-size:0.95rem;color:var(--ink-2);margin-bottom:4px;">Speed: <span id="speedValue" style="color:var(--ink);font-weight:700;">1.0×</span></div>
                     <input type="range" id="speedSlider" min="0.5" max="1.5" step="0.05" value="1.0"
-                           style="width:100%;height:5px;accent-color:#4caf50;margin-bottom:6px;">
-                    <button onclick="applySpeed()" class="button" style="width:100%;background:#4caf50;color:white;padding:8px;font-size:0.85rem;font-weight:bold;">Apply Speed</button>
+                           style="width:100%;height:5px;accent-color:var(--lit);margin-bottom:6px;">
+                    <button onclick="applySpeed()" class="button" style="width:100%;padding:8px;">Apply speed</button>
                 </div>
                 <div>
-                    <div style="font-size:0.8rem;color:#999;margin-bottom:8px;font-weight:500;text-transform:uppercase;letter-spacing:0.05em;">Digits</div>
-                    <label style="display:grid;gap:4px;font-size:0.85rem;color:#cfcfcf;margin-bottom:8px;">Font
-                        <select id="displayFont" onchange="emitSettings()" style="padding:7px 8px;font-size:0.85rem;background:#101010;color:#cfcfcf;border:1px solid #333;border-radius:4px;width:100%;">
+                    <div class="setup-heading" style="margin-bottom:8px;">Digits</div>
+                    <label style="display:grid;gap:4px;font-size:0.95rem;color:var(--ink);margin-bottom:8px;">Font
+                        <select id="displayFont" onchange="emitSettings()" style="padding:8px;font-size:1rem;width:100%;">
                             <option value="standard">Standard</option>
                             <option value="condensed">Condensed</option>
                             <option value="hyperlegible">Hyperlegible</option>
@@ -1800,14 +1788,14 @@
                             <option value="led">LED segments</option>
                         </select>
                     </label>
-                    <label style="display:grid;gap:4px;font-size:0.85rem;color:#cfcfcf;margin-bottom:4px;">Glow
-                        <select id="displayGlow" onchange="emitSettings()" style="padding:7px 8px;font-size:0.85rem;background:#101010;color:#cfcfcf;border:1px solid #333;border-radius:4px;width:100%;">
+                    <label style="display:grid;gap:4px;font-size:0.95rem;color:var(--ink);margin-bottom:4px;">Glow
+                        <select id="displayGlow" onchange="emitSettings()" style="padding:8px;font-size:1rem;width:100%;">
                             <option value="full">Full</option>
                             <option value="soft">Soft</option>
                             <option value="off">Off</option>
                         </select>
                     </label>
-                    <div style="font-size:0.78rem;color:#888;margin-bottom:10px;">Keying green or blue? Glow can leave a halo round the digits, so Off keys cleanest.</div>
+                    <div style="font-size:0.88rem;color:var(--ink-2);margin-bottom:10px;">Keying green or blue? Glow can leave a halo round the digits, so Off keys cleanest.</div>
                     <label class="checkbox-label" style="margin-bottom:8px;">
                         <input type="checkbox" id="displayRedPulse" checked>
                         <span>Pulse in the red</span>
@@ -1818,61 +1806,61 @@
                     </label>
                 </div>
                 <div>
-                    <div style="font-size:0.8rem;color:#999;margin-bottom:8px;font-weight:500;text-transform:uppercase;letter-spacing:0.05em;">Timer text color</div>
+                    <div class="setup-heading" style="margin-bottom:8px;">Timer text color</div>
                     <div style="display:flex;flex-direction:column;gap:8px;">
-                        <label style="display:flex;align-items:center;gap:8px;font-weight:400;color:#cfcfcf;">
-                            <input type="color" id="timerColorNormal" value="#4caf50" style="width:36px;height:28px;padding:0;border:1px solid #333;border-radius:4px;background:#101010;cursor:pointer;">
+                        <label style="display:flex;align-items:center;gap:8px;font-weight:500;color:var(--ink);">
+                            <input type="color" id="timerColorNormal" value="#4caf50" style="width:36px;height:30px;padding:0;border:1px solid #3a3c40;border-radius:var(--radius);background:var(--well);cursor:pointer;">
                             <input type="text" class="hex-input" id="timerColorNormalHex" data-color-for="timerColorNormal" maxlength="7" spellcheck="false" autocomplete="off" aria-label="Hex colour">
                             Normal
                         </label>
-                        <label style="display:flex;align-items:center;gap:8px;font-weight:400;color:#cfcfcf;">
-                            <input type="color" id="timerColorAmber" value="#ffb300" style="width:36px;height:28px;padding:0;border:1px solid #333;border-radius:4px;background:#101010;cursor:pointer;">
+                        <label style="display:flex;align-items:center;gap:8px;font-weight:500;color:var(--ink);">
+                            <input type="color" id="timerColorAmber" value="#ffb300" style="width:36px;height:30px;padding:0;border:1px solid #3a3c40;border-radius:var(--radius);background:var(--well);cursor:pointer;">
                             <input type="text" class="hex-input" id="timerColorAmberHex" data-color-for="timerColorAmber" maxlength="7" spellcheck="false" autocomplete="off" aria-label="Hex colour">
                             Amber
                         </label>
-                        <label style="display:flex;align-items:center;gap:8px;font-weight:400;color:#cfcfcf;">
-                            <input type="color" id="timerColorRed" value="#f44336" style="width:36px;height:28px;padding:0;border:1px solid #333;border-radius:4px;background:#101010;cursor:pointer;">
+                        <label style="display:flex;align-items:center;gap:8px;font-weight:500;color:var(--ink);">
+                            <input type="color" id="timerColorRed" value="#f44336" style="width:36px;height:30px;padding:0;border:1px solid #3a3c40;border-radius:var(--radius);background:var(--well);cursor:pointer;">
                             <input type="text" class="hex-input" id="timerColorRedHex" data-color-for="timerColorRed" maxlength="7" spellcheck="false" autocomplete="off" aria-label="Hex colour">
                             Red
                         </label>
-                        <label style="display:flex;align-items:center;gap:8px;font-weight:400;color:#cfcfcf;">
-                            <input type="color" id="timerColorOver" value="#9c27b0" style="width:36px;height:28px;padding:0;border:1px solid #333;border-radius:4px;background:#101010;cursor:pointer;">
+                        <label style="display:flex;align-items:center;gap:8px;font-weight:500;color:var(--ink);">
+                            <input type="color" id="timerColorOver" value="#9c27b0" style="width:36px;height:30px;padding:0;border:1px solid #3a3c40;border-radius:var(--radius);background:var(--well);cursor:pointer;">
                             <input type="text" class="hex-input" id="timerColorOverHex" data-color-for="timerColorOver" maxlength="7" spellcheck="false" autocomplete="off" aria-label="Hex colour">
                             Overrun
                         </label>
-                        <button type="button" class="button secondary" onclick="resetAppearanceColors()" style="padding:6px 10px;font-size:0.8rem;align-self:flex-start;">Reset colors to default</button>
+                        <button type="button" class="button secondary" onclick="resetAppearanceColors()" style="padding:6px 10px;font-size:0.9rem;align-self:flex-start;">Reset colours to default</button>
                     </div>
                 </div>
                 <div>
-                    <div style="font-size:0.8rem;color:#999;margin-bottom:8px;font-weight:500;text-transform:uppercase;letter-spacing:0.05em;">Display background</div>
+                    <div class="setup-heading" style="margin-bottom:8px;">Display background</div>
                     <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-                        <input type="color" id="displayBgColor" value="#000000" style="width:36px;height:28px;padding:0;border:1px solid #333;border-radius:4px;background:#101010;cursor:pointer;">
+                        <input type="color" id="displayBgColor" value="#000000" style="width:36px;height:30px;padding:0;border:1px solid #3a3c40;border-radius:var(--radius);background:var(--well);cursor:pointer;">
                         <input type="text" class="hex-input" id="displayBgColorHex" data-color-for="displayBgColor" maxlength="7" spellcheck="false" autocomplete="off" aria-label="Hex colour">
-                        <span style="font-size:0.85rem;color:#cfcfcf;">Background color</span>
+                        <span style="font-size:0.95rem;color:var(--ink);">Background colour</span>
                     </div>
                     <div style="display:flex;gap:6px;flex-wrap:wrap;">
-                        <button type="button" class="button secondary" onclick="setDisplayBgColor('#000000')" style="padding:6px 10px;font-size:0.8rem;">Black</button>
-                        <button type="button" class="button secondary" onclick="setDisplayBgColor('#00ff00')" style="padding:6px 10px;font-size:0.8rem;" title="Chromakey green">Chromakey Green</button>
-                        <button type="button" class="button secondary" onclick="setDisplayBgColor('#0000ff')" style="padding:6px 10px;font-size:0.8rem;" title="Chromakey blue">Chromakey Blue</button>
+                        <button type="button" class="button secondary" onclick="setDisplayBgColor('#000000')" style="padding:6px 10px;font-size:0.9rem;">Black</button>
+                        <button type="button" class="button secondary" onclick="setDisplayBgColor('#00ff00')" style="padding:6px 10px;font-size:0.9rem;" title="Chromakey green">Chromakey green</button>
+                        <button type="button" class="button secondary" onclick="setDisplayBgColor('#0000ff')" style="padding:6px 10px;font-size:0.9rem;" title="Chromakey blue">Chromakey blue</button>
                     </div>
                     <!-- Background image: uploaded straight to the server (not a setting
                          saved in this browser), shown over the colour above. -->
-                    <div style="font-size:0.85rem;color:#cfcfcf;margin:14px 0 6px;">Background image <span style="color:#888;">(PNG, JPEG or WebP, up to 10 MB)</span></div>
-                    <div id="bgImagePreview" hidden style="width:100%;aspect-ratio:16/9;border:1px solid #333;border-radius:4px;background:#101010 center/contain no-repeat;margin-bottom:8px;"></div>
+                    <div style="font-size:0.95rem;color:var(--ink);margin:14px 0 6px;">Background image <span style="color:var(--ink-2);">(PNG, JPEG or WebP, up to 10 MB)</span></div>
+                    <div id="bgImagePreview" hidden style="width:100%;aspect-ratio:16/9;border:1px solid var(--seam);border-radius:2px;background:var(--well) center/contain no-repeat;margin-bottom:8px;"></div>
                     <input type="file" id="bgImageFile" accept="image/png,image/jpeg,image/webp" hidden onchange="uploadBackgroundImage(this)">
                     <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
-                        <button type="button" class="button secondary" id="bgImageChoose" onclick="document.getElementById('bgImageFile').click()" style="padding:6px 10px;font-size:0.8rem;">Upload image…</button>
-                        <button type="button" class="button secondary" id="bgImageRemove" onclick="removeBackgroundImage()" hidden style="padding:6px 10px;font-size:0.8rem;">Remove image</button>
-                        <select id="displayBgFit" onchange="emitSettings()" hidden title="How the image fills a screen of a different shape" style="padding:5px 6px;font-size:0.8rem;background:#101010;color:#cfcfcf;border:1px solid #333;border-radius:4px;">
+                        <button type="button" class="button secondary" id="bgImageChoose" onclick="document.getElementById('bgImageFile').click()" style="padding:6px 10px;font-size:0.9rem;">Upload image…</button>
+                        <button type="button" class="button secondary" id="bgImageRemove" onclick="removeBackgroundImage()" hidden style="padding:6px 10px;font-size:0.9rem;">Remove image</button>
+                        <select id="displayBgFit" onchange="emitSettings()" hidden title="How the image fills a screen of a different shape" style="padding:6px;font-size:0.9rem;">
                             <option value="cover">Fill screen (crop edges)</option>
                             <option value="contain">Fit whole image</option>
                             <option value="stretch">Stretch to screen</option>
                         </select>
                     </div>
-                    <div id="bgImageStatus" style="font-size:0.8rem;color:#999;margin-top:6px;min-height:1em;"></div>
+                    <div id="bgImageStatus" style="font-size:0.9rem;color:var(--ink-2);margin-top:6px;min-height:1em;"></div>
                 </div>
                 <div>
-                    <div style="font-size:0.8rem;color:#999;margin-bottom:8px;font-weight:500;text-transform:uppercase;letter-spacing:0.05em;">Elements shown on display</div>
+                    <div class="setup-heading" style="margin-bottom:8px;">Elements shown on display</div>
                     <label class="checkbox-label" style="margin-bottom:8px;">
                         <input type="checkbox" id="showSpeakerName" checked>
                         <span>Speaker / session name</span>
@@ -2267,7 +2255,7 @@
             document.getElementById('appDialogBody').textContent = body || '';
             const ok = document.getElementById('appDialogOk');
             ok.textContent = okLabel;
-            ok.style.background = danger ? '#c62828' : '#1976d2';
+            ok.className = danger ? 'key lit-stop' : 'key lit';
             const cancel = document.getElementById('appDialogCancel');
             cancel.textContent = cancelLabel;
             cancel.hidden = notice;
@@ -2408,10 +2396,10 @@
                 document.getElementById('serverBuildLabel').textContent = `Server build: ${label}` + (h.mode ? ` (${h.mode})` : '');
                 if (serverFingerprintAtLoad === null) serverFingerprintAtLoad = h.build.fingerprint;
                 if (h.stale) {
-                    banner.textContent = '⚠ STALE SERVER: the timer server is running OLDER CODE than the files on disk. Some controls may silently do nothing. Restart Foxy Timer from its launcher (build ' + label + ').';
+                    banner.textContent = 'STALE SERVER: the timer server is running OLDER CODE than the files on disk. Some controls may silently do nothing. Restart Foxy Timer from its launcher (build ' + label + ').';
                     banner.hidden = false;
                 } else if (serverFingerprintAtLoad !== h.build.fingerprint) {
-                    banner.textContent = '⚠ The server was restarted with a different build since this page loaded (' + label + '). Reload this page.';
+                    banner.textContent = 'The server was restarted with a different build since this page loaded (' + label + '). Reload this page.';
                     banner.hidden = false;
                 } else {
                     banner.hidden = true;
@@ -2419,7 +2407,7 @@
             } catch (e) {
                 // No /api/health at all: a server that predates it - exactly the case to flag.
                 if (e && String(e.message).startsWith('HTTP 404')) {
-                    banner.textContent = '⚠ STALE SERVER: this server does not report its build (it predates build reporting). Restart Foxy Timer from its launcher.';
+                    banner.textContent = 'STALE SERVER: this server does not report its build (it predates build reporting). Restart Foxy Timer from its launcher.';
                     banner.hidden = false;
                 }
                 // Network errors are the socket layer's business (it shows connection state).
@@ -2604,7 +2592,7 @@
                 }).then(() => {
                     const btn = event.target;
                     const originalText = btn.textContent;
-                    btn.textContent = '✅ Shared!';
+                    btn.textContent = 'Shared';
                     setTimeout(() => btn.textContent = originalText, 2000);
                 }).catch(err => {
                     // User cancelled or error - try clipboard as fallback
@@ -2621,7 +2609,7 @@
         function fallbackToCopy(text, btn) {
             navigator.clipboard.writeText(text).then(() => {
                 const originalText = btn.textContent;
-                btn.textContent = '✅ Copied!';
+                btn.textContent = 'Copied';
                 setTimeout(() => btn.textContent = originalText, 2000);
             }).catch(err => {
                 uiNotice("Couldn't copy the links", String((err && err.message) || err));
@@ -2834,12 +2822,12 @@
             wasActiveController = controllerStatusReceived ? isActiveController : null;
 
             if (isActiveController) {
-                badge.textContent = 'CONTROLLER';
-                badge.style.background = '#2e7d32';
+                badge.textContent = 'In control';
+                badge.style.background = 'var(--go-key)';
                 takeOverBtn.style.display = 'none';
             } else {
-                badge.textContent = 'OBSERVER';
-                badge.style.background = '#e65100';
+                badge.textContent = 'Observing';
+                badge.style.background = '#c43e00';
                 takeOverBtn.style.display = 'inline-block';
             }
 
@@ -3041,7 +3029,7 @@
 
             // Overrun display
             if (overrunMs > 0) {
-                el.style.color = '#9c27b0';
+                el.style.color = 'var(--over)';
                 el.textContent = `Overrunning ${formatCountdownDisplay(overrunMs / 1000)}`;
                 return;
             }
@@ -3067,13 +3055,13 @@
             let html = `<div style="font-size:0.9em;font-weight:600;">${prefix} ${hh}:${mm}:${ss}${dayNote}</div>`;
 
             if (currentTimerMode === 'endAt' && s.endAtTarget) {
-                html += `<div class="ends-target" style="color:#aaa;">Target: ${s.endAtTarget}</div>`;
+                html += `<div class="ends-target" style="color:var(--ink-2);">Target: ${s.endAtTarget}</div>`;
             }
             if (Math.abs(speed - 1.0) > 0.01) {
-                html += `<div class="ends-speed" style="color:#ff9800;">Speed ${speed.toFixed(2)}× active</div>`;
+                html += `<div class="ends-speed" style="color:var(--warn);">Speed ${speed.toFixed(2)}× active</div>`;
             }
 
-            el.style.color = '#90caf9';
+            el.style.color = '';
             el.innerHTML = html;
         }
 
@@ -3178,16 +3166,17 @@
             const label = document.getElementById('playPauseLabel');
             const mode = currentState.mode;
 
-            // Color follows the timer's status, same convention as the status
-            // badge (running=green, paused=amber, stopped=neutral/green-to-go).
+            // The key lights to show what is happening, as on the dashboard: green
+            // while running (press to pause), amber while paused (press to resume),
+            // unlit with a green legend while stopped (ready to start).
             if (mode === 'running') {
                 iconPath.setAttribute('d', PAUSE_ICON_PATH);
                 label.textContent = 'Pause';
-                btn.className = 'button warn main-action-button';
+                btn.className = 'button lit-go main-action-button';
             } else if (mode === 'paused') {
                 iconPath.setAttribute('d', PLAY_ICON_PATH);
                 label.textContent = 'Resume';
-                btn.className = 'button primary main-action-button';
+                btn.className = 'button lit-warn main-action-button';
             } else {
                 iconPath.setAttribute('d', PLAY_ICON_PATH);
                 label.textContent = 'Start';
@@ -3322,11 +3311,11 @@
             // Visual feedback
             const btn = event.target;
             const originalText = btn.textContent;
-            btn.textContent = '✓ Applied!';
-            btn.style.background = '#4caf50';
+            btn.textContent = 'Applied';
+            btn.classList.add('lit-go');
             setTimeout(() => {
                 btn.textContent = originalText;
-                btn.style.background = '#2196f3';
+                btn.classList.remove('lit-go');
             }, 1500);
         }
 
@@ -3386,14 +3375,14 @@
             if (!list) return;
             countEl.textContent = rundownItems.length ? `(${rundownItems.length} items)` : '';
             if (rundownItems.length === 0) {
-                list.innerHTML = '<div style="color:#666;font-style:italic;padding:10px 0;text-align:center;">No items yet — click ✏️ Edit to add speakers</div>';
+                list.innerHTML = '<div style="color:var(--ink-2);padding:10px 0;text-align:center;">No items yet. Press Edit to add speakers.</div>';
                 return;
             }
             list.innerHTML = rundownItems.map((item, idx) => {
                 const cur = idx === currentRundownIndex;
                 const rowStyle = `display:flex;gap:6px;align-items:center;padding:8px 10px;margin-bottom:4px;border-radius:6px;cursor:pointer;
-                                  background:${cur ? 'rgba(144,202,249,0.12)' : '#1a1a1a'};
-                                  border:1px solid ${cur ? '#90caf9' : '#333'};`;
+                                  background:${cur ? 'rgba(63,185,80,0.12)' : 'var(--well)'};
+                                  border:1px solid ${cur ? 'var(--go)' : 'var(--seam)'};`;
                 if (rundownEditMode && isActiveController) {
                     // Edit mode: draggable rows (mouse pointers only - see
                     // rundownDragSupported above), editable inputs, remove button
@@ -3408,27 +3397,27 @@
                         : '';
                     return `<div style="${rowStyle}" ${dragAttrs}
                                  onclick="handleRowClick(event,${idx})">
-                        ${rundownDragSupported ? `<span style="cursor:grab;color:#555;font-size:1.1rem;user-select:none;flex-shrink:0;padding:0 2px;"
+                        ${rundownDragSupported ? `<span style="cursor:grab;color:var(--ink-3);font-size:1.1rem;user-select:none;flex-shrink:0;padding:0 2px;"
                               onclick="event.stopPropagation()">⠿</span>` : ''}
-                        <span style="color:#666;font-size:0.8rem;min-width:18px;flex-shrink:0;">${idx + 1}.</span>
+                        <span style="color:var(--ink-3);font-size:0.9rem;min-width:18px;flex-shrink:0;">${idx + 1}.</span>
                         <input type="text" draggable="false" value="${escapeAttr(item.name)}" placeholder="Speaker / session name"
                                class="rundown-name-input"
-                               style="flex:1;background:transparent;border:none;color:#e5e5e5;font-size:0.9rem;outline:none;min-width:0;"
+                               style="flex:1;background:transparent;border:none;color:var(--ink);font-size:1rem;outline:none;min-width:0;padding:4px;"
                                onchange="updateRundownItem(${idx},'name',this.value)"
                                onkeydown="handleRundownKeydown(event,${idx})">
                         <input type="text" draggable="false" value="${msToLabel(item.durationMs)}" placeholder="MM:SS"
                                class="rundown-time-input" onfocus="rundownTimeFocus(this)"
-                               style="width:52px;background:transparent;border:none;color:#90caf9;font-family:monospace;font-size:0.85rem;text-align:right;outline:none;flex-shrink:0;"
+                               style="width:60px;background:transparent;border:none;color:var(--ink);font-family:var(--digits);font-weight:700;font-size:1.1rem;text-align:right;outline:none;flex-shrink:0;padding:4px;"
                                onchange="updateRundownItem(${idx},'duration',this.value)">
                         <button onclick="removeRundownItem(${idx});event.stopPropagation();" title="Remove"
-                                style="padding:3px 7px;background:transparent;border:1px solid #555;color:#f44336;border-radius:3px;cursor:pointer;font-size:0.8rem;flex-shrink:0;">✕</button>
+                                class="key small danger" style="flex-shrink:0;min-height:30px;padding:3px 9px;">✕</button>
                     </div>`;
                 }
                 // Navigate mode: plain text, click to select only
                 return `<div style="${rowStyle}" onclick="handleRowClick(event,${idx})" title="Click to select · Enter or Take to load">
-                    <span style="color:#666;font-size:0.8rem;min-width:18px;flex-shrink:0;">${idx + 1}.</span>
-                    <span style="flex:1;color:#e5e5e5;font-size:0.9rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(item.name) || '<em style="color:#555">—</em>'}</span>
-                    <span style="width:52px;color:#90caf9;font-family:monospace;font-size:0.85rem;text-align:right;flex-shrink:0;">${msToLabel(item.durationMs)}</span>
+                    <span style="color:var(--ink-3);font-size:0.9rem;min-width:18px;flex-shrink:0;">${idx + 1}.</span>
+                    <span style="flex:1;color:var(--ink);font-size:1rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(item.name) || '<em style="color:var(--ink-3)">—</em>'}</span>
+                    <span style="width:60px;color:var(--ink);font-family:var(--digits);font-weight:700;font-size:1.1rem;text-align:right;flex-shrink:0;">${msToLabel(item.durationMs)}</span>
                 </div>`;
             }).join('');
             if (focusRundownIndex !== null) {
@@ -3463,7 +3452,7 @@
             rundownEditMode = !rundownEditMode;
             const btn = document.getElementById('rundownEditBtn');
             if (btn) {
-                btn.textContent = rundownEditMode ? '🔒 Lock' : '✏️ Edit';
+                btn.textContent = rundownEditMode ? 'Done' : 'Edit';
                 btn.style.color        = rundownEditMode ? '#ff9800' : '';
                 btn.style.borderColor  = rundownEditMode ? '#ff9800' : '';
             }
@@ -3522,12 +3511,12 @@
             event.preventDefault();
             event.dataTransfer.dropEffect = 'move';
             if (idx !== dragRundownIndex) {
-                event.currentTarget.style.borderColor = '#90caf9';
+                event.currentTarget.style.borderColor = 'var(--info)';
             }
         }
 
         function rundownDragLeave(event, idx) {
-            event.currentTarget.style.borderColor = idx === currentRundownIndex ? '#90caf9' : '#333';
+            event.currentTarget.style.borderColor = idx === currentRundownIndex ? 'var(--go)' : 'var(--seam)';
         }
 
         function rundownDrop(event, idx) {
@@ -3633,7 +3622,7 @@
             ta.select();
             const done = () => {
                 const original = btn.textContent;
-                btn.textContent = '✅ Copied!';
+                btn.textContent = 'Copied';
                 setTimeout(() => btn.textContent = original, 1500);
             };
             // navigator.clipboard needs a secure context; a LAN http:// page is not one,
@@ -3751,11 +3740,11 @@
             const btn = clickedBtn;
             if (!btn) return;
             const originalText = btn.textContent;
-            btn.textContent = '✅ Applied!';
-            btn.style.background = '#388e3c';
+            btn.textContent = 'Applied';
+            btn.classList.add('lit-go');
             setTimeout(() => {
                 btn.textContent = originalText;
-                btn.style.background = '#4caf50';
+                btn.classList.remove('lit-go');
             }, 2000);
         }
 
@@ -4198,11 +4187,9 @@
             const history = loadMessageHistory();
             if (!history.length) { el.innerHTML = ''; return; }
             el.innerHTML = history.map((msg, i) =>
-                `<button onclick="recallMessage(${i})"
-                    style="padding:5px 10px;background:#2a2a2a;border:1px solid #444;border-radius:4px;
-                           color:#ccc;font-size:0.8rem;cursor:pointer;max-width:240px;
-                           overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
-                    title="${msg.replace(/"/g,'&quot;')}">${msg.length>35?msg.slice(0,35)+'…':msg}</button>`
+                `<button onclick="recallMessage(${i})" class="key small plain"
+                    style="max-width:240px;overflow:hidden;text-overflow:ellipsis;display:block;"
+                    title="${escapeHtml(msg)}">${escapeHtml(msg.length>35?msg.slice(0,35)+'…':msg)}</button>`
             ).join('');
         }
         function recallMessage(idx) {
@@ -4275,8 +4262,8 @@
             currentTickerSpeed = speed;
             document.querySelectorAll('.msg-speed-btn').forEach(b => {
                 const isActive = parseFloat(b.dataset.speed) === speed;
-                b.style.background = isActive ? '#1565c0' : '';
-                b.style.color      = isActive ? '#fff' : '';
+                b.style.background = isActive ? 'var(--lit)' : '';
+                b.style.color      = isActive ? '#121314' : '';
             });
             // If a ticker is currently live, update it immediately
             if (currentState.messageMode === 'ticker' && currentState.message) {
