@@ -438,6 +438,30 @@
             background: var(--lit);
             color: #121314;
         }
+        /* Digits size / Timer speed: step keys, not sliders (a scroll that started
+           on a slider used to move it). Amber value = not applied yet. */
+        .stepper { display: flex; align-items: stretch; gap: 6px; }
+        .stepper .button { width: 56px; min-height: 48px; padding: 0; font-size: 1.6rem; line-height: 1; }
+        .stepper output {
+            flex: 1; display: flex; align-items: center; justify-content: center;
+            background: var(--well); border: 1px solid var(--seam); border-radius: var(--radius);
+            font-family: var(--digits); font-weight: 700; font-size: 1.7rem; font-variant-numeric: tabular-nums; color: var(--ink);
+        }
+        .stepper output.draft { color: #ffcc80; border-color: var(--warn); }
+        .stepper-note { font-size: 0.92rem; color: var(--ink-2); margin: 6px 0 8px; line-height: 1.4; }
+        .stepper-actions { display: flex; gap: 6px; }
+        .stepper-actions .button { flex: 1; padding: 10px 8px; }
+        .stepper-actions .button:disabled { color: var(--ink-3); cursor: default; }
+        .speed-demo { display: flex; justify-content: space-around; gap: 8px; padding: 8px; margin: 0 0 8px; font-size: 0.92rem; color: var(--ink-2); }
+        .speed-demo b { font-family: var(--digits); font-size: 1.5rem; color: var(--ink); margin-left: 6px; font-variant-numeric: tabular-nums; }
+        /* A small live preview that stays in view while scrolling Display settings. */
+        .settings-preview {
+            position: sticky; top: 8px; z-index: 6;
+            width: min(100%, 360px); margin: 12px 0 0 auto;
+            aspect-ratio: 16 / 9; overflow: hidden;
+            background: var(--well); border: 1px solid var(--seam); border-radius: 2px;
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+        }
         .threshold-row {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -1377,6 +1401,7 @@
             }
             .output-controls .count-style { flex: 1 1 0; min-width: 0; }
             .count-style-btn { min-height: 44px; padding: 8px 10px; }
+            .settings-preview { width: 58%; }
             .presets {
                 grid-template-columns: repeat(4, 1fr);
                 gap: 6px;
@@ -1748,6 +1773,10 @@
              appearanceSection. -->
         <details class="section" id="appearanceSection" style="grid-column: 1 / -1;">
             <summary data-view-ok style="cursor:pointer;margin-bottom:0;">Display settings</summary>
+            <!-- Live preview of these settings (incl. an unapplied Digits size); loaded only while open. -->
+            <div class="settings-preview" id="settingsPreviewWrap" aria-hidden="true">
+                <iframe class="display-preview-frame" id="settingsPreviewFrame" title="Preview of the display settings" tabindex="-1"></iframe>
+            </div>
             <div style="margin-top:12px;display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:16px;">
                 <div>
                     <div class="setup-heading" style="margin-bottom:8px;">Warning thresholds</div>
@@ -1767,16 +1796,32 @@
                     </label>
                 </div>
                 <div>
-                    <div class="setup-heading" style="margin-bottom:8px;">Display size &amp; speed</div>
-                    <div style="font-size:0.95rem;color:var(--ink-2);margin-bottom:4px;">Display size: <span id="displayScaleValue" style="color:var(--ink);font-weight:700;">1.5×</span></div>
-                    <input type="range" id="displayScaleSlider" min="0.5" max="3.0" step="0.1" value="1.5"
-                           style="width:100%;height:5px;accent-color:var(--lit);margin-bottom:6px;"
-                           oninput="updateDisplayScalePreview()">
-                    <button onclick="applyDisplayScale()" class="button" style="width:100%;padding:8px;margin-bottom:12px;">Apply size</button>
-                    <div style="font-size:0.95rem;color:var(--ink-2);margin-bottom:4px;">Speed: <span id="speedValue" style="color:var(--ink);font-weight:700;">1.0×</span></div>
-                    <input type="range" id="speedSlider" min="0.5" max="1.5" step="0.05" value="1.0"
-                           style="width:100%;height:5px;accent-color:var(--lit);margin-bottom:6px;">
-                    <button onclick="applySpeed()" class="button" style="width:100%;padding:8px;">Apply speed</button>
+                    <div class="setup-heading" style="margin-bottom:8px;">Digits size</div>
+                    <div class="stepper" role="group" aria-label="Digits size">
+                        <button type="button" class="button" onclick="stepDisplayScale(-1)" aria-label="Smaller">−</button>
+                        <output id="displayScaleValue" aria-live="polite">1.5×</output>
+                        <button type="button" class="button" onclick="stepDisplayScale(1)" aria-label="Bigger">+</button>
+                    </div>
+                    <input type="hidden" id="displayScaleSlider" value="1.5">
+                    <div class="stepper-note" id="displayScaleNote"></div>
+                    <div class="stepper-actions">
+                        <button type="button" class="button primary" id="scaleApplyBtn" onclick="applyDisplayScale()" disabled>Apply size</button>
+                        <button type="button" class="button secondary" id="scaleCancelBtn" onclick="cancelDisplayScale()" hidden>Cancel</button>
+                    </div>
+
+                    <div class="setup-heading" style="margin:18px 0 8px;">Timer speed</div>
+                    <div class="stepper" role="group" aria-label="Timer speed">
+                        <button type="button" class="button" onclick="stepSpeed(-1)" aria-label="Slower">−</button>
+                        <output id="speedValue" aria-live="polite">1.00×</output>
+                        <button type="button" class="button" onclick="stepSpeed(1)" aria-label="Faster">+</button>
+                    </div>
+                    <input type="hidden" id="speedSlider" value="1.0">
+                    <div class="stepper-note" id="speedExplain"></div>
+                    <div class="speed-demo well" aria-hidden="true"><span>Timer<b id="speedDemoTimer">10:00</b></span><span>Real time<b id="speedDemoReal">0:00</b></span></div>
+                    <div class="stepper-actions">
+                        <button type="button" class="button primary" id="speedApplyBtn" onclick="applySpeed()" disabled>Apply speed</button>
+                        <button type="button" class="button secondary" id="speedNormalBtn" onclick="setSpeedDraft(1)">Normal speed</button>
+                    </div>
                 </div>
                 <div>
                     <div class="setup-heading" style="margin-bottom:8px;">Digits</div>
@@ -2662,6 +2707,8 @@
             updateStatus();
             updateEndsAt();
             updatePlayPauseButton();
+            renderScaleControls();
+            renderSpeedControls();
 
             if (!slidersInitialised) {
                 // On first state, adopt ALL settings from the server rather than
@@ -3297,30 +3344,142 @@
         }
 
         // Display scale functions
-        function updateDisplayScalePreview() {
-            const slider = document.getElementById('displayScaleSlider');
-            const valueDisplay = document.getElementById('displayScaleValue');
-            const scale = parseFloat(slider.value);
-            valueDisplay.textContent = scale.toFixed(1) + 'x';
+        // ---- Digits size and Timer speed: step keys, previewed before Apply ----
+        // A draft (null = nothing unapplied) shows in the previews and in amber;
+        // displays only change on Apply. With no draft, the keys follow the
+        // server, so a change from another panel shows here too.
+        const SCALE_STEPS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 3];
+        const SPEED_STEPS = Array.from({ length: 21 }, (_, i) => Math.round((0.5 + i * 0.05) * 100) / 100);
+        let scaleDraft = null;
+        let speedDraft = null;
+        const liveScale = () => currentState.displayScale || 1.5;
+        const shownScale = () => (scaleDraft !== null ? scaleDraft : liveScale());
+        const liveSpeed = () => currentState.speed || 1;
+        const shownSpeed = () => (speedDraft !== null ? speedDraft : liveSpeed());
+        const fmtX = (v) => `${+v.toFixed(2)}×`;
+        function nextStep(steps, value, dir) {
+            if (dir > 0) return steps.find((v) => v > value + 1e-9) ?? steps[steps.length - 1];
+            return [...steps].reverse().find((v) => v < value - 1e-9) ?? steps[0];
         }
-
-        function applyDisplayScale() {
-            const scale = parseFloat(document.getElementById('displayScaleSlider').value);
-            
-            // Update the display scale setting
-            socket.emit('updateSettings', {
-                displayScale: scale
-            });
-            
-            // Visual feedback
-            const btn = event.target;
-            const originalText = btn.textContent;
+        function flashApplied(btn) {
             btn.textContent = 'Applied';
             btn.classList.add('lit-go');
-            setTimeout(() => {
-                btn.textContent = originalText;
-                btn.classList.remove('lit-go');
-            }, 1500);
+            setTimeout(() => { btn.classList.remove('lit-go'); renderScaleControls(); renderSpeedControls(); }, 1200);
+        }
+
+        function stepDisplayScale(dir) {
+            const v = nextStep(SCALE_STEPS, shownScale(), dir);
+            scaleDraft = Math.abs(v - liveScale()) < 1e-9 ? null : v;
+            sendPreviewScale();
+            renderScaleControls();
+        }
+        function renderScaleControls() {
+            const v = shownScale();
+            document.getElementById('displayScaleSlider').value = v;
+            const out = document.getElementById('displayScaleValue');
+            out.textContent = fmtX(v);
+            out.classList.toggle('draft', scaleDraft !== null);
+            const apply = document.getElementById('scaleApplyBtn');
+            if (!apply.classList.contains('lit-go')) apply.textContent = 'Apply size';
+            apply.disabled = scaleDraft === null;
+            document.getElementById('scaleCancelBtn').hidden = scaleDraft === null;
+            document.getElementById('displayScaleNote').textContent = scaleDraft !== null
+                ? `Showing ${fmtX(v)} in the previews only. Displays stay at ${fmtX(liveScale())} until you press Apply.`
+                : 'Try a size: the previews change first, displays change when you press Apply.';
+        }
+        function updateDisplayScalePreview() { renderScaleControls(); }
+
+        // Both previews (top of the page, and the one in Display settings) show
+        // the unapplied size; see display.html's previewScale.
+        function sendPreviewScale() {
+            ['displayPreviewFrame', 'settingsPreviewFrame'].forEach((id) => {
+                const frame = document.getElementById(id);
+                if (!frame || !frame.contentWindow || !frame.src) return;
+                frame.contentWindow.postMessage({ foxy: 'previewScale', scale: scaleDraft }, new URL(frame.src).origin);
+            });
+        }
+
+        function setSpeedDraft(v) {
+            speedDraft = Math.abs(v - liveSpeed()) < 1e-9 ? null : v;
+            renderSpeedControls();
+        }
+        function stepSpeed(dir) { setSpeedDraft(nextStep(SPEED_STEPS, shownSpeed(), dir)); }
+
+        const fmtMinSec = (sec) => { const t = Math.max(0, Math.round(sec)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
+        const fmtClock = (serverMs) => new Date(serverMs - serverClockOffsetMs).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+        function remainingTimerMs(s) {
+            const end = s.mode === 'paused' ? (s.pauseTime || serverNowMs()) : serverNowMs();
+            const elapsed = Math.max(0, (end - (s.startTime || 0) - (s.accumulatedPauseMs || 0)) * (s.speed || 1));
+            return Math.max(0, (s.durationMs || 0) - elapsed);
+        }
+        function speedExplanation(v) {
+            if (Math.abs(v - 1) < 1e-9) return 'Normal speed: the timer counts real seconds.';
+            const pct = Math.round(Math.abs(v - 1) * 100);
+            let text = `${pct}% ${v > 1 ? 'fast' : 'slow'}: 10:00 on the timer takes ${fmtMinSec(600 / v)} of real time.`;
+            const s = currentState;
+            if ((s.mode === 'running' || s.mode === 'paused') && s.timerMode !== 'endAt' && Math.abs(v - liveSpeed()) > 1e-9) {
+                const rem = remainingTimerMs(s);
+                if (rem > 0) {
+                    const now = serverNowMs();
+                    text += ` With ${fmtMinSec(rem / 1000)} left, it would finish at ${fmtClock(now + rem / v)} instead of ${fmtClock(now + rem / liveSpeed())}${s.mode === 'paused' ? ' (if resumed now)' : ''}.`;
+                }
+            }
+            return text;
+        }
+        function renderSpeedControls() {
+            const v = shownSpeed();
+            document.getElementById('speedSlider').value = v;
+            const out = document.getElementById('speedValue');
+            out.textContent = `${v.toFixed(2)}×`;
+            out.classList.toggle('draft', speedDraft !== null);
+            const apply = document.getElementById('speedApplyBtn');
+            if (!apply.classList.contains('lit-go')) apply.textContent = 'Apply speed';
+            apply.disabled = speedDraft === null;
+            document.getElementById('speedNormalBtn').disabled = Math.abs(v - 1) < 1e-9;
+            document.getElementById('speedExplain').textContent = speedExplanation(v)
+                + (speedDraft !== null ? ` Not applied yet: the timer is at ${liveSpeed().toFixed(2)}×.` : '');
+        }
+
+        // The little "Timer / Real time" demo: a 10:00 countdown at the chosen
+        // speed beside real seconds, starting over every 30 s. Only runs while
+        // Display settings is open.
+        (function () {
+            const started = Date.now();
+            setInterval(() => {
+                if (!document.getElementById('appearanceSection').open) return;
+                const real = ((Date.now() - started) / 1000) % 30;
+                document.getElementById('speedDemoReal').textContent = fmtMinSec(Math.floor(real));
+                document.getElementById('speedDemoTimer').textContent = fmtMinSec(Math.ceil(600 - real * shownSpeed()));
+            }, 200);
+        })();
+
+        // The Display settings preview connects only while the section is open.
+        (function () {
+            const section = document.getElementById('appearanceSection');
+            const wrap = document.getElementById('settingsPreviewWrap');
+            const frame = document.getElementById('settingsPreviewFrame');
+            const fit = () => { frame.style.transform = `scale(${wrap.clientWidth / 1280})`; };
+            new ResizeObserver(fit).observe(wrap);
+            frame.addEventListener('load', sendPreviewScale);
+            section.addEventListener('toggle', () => {
+                if (section.open && roomInfo) frame.src = roomInfo.displayUrl + '&preview=1';
+                else frame.removeAttribute('src');
+            });
+        })();
+
+        function applyDisplayScale() {
+            const scale = shownScale();
+            socket.emit('updateSettings', { displayScale: scale });
+            currentState.displayScale = scale; // until the server's echo arrives
+            scaleDraft = null;
+            sendPreviewScale();
+            renderScaleControls();
+            flashApplied(document.getElementById('scaleApplyBtn'));
+        }
+        function cancelDisplayScale() {
+            scaleDraft = null;
+            sendPreviewScale();
+            renderScaleControls();
         }
 
         // ============================================================
@@ -3709,14 +3868,11 @@
             socket.emit('setRundown', { items: rundownItems, resetIndex: true });
         }
 
-        function updateSpeedPreview() {
-            const speed = parseFloat(document.getElementById('speedSlider').value);
-            document.getElementById('speedValue').textContent = speed.toFixed(2) + 'x';
-        }
+        function updateSpeedPreview() { renderSpeedControls(); }
 
         async function applySpeed() {
-            const clickedBtn = window.event && window.event.target; // read before any await - the global event doesn't survive it
-            const speed = parseFloat(document.getElementById('speedSlider').value);
+            const clickedBtn = document.getElementById('speedApplyBtn');
+            const speed = shownSpeed();
             
             // Warning if timer is running
             if (currentState.mode === 'running') {
@@ -3739,17 +3895,10 @@
 
             saveSettings();
             emitSettings();
-            
-            // Visual feedback
-            const btn = clickedBtn;
-            if (!btn) return;
-            const originalText = btn.textContent;
-            btn.textContent = 'Applied';
-            btn.classList.add('lit-go');
-            setTimeout(() => {
-                btn.textContent = originalText;
-                btn.classList.remove('lit-go');
-            }, 2000);
+            currentState.speed = speed; // until the server's echo arrives
+            speedDraft = null;
+            renderSpeedControls();
+            flashApplied(clickedBtn);
         }
 
         // Emit live (non-timer-length) settings to the server when inputs change.
@@ -4155,7 +4304,6 @@
         syncHexFields();
 
         // Speed slider only updates preview, doesn't auto-apply
-        document.getElementById('speedSlider').addEventListener('input', updateSpeedPreview);
 
         // Track when user is actively editing the duration field so server syncs don't overwrite it
         // Tapping into the Duration box selects the whole value, so typing replaces

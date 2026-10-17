@@ -605,11 +605,13 @@
         // column on the right; digits only stay centred.
         const stripQuery = window.matchMedia('(min-aspect-ratio: 5/2)');
         let displayScale = 1.5;
+        let previewScale = null; // Control's previews only: an unapplied Digits size
         function setBaseSizes() {
             const strip = document.body.classList.contains('strip');
+            const scale = previewScale !== null ? previewScale : displayScale;
             baseTimerFontSize = strip
-                ? `min(${(displayScale * 56).toFixed(2)}vh, 100dvh)`
-                : `min(${(displayScale * 34).toFixed(2)}vmin, 100dvh)`;
+                ? `min(${(scale * 56).toFixed(2)}vh, 100dvh)`
+                : `min(${(scale * 34).toFixed(2)}vmin, 100dvh)`;
             baseClockFontSize = strip ? '60vh' : '18vmin';
         }
         function updateStripLayout() {
@@ -624,6 +626,19 @@
             lastFitted.timer = lastFitted.clock = null;
         }
         stripQuery.addEventListener('change', updateStripLayout);
+
+        // In Control's previews, the page that embeds us can show a Digits size
+        // before it's applied (null = back to the room's own size). Only from the
+        // embedding page: on a show laptop that can be localhost while this is the
+        // laptop's network address, so the origins needn't match.
+        if (urlParams.get('preview') === '1') {
+            window.addEventListener('message', (e) => {
+                if (e.source !== window.parent || !e.data || e.data.foxy !== 'previewScale') return;
+                previewScale = typeof e.data.scale === 'number' ? e.data.scale : null;
+                setBaseSizes();
+                lastFitted.timer = lastFitted.clock = null;
+            });
+        }
 
         // Digits font, glow and red pulse. A new font changes the digits' width, so
         // the fit-to-width cache is cleared once it has loaded (and straight away,
