@@ -792,7 +792,7 @@ app.post('/api/auth/login', async (req, res) => {
     if (result.reason === 'account_suspended') {
       return res.status(401).json({
         ok: false,
-        error: "Your organisation’s access to the app is currently paused. Your rooms and settings remain safely stored. Please contact Business Shows for assistance. Once access has been restored, you can sign in again as normal.",
+        error: "Your organisation’s access to the app is currently paused. Your rooms and settings remain safely stored. Please contact Business Shows for assistance. Once access has been restored, you can log in again as normal.",
         reason: 'account_suspended'
       });
     }
