@@ -5,30 +5,31 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Foxy Timer Help</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-    <!-- Deliberately self-contained (no web fonts or scripts from elsewhere):
-         it has to work on a show laptop with no internet. -->
+    <!-- Nothing from other sites: it has to work on a show laptop with no
+         internet. foxy.css and its fonts ship with the app. -->
+    <link rel="stylesheet" href="/foxy.css">
     <style>
         :root {
-            --bg: #0b0b0c; --bg-2: #121214; --card: #161618; --line: #26262a;
-            --text: #ececee; --muted: #a2a2aa; --faint: #6f6f77;
-            --fox: #ff6a1a; --fox-2: #ff8a3d; --green: #4caf50; --amber: #ffb300;
+            --bg: var(--desk); --bg-2: #232427; --card: var(--panel); --line: #36383c;
+            --text: var(--ink); --muted: var(--ink-2); --faint: var(--ink-3);
+            --green: var(--go); --amber: var(--warn);
             --mono: ui-monospace, 'Cascadia Mono', Consolas, Menlo, monospace;
         }
         * { box-sizing: border-box; }
         html { scroll-behavior: smooth; }
-        body { margin: 0; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; line-height: 1.6; }
-        .top { position: sticky; top: 0; z-index: 5; background: rgba(11,11,12,0.92); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+        body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--ui); font-weight: 500; font-size: 17px; line-height: 1.6; }
+        .top { position: sticky; top: 0; z-index: 5; background: rgba(29, 30, 32, 0.94); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
         .top .in { max-width: 860px; margin: 0 auto; padding: 12px 16px; display: flex; align-items: center; gap: 14px; }
         .top img { width: 26px; height: 26px; }
         .top b { font-size: 1.05rem; }
-        .top a.back { margin-left: auto; color: var(--muted); text-decoration: none; font-size: 0.9rem; border: 1px solid var(--line); padding: 6px 12px; border-radius: 8px; }
-        .top a.back:hover { color: var(--text); border-color: #3a3a40; }
+        .top a.back { margin-left: auto; color: var(--muted); text-decoration: none; font-size: 0.9rem; border: 1px solid var(--seam); background: var(--key); padding: 6px 12px; border-radius: var(--radius); font-weight: 600; }
+        .top a.back:hover { color: var(--text); background: var(--key-hi); }
         main { max-width: 860px; margin: 0 auto; padding: 28px 16px 80px; }
-        h1 { font-size: 1.9rem; margin: 0 0 6px; letter-spacing: -0.02em; }
+        h1 { font-size: 2.2rem; margin: 0 0 6px; letter-spacing: -0.01em; }
         .lede { color: var(--muted); margin: 0 0 22px; }
         nav.toc { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
-        nav.toc a { color: var(--text); text-decoration: none; background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 6px 12px; font-size: 0.88rem; }
-        nav.toc a:hover, nav.toc a:focus-visible { border-color: var(--fox); outline: none; }
+        nav.toc a { color: var(--text); text-decoration: none; background: var(--key); border: 1px solid var(--seam); border-radius: var(--radius); padding: 6px 12px; font-size: 0.95rem; font-weight: 600; }
+        nav.toc a:hover, nav.toc a:focus-visible { background: var(--key-hi); outline: none; }
         section { border-top: 1px solid var(--line); margin-top: 34px; padding-top: 26px; scroll-margin-top: 70px; }
         h2 { font-size: 1.35rem; margin: 0 0 10px; }
         h3 { font-size: 1.02rem; margin: 20px 0 6px; scroll-margin-top: 70px; }
@@ -36,26 +37,26 @@
         p { margin: 0 0 10px; }
         ul, ol { padding-left: 22px; margin: 6px 0 12px; }
         li { margin: 3px 0; }
-        a { color: var(--fox-2); }
-        code { font-family: var(--mono); font-size: 0.88em; background: #1d1d20; border: 1px solid var(--line); padding: 1px 6px; border-radius: 5px; overflow-wrap: anywhere; }
-        .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; margin: 12px 0; }
-        .tip { border-left: 3px solid var(--amber); background: #1e1a12; border-radius: 8px; padding: 12px 14px; margin: 12px 0; }
+        a { color: var(--info); }
+        code { font-family: var(--mono); font-size: 0.88em; background: var(--well); border: 1px solid var(--seam); padding: 1px 6px; border-radius: 2px; overflow-wrap: anywhere; }
+        .card { background: var(--card); border: 1px solid var(--seam); border-radius: var(--radius); padding: 16px 18px; margin: 12px 0; }
+        .tip { border-left: 3px solid var(--amber); background: #2b2412; border-radius: 0 var(--radius) var(--radius) 0; padding: 12px 14px; margin: 12px 0; }
         .tip b:first-child { color: var(--amber); }
         .fields { display: grid; grid-template-columns: max-content 1fr; gap: 8px 16px; margin: 10px 0; }
         .fields dt { font-weight: 600; }
         .fields dd { margin: 0; color: var(--muted); }
         table { border-collapse: collapse; width: 100%; font-size: 0.93rem; }
-        .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; margin: 10px 0; }
+        .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); margin: 10px 0; }
         th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
-        th { color: var(--muted); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; background: var(--bg-2); }
+        th { color: var(--muted); font-size: 0.95rem; font-weight: 600; background: var(--bg-2); }
         tr:last-child td { border-bottom: 0; }
-        kbd { font-family: var(--mono); font-size: 0.85em; border: 1px solid #3a3a40; border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; background: #1d1d20; }
+        kbd { font-family: var(--mono); font-size: 0.85em; border: 1px solid var(--seam); border-bottom-width: 2px; border-radius: 2px; padding: 0 5px; background: var(--key); }
         /* Which version a bit of help applies to: Online = blue, Windows = purple. */
-        .ver { display: inline-block; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; padding: 2px 9px; border-radius: 999px; vertical-align: middle; margin-left: 8px; border: 1px solid; }
+        .ver { display: inline-block; font-size: 0.85rem; font-weight: 700; padding: 1px 7px; border-radius: 2px; vertical-align: middle; margin-left: 8px; border: 1px solid; }
         .ver.online { color: #7cc0ff; background: #0f1a2a; border-color: #25456e; }
         .ver.win { color: #c4b2ff; background: #17142a; border-color: #3d3366; }
-        .ver.both { color: var(--muted); background: #1d1d20; border-color: var(--line); }
-        .vbox { border: 1px solid; border-radius: 12px; padding: 14px 16px; margin: 12px 0; }
+        .ver.both { color: var(--muted); background: var(--well); border-color: var(--line); }
+        .vbox { border: 1px solid; border-radius: var(--radius); padding: 14px 16px; margin: 12px 0; }
         .vbox.online { background: #0d1622; border-color: #25456e; }
         .vbox.win { background: #13111f; border-color: #3d3366; }
         .vbox h4 { margin: 0 0 8px; font-size: 1rem; }
@@ -162,7 +163,7 @@
         <p>Companion asks for a <b>Server URL</b>, a <b>Client API key</b> and <b>Room IDs to monitor</b>. Foxy Timer has them ready to copy:</p>
         <ol>
             <li>Open your Foxy Timer dashboard, the page that lists your rooms.</li>
-            <li>Press the <b>🎛️ Companion</b> button at the top of it. A window opens showing the settings, each with a <b>Copy</b> button.</li>
+            <li>Press the <b>Companion</b> button at the top of it. A window opens showing the settings, each with a <b>Copy</b> button.</li>
             <li>Copy each one into the box with the same name in Companion's connection settings.</li>
             <li>Leave <b>Poll interval</b> at 1000 ms (once a second).</li>
         </ol>
@@ -220,7 +221,7 @@
         </ul>
         <h3 id="screens">Showing the timer on other screens</h3>
         <p>Use the <b>Output</b> menu at the top of the Foxy Timer window. Each screen can show a room, or nothing, so two extra monitors can show two different rooms. <b>Identify screens</b> puts a big number on each monitor so you can tell which is which. Your choices are remembered.</p>
-        <p>On the dashboard, each room also shows which screen it's on, for example <b>🖥 Screen 2</b>. Click it and tick or untick screens.</p>
+        <p>On the dashboard, each room also shows which screen it's on, for example <b>Screen 2</b>. Click it and tick or untick screens.</p>
         <p><b>To take the timer off a screen, untick it</b> on the dashboard, or use the Output menu.</p>
         <p>If you put the timer on the <b>laptop's own screen</b>, it covers the dashboard. Press <b>Esc</b> to take it off and get the dashboard back; a reminder appears when it opens and when you move the mouse. Esc does nothing on other screens, so a stray key press can't blank what the audience sees.</p>
         <h3 id="fuzzy">Text looks fuzzy after moving a window between screens</h3>
