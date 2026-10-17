@@ -1643,7 +1643,7 @@
                     </div>
                 </div>
                 <div>
-                    <div class="setup-heading">Quick presets <span class="presets-save-hint"><span class="mouse">· Ctrl+click to save</span><span class="touch">· Hold to save</span></span></div>
+                    <div class="setup-heading">Quick presets <span class="presets-save-hint"><span class="mouse">· Ctrl+click to save</span><span class="touch">· Long-press to save</span></span></div>
                     <div class="presets" id="presetsGrid"></div>
                 </div>
             </div>
@@ -3282,7 +3282,7 @@
                 const btn = document.createElement('button');
                 btn.className='preset-button';
                 btn.textContent = msToLabel(ms);
-                btn.title = 'Click to apply. Ctrl+click (or press and hold) to save the Duration time to this preset';
+                btn.title = 'Click to apply. Ctrl+click (or long-press) to save the Duration time to this preset';
                 btn.addEventListener('click', (e)=>{
                     if (btn.dataset.held) { delete btn.dataset.held; return; } // a hold already saved
                     if (e.ctrlKey || e.metaKey) savePresetAt(idx, btn);
