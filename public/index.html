@@ -6,22 +6,24 @@
     <title>Foxy Timer - your presentation timer, centre stage</title>
     <meta name="description" content="A presentation timer for live events: who's on, time left and who's next, in step on every screen. A small, independent project, run from a browser or a Windows laptop. Works with Companion. Feedback welcome.">
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="stylesheet" href="/foxy.css">
     <style>
+        /* Same "Production desk" look as the app (tokens in /foxy.css). */
         :root {
-            --bg: #0b0b0c;
-            --bg-2: #121214;
-            --card: #161618;
-            --line: #26262a;
-            --text: #ececee;
-            --muted: #9a9aa2;
-            --faint: #6b6b73;
+            --bg: var(--desk);
+            --bg-2: #232427;
+            --card: var(--panel);
+            --line: #36383c;
+            --text: var(--ink);
+            --muted: var(--ink-2);
+            --faint: var(--ink-3);
             --fox: #ff6a1a;
             --fox-2: #ff8a3d;
             --green: #4caf50;
             --amber: #ff9800;
             --red: #f44336;
             --purple: #b36bff;
-            --radius: 14px;
+            --radius: 3px;
             --mono: ui-monospace, 'SF Mono', 'Cascadia Mono', 'Roboto Mono', Menlo, Consolas, monospace;
         }
         * { box-sizing: border-box; }
@@ -30,7 +32,9 @@
             margin: 0;
             background: var(--bg);
             color: var(--text);
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            font-family: var(--ui);
+            font-weight: 500;
+            font-size: 17px;
             line-height: 1.55;
             -webkit-font-smoothing: antialiased;
         }
@@ -40,7 +44,7 @@
         /* ---------- Nav ---------- */
         .nav {
             position: sticky; top: 0; z-index: 10;
-            background: rgba(11, 11, 12, 0.82);
+            background: rgba(29, 30, 32, 0.9);
             backdrop-filter: saturate(160%) blur(12px);
             -webkit-backdrop-filter: saturate(160%) blur(12px);
             border-bottom: 1px solid transparent;
@@ -55,34 +59,30 @@
         .nav-links a:hover { color: var(--text); }
         .btn {
             display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-            padding: 11px 20px; border-radius: 10px; border: 1px solid transparent;
+            padding: 11px 20px; border-radius: var(--radius); border: 1px solid var(--seam);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), inset 0 -2px 0 rgba(0, 0, 0, 0.25);
             font: inherit; font-weight: 600; font-size: 0.95rem;
             text-decoration: none; cursor: pointer; white-space: nowrap;
             transition: background 0.15s, border-color 0.15s, transform 0.15s;
         }
-        .btn:active { transform: translateY(1px); }
-        .btn-primary { background: var(--fox); color: #140800; }
-        .btn-primary:hover { background: var(--fox-2); }
-        .btn-ghost { border-color: var(--line); color: var(--text); background: transparent; }
-        .btn-ghost:hover { border-color: #3a3a40; background: var(--bg-2); }
-        .nav-links .btn { color: #140800; padding: 8px 16px; }
+        .btn:active { box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4); }
+        .btn-primary { background: var(--lit); color: #121314; }
+        .btn-primary:hover { background: #e9eaec; }
+        .btn-ghost { color: var(--text); background: var(--key); }
+        .btn-ghost:hover { background: var(--key-hi); }
+        .nav-links .btn { color: #121314; padding: 8px 16px; }
         .nav-links .login { color: var(--text); }
 
         /* ---------- Hero ---------- */
         .hero { padding: 56px 0 56px; position: relative; overflow: hidden; }
-        .hero::before {
-            content: ''; position: absolute; inset: -20% -10% auto auto; width: 70%; height: 120%;
-            background: radial-gradient(closest-side, rgba(255, 106, 26, 0.13), transparent 70%);
-            pointer-events: none;
-        }
         .hero .wrap { display: grid; grid-template-columns: 1fr 1.05fr; gap: 56px; align-items: center; position: relative; }
         .eyebrow {
-            display: inline-block; font-size: 0.8rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
-            color: var(--fox-2); margin-bottom: 18px;
+            display: inline-block; font-size: 1rem; font-weight: 600;
+            color: var(--muted); margin-bottom: 14px;
         }
         h1 {
-            font-size: clamp(2.2rem, 4.6vw, 3.6rem); line-height: 1.06; letter-spacing: -0.03em;
-            margin: 0 0 20px; font-weight: 750;
+            font-size: clamp(2.4rem, 5vw, 3.9rem); line-height: 1.04; letter-spacing: -0.01em;
+            margin: 0 0 20px; font-weight: 700;
         }
         h1 .soft { color: var(--muted); }
         .lede { font-size: 1.13rem; color: var(--muted); margin: 0 0 30px; max-width: 34em; }
@@ -93,45 +93,45 @@
         /* Stage display mock */
         .stage { position: relative; }
         .screen {
-            aspect-ratio: 16 / 9; background: #000; border-radius: 12px;
-            border: 1px solid #2c2c31; box-shadow: 0 30px 80px rgba(0,0,0,0.6), 0 0 0 6px #151517;
+            aspect-ratio: 16 / 9; background: #000; border-radius: 3px;
+            border: 1px solid var(--seam); box-shadow: 0 24px 60px rgba(0,0,0,0.5), 0 0 0 8px #2a2b2e, 0 0 0 9px var(--seam);
             display: flex; flex-direction: column; align-items: center; justify-content: center;
             position: relative; overflow: hidden;
         }
         .screen .speaker { position: absolute; top: 7%; left: 0; right: 0; text-align: center; color: #cfcfd4; font-size: clamp(0.8rem, 1.7vw, 1.15rem); font-weight: 600; }
         .screen .digits {
-            font-family: var(--mono); font-variant-numeric: tabular-nums; font-weight: 700;
-            font-size: clamp(3.4rem, 10vw, 7.4rem); line-height: 1; letter-spacing: -0.02em;
+            font-family: var(--digits); font-variant-numeric: tabular-nums; font-weight: 700;
+            font-size: clamp(4rem, 12vw, 9rem); line-height: 1; letter-spacing: 0;
             color: var(--green); transition: color 0.4s;
         }
         .screen .next { position: absolute; bottom: 7%; left: 0; right: 0; text-align: center; color: #85858d; font-size: clamp(0.7rem, 1.4vw, 0.95rem); }
-        .screen .tally { position: absolute; top: 12px; right: 14px; font-size: 0.65rem; font-weight: 700; letter-spacing: 0.08em; color: #666; }
-        .screen .tally::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--red); margin-right: 6px; vertical-align: 1px; animation: blink 1.6s infinite; }
+        .screen .tally { white-space: nowrap; position: absolute; top: 12px; right: 14px; font-size: 0.65rem; font-weight: 700; letter-spacing: 0.08em; color: #666; }
+        .screen .tally::before { content: ''; display: inline-block; width: 14px; height: 6px; border-radius: 1px; background: var(--red); margin-right: 6px; vertical-align: 1px; animation: blink 1.6s infinite; }
         @keyframes blink { 50% { opacity: 0.25; } }
 
         .phone {
             position: absolute; right: -18px; bottom: -64px; width: 132px; aspect-ratio: 9 / 19.5;
             display: flex; flex-direction: column;
-            background: #0e0e10; border: 1px solid #3a3a40; border-radius: 26px; padding: 28px 9px 16px;
+            background: var(--desk); border: 1px solid #3a3a40; border-radius: 26px; padding: 28px 9px 16px;
             box-shadow: 0 20px 50px rgba(0,0,0,0.7), 0 0 0 4px #1b1b1e, 0 0 0 5px #2c2c31;
             font-size: 0.62rem; color: var(--muted);
         }
         /* Dynamic Island and home indicator */
         .phone .notch { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); width: 38px; height: 11px; background: #000; border-radius: 8px; }
         .phone::after { content: ''; position: absolute; bottom: 6px; left: 50%; transform: translateX(-50%); width: 40px; height: 3px; background: #3a3a40; border-radius: 3px; }
-        .phone .chip { display: flex; align-items: center; gap: 5px; background: #17171a; border: 1px solid var(--line); border-radius: 20px; padding: 3px 7px; width: max-content; color: #d6d6da; }
-        .phone .chip i { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
-        .phone .mini { flex: 1; display: flex; align-items: center; justify-content: center; margin: 8px 0; background: #000; border-radius: 8px; text-align: center; font-family: var(--mono); font-weight: 700; font-size: 1.5rem; color: var(--green); transition: color 0.4s; }
-        .phone .pbtn { background: var(--fox); color: #140800; font-weight: 700; text-align: center; border-radius: 7px; padding: 6px 0; margin-bottom: 5px; font-size: 0.7rem; }
+        .phone .chip { display: flex; align-items: center; gap: 5px; background: var(--key); border: 1px solid var(--seam); border-radius: 2px; padding: 3px 7px; width: max-content; color: var(--ink); }
+        .phone .chip i { width: 10px; height: 4px; border-radius: 1px; background: var(--go); }
+        .phone .mini { flex: 1; display: flex; align-items: center; justify-content: center; margin: 8px 0; background: #000; border-radius: 2px; text-align: center; font-family: var(--digits); font-weight: 700; font-size: 1.8rem; color: var(--green); transition: color 0.4s; }
+        .phone .pbtn { background: var(--go-key); color: #fff; font-weight: 700; text-align: center; border-radius: 2px; padding: 6px 0; margin-bottom: 5px; font-size: 0.75rem; }
         .phone .nudges { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
-        .phone .nudges span { border: 1px solid var(--line); border-radius: 5px; text-align: center; padding: 3px 0; color: #c9c9ce; }
+        .phone .nudges span { background: var(--key); border: 1px solid var(--seam); border-radius: 2px; text-align: center; padding: 3px 0; color: var(--ink); }
         .phone .live { margin-top: 7px; display: flex; justify-content: space-between; border-top: 1px solid var(--line); padding-top: 6px; }
         .phone .live b { color: var(--green); font-weight: 700; letter-spacing: 0.05em; }
 
         /* ---------- Works-with strip ---------- */
         .strip { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--bg-2); margin-top: 40px; }
         .strip .wrap { display: flex; flex-wrap: wrap; gap: 12px 36px; align-items: center; justify-content: center; padding-top: 22px; padding-bottom: 22px; font-size: 0.92rem; color: var(--muted); }
-        .strip .label { color: var(--faint); font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 600; }
+        .strip .label { color: var(--faint); font-size: 0.95rem; font-weight: 600; }
         .strip span strong { color: var(--text); font-weight: 600; }
 
         /* ---------- Sections ---------- */
@@ -142,21 +142,22 @@
 
         .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
         .card {
-            background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+            background: var(--card); border: 1px solid var(--seam); border-radius: var(--radius);
+            box-shadow: inset 0 1px 0 var(--bevel);
             padding: 26px 24px;
         }
         .card .ic {
-            width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center;
-            background: rgba(255, 106, 26, 0.12); color: var(--fox-2); margin-bottom: 16px;
+            width: 38px; height: 38px; border-radius: 2px; display: grid; place-items: center;
+            background: var(--well); border: 1px solid var(--seam); color: var(--ink); margin-bottom: 16px;
         }
         .card .ic svg { width: 20px; height: 20px; }
         .card h3 { margin: 0 0 8px; font-size: 1.08rem; letter-spacing: -0.01em; }
         .card p { margin: 0; color: var(--muted); font-size: 0.96rem; }
         .card.wide { grid-column: span 2; }
         .card.feature { grid-column: span 2; display: grid; grid-template-columns: 1fr 1fr; gap: 28px; align-items: center; }
-        .card.feature .diagram { font-family: var(--mono); font-size: 0.8rem; color: var(--muted); background: #0d0d0f; border: 1px solid var(--line); border-radius: 10px; padding: 18px; line-height: 1.9; }
+        .card.feature .diagram { font-family: var(--mono); font-size: 0.8rem; color: var(--muted); background: var(--well); border: 1px solid var(--seam); border-radius: 2px; padding: 18px; line-height: 1.9; }
         .diagram .ok { color: var(--green); }
-        .diagram .hub { color: var(--fox-2); font-weight: 700; }
+        .diagram .hub { color: var(--text); font-weight: 700; }
 
         /* Details */
         .details { background: var(--bg-2); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
@@ -168,12 +169,12 @@
         /* Ways to run */
         .modes { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
         .mode { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 30px 28px; }
-        .mode .tag { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fox-2); }
+        .mode .tag { font-size: 0.95rem; font-weight: 600; color: var(--muted); }
         .mode h3 { margin: 8px 0 10px; font-size: 1.3rem; letter-spacing: -0.015em; }
         .mode p { color: var(--muted); margin: 0 0 14px; }
         .mode ul { margin: 0; padding: 0; list-style: none; color: var(--muted); font-size: 0.95rem; }
         .mode li { padding: 5px 0 5px 20px; position: relative; }
-        .mode li::before { content: ''; position: absolute; left: 2px; top: 13px; width: 8px; height: 2px; background: var(--fox); }
+        .mode li::before { content: ''; position: absolute; left: 2px; top: 13px; width: 8px; height: 2px; background: var(--muted); }
         .mode-download { margin-top: 20px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
         .mode-download[hidden], .win-dl[hidden], .win-soon[hidden] { display: none !important; }
         .mode-download .note { color: var(--muted); font-size: 0.9rem; }
@@ -188,15 +189,15 @@
         .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
         label { display: grid; gap: 6px; font-size: 0.88rem; color: var(--muted); font-weight: 500; }
         input, textarea, select {
-            font: inherit; font-size: 1rem; color: var(--text); background: #0d0d0f;
-            border: 1px solid #2e2e33; border-radius: 9px; padding: 11px 13px; width: 100%;
+            font: inherit; font-size: 1rem; color: var(--text); background: var(--well);
+            border: 1px solid #3a3c40; border-radius: var(--radius); padding: 11px 13px; width: 100%;
         }
         textarea { min-height: 110px; resize: vertical; }
-        input:focus, textarea:focus, select:focus { outline: none; border-color: var(--fox); box-shadow: 0 0 0 3px rgba(255,106,26,0.18); }
+        input:focus, textarea:focus, select:focus { outline: none; border-color: var(--info); }
         .interest { display: flex; flex-wrap: wrap; gap: 8px; }
-        .interest label { display: inline-flex; align-items: center; gap: 7px; border: 1px solid #2e2e33; border-radius: 30px; padding: 7px 13px; cursor: pointer; color: var(--text); font-size: 0.9rem; }
-        .interest input { width: auto; accent-color: var(--fox); }
-        .interest label:has(input:checked) { border-color: var(--fox); background: rgba(255,106,26,0.08); }
+        .interest label { display: inline-flex; align-items: center; gap: 7px; border: 1px solid #3a3c40; border-radius: var(--radius); padding: 7px 13px; cursor: pointer; color: var(--text); font-size: 0.9rem; }
+        .interest input { width: auto; accent-color: var(--go); }
+        .interest label:has(input:checked) { border-color: var(--ink-2); background: var(--key); }
         .form-note { font-size: 0.85rem; color: var(--faint); margin: 0; }
         .form-status { font-size: 0.95rem; margin: 0; display: none; }
         .form-status.ok { display: block; color: var(--green); }
@@ -215,18 +216,18 @@
             .edition-bar + .nav-links { margin-left: auto; }
             section[id] { scroll-margin-top: 130px; }
         }
-        .edition-switch { display: inline-flex; background: var(--bg-2); border: 1px solid var(--line); border-radius: 999px; padding: 4px; gap: 4px; max-width: 100%; }
-        .edition-switch button { font: inherit; font-size: 0.92rem; font-weight: 600; color: var(--muted); background: transparent; border: 0; border-radius: 999px; padding: 7px 16px; cursor: pointer; white-space: nowrap; }
+        .edition-switch { display: inline-flex; background: var(--seam); border: 1px solid var(--seam); border-radius: var(--radius); padding: 0; gap: 1px; overflow: hidden; max-width: 100%; }
+        .edition-switch button { font: inherit; font-size: 0.92rem; font-weight: 600; color: var(--muted); background: transparent; border: 0; border-radius: 0; background: var(--key); padding: 7px 16px; cursor: pointer; white-space: nowrap; }
         .edition-switch button:hover { color: var(--text); }
-        .edition-switch button[aria-selected="true"] { background: var(--fox); color: #140800; }
-        .edition-switch button:focus-visible { outline: 2px solid var(--fox-2); outline-offset: 2px; }
+        .edition-switch button[aria-selected="true"] { background: var(--lit); color: #121314; }
+        .edition-switch button:focus-visible { outline: 2px solid var(--info); outline-offset: -2px; }
         body[data-edition="online"] [data-for="windows"], body[data-edition="windows"] [data-for="online"] { display: none !important; }
 
         /* Getting started */
         .start-grid { display: grid; grid-template-columns: 1.25fr 0.75fr; gap: 24px; align-items: start; }
         .steps { counter-reset: step; list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
         .steps li { counter-increment: step; position: relative; padding: 16px 18px 16px 60px; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); color: var(--muted); }
-        .steps li::before { content: counter(step); position: absolute; left: 18px; top: 15px; width: 28px; height: 28px; border-radius: 50%; background: rgba(255,106,26,0.14); color: var(--fox-2); font-weight: 700; display: flex; align-items: center; justify-content: center; font-size: 0.92rem; }
+        .steps li::before { content: counter(step); position: absolute; left: 18px; top: 15px; width: 28px; height: 28px; border-radius: 2px; background: var(--well); border: 1px solid var(--seam); color: var(--text); font-family: var(--digits); font-weight: 700; display: flex; align-items: center; justify-content: center; font-size: 0.92rem; }
         .steps li strong { color: var(--text); display: block; margin-bottom: 2px; }
         .start-cta { margin-top: 20px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
         .start-cta .note { color: var(--muted); font-size: 0.9rem; }
@@ -336,7 +337,7 @@
                     <div class="notch"></div>
                     <div class="chip"><i></i> Calm Raven</div>
                     <div class="mini" id="demoMini">0:40</div>
-                    <div class="pbtn">PAUSE</div>
+                    <div class="pbtn">Pause</div>
                     <div class="nudges"><span>&minus;5</span><span>&minus;1</span><span>+1</span><span>+5</span></div>
                     <div class="live"><b>LIVE</b> <span>25:00</span></div>
                 </div>
@@ -526,7 +527,7 @@
                     <h2>Tell me what you think.</h2>
                     <p>Foxy Timer is a small project that's still growing, and it gets better from other people's shows. If you try it, I'd like to hear what breaks, what's awkward, and what you'd want it to do. Wish-list ideas are as welcome as bug reports.</p>
                     <p style="margin-top:14px;">Want an account to use it on a show? Ask here too.</p>
-                    <p style="margin-top:14px;" data-for="online">Just want a quick look? <a href="/try" style="color:var(--fox-2);font-weight:600;">Open a demo room now</a>. It lasts two hours and needs no sign-up.</p>
+                    <p style="margin-top:14px;" data-for="online">Just want a quick look? <a href="/try" style="color:var(--info);font-weight:600;">Open a demo room now</a>. It lasts two hours and needs no sign-up.</p>
                 </div>
                 <ul class="points">
                     <li><strong>Already have an account?</strong> <a href="/dashboard">Log in to your dashboard</a></li>
