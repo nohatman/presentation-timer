@@ -454,13 +454,17 @@
         .stepper-actions .button:disabled { color: var(--ink-3); cursor: default; }
         .speed-demo { display: flex; justify-content: space-around; gap: 8px; padding: 8px; margin: 0 0 8px; font-size: 0.92rem; color: var(--ink-2); }
         .speed-demo b { font-family: var(--digits); font-size: 1.5rem; color: var(--ink); margin-left: 6px; font-variant-numeric: tabular-nums; }
-        /* A small live preview that stays in view while scrolling Display settings. */
-        .settings-preview {
-            position: sticky; top: 8px; z-index: 6;
-            width: min(100%, 360px); margin: 12px 0 0 auto;
-            aspect-ratio: 16 / 9; overflow: hidden;
-            background: var(--well); border: 1px solid var(--seam); border-radius: 2px;
-            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+        /* Scrolled past the preview (running order, message, settings...)? It
+           floats small in the top corner so the display stays in view; tap it to
+           go back up. The holder keeps its space so nothing jumps. */
+        .preview-holder { width: 100%; display: flex; justify-content: center; }
+        .display-preview-wrap.docked {
+            position: fixed; z-index: 950;
+            top: calc(8px + env(safe-area-inset-top, 0px)); right: 8px;
+            width: min(46vw, 340px) !important;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+            border-color: #4a4d52;
+            cursor: pointer;
         }
         /* Running order: Add / Import / Export forms. */
         .rundown-form { padding: 12px; margin-bottom: 8px; display: grid; gap: 8px; }
@@ -1417,7 +1421,6 @@
             }
             .output-controls .count-style { flex: 1 1 0; min-width: 0; }
             .count-style-btn { min-height: 44px; padding: 8px 10px; }
-            .settings-preview { width: 58%; }
             .presets {
                 grid-template-columns: repeat(4, 1fr);
                 gap: 6px;
@@ -1550,8 +1553,10 @@
                     <span class="preview-label" style="font-size:0.95rem;color:var(--ink-2);font-weight:600;">Preview</span>
                     <span class="status-badge" id="statusBadge">Stopped</span>
                 </div>
-                <div class="display-preview-wrap" id="displayPreviewWrap">
-                    <iframe class="display-preview-frame" id="displayPreviewFrame" title="Live display preview" loading="lazy"></iframe>
+                <div class="preview-holder" id="previewHolder">
+                    <div class="display-preview-wrap" id="displayPreviewWrap" title="Live display">
+                        <iframe class="display-preview-frame" id="displayPreviewFrame" title="Live display preview" loading="lazy"></iframe>
+                    </div>
                 </div>
                 <div class="preview-times">
                     <div id="previewNowTime"></div>
@@ -1795,10 +1800,6 @@
              appearanceSection. -->
         <details class="section" id="appearanceSection" style="grid-column: 1 / -1;">
             <summary data-view-ok style="cursor:pointer;margin-bottom:0;">Display settings</summary>
-            <!-- Live preview of these settings (incl. an unapplied Digits size); loaded only while open. -->
-            <div class="settings-preview" id="settingsPreviewWrap" aria-hidden="true">
-                <iframe class="display-preview-frame" id="settingsPreviewFrame" title="Preview of the display settings" tabindex="-1"></iframe>
-            </div>
             <div style="margin-top:12px;display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:16px;">
                 <div>
                     <div class="setup-heading" style="margin-bottom:8px;">Warning thresholds</div>
@@ -3415,7 +3416,7 @@
         // Both previews (top of the page, and the one in Display settings) show
         // the unapplied size; see display.html's previewScale.
         function sendPreviewScale() {
-            ['displayPreviewFrame', 'settingsPreviewFrame'].forEach((id) => {
+            ['displayPreviewFrame'].forEach((id) => {
                 const frame = document.getElementById(id);
                 if (!frame || !frame.contentWindow || !frame.src) return;
                 frame.contentWindow.postMessage({ foxy: 'previewScale', scale: scaleDraft }, new URL(frame.src).origin);
@@ -3476,17 +3477,24 @@
             }, 200);
         })();
 
-        // The Display settings preview connects only while the section is open.
+        // The preview floats in the top corner once it has scrolled out of view
+        // above (running order, message, settings), so the display is always in
+        // sight. Same iframe, only restyled: no reload, no second connection.
+        // Tap it to go back up to the controls.
         (function () {
-            const section = document.getElementById('appearanceSection');
-            const wrap = document.getElementById('settingsPreviewWrap');
-            const frame = document.getElementById('settingsPreviewFrame');
-            const fit = () => { frame.style.transform = `scale(${wrap.clientWidth / 1280})`; };
-            new ResizeObserver(fit).observe(wrap);
+            const holder = document.getElementById('previewHolder');
+            const wrap = document.getElementById('displayPreviewWrap');
+            const frame = document.getElementById('displayPreviewFrame');
             frame.addEventListener('load', sendPreviewScale);
-            section.addEventListener('toggle', () => {
-                if (section.open && roomInfo) frame.src = roomInfo.displayUrl + '&preview=1';
-                else frame.removeAttribute('src');
+            new IntersectionObserver(([entry]) => {
+                const dock = !entry.isIntersecting && entry.boundingClientRect.bottom < 0;
+                if (dock === wrap.classList.contains('docked')) return;
+                holder.style.height = dock ? `${holder.offsetHeight}px` : '';
+                wrap.classList.toggle('docked', dock);
+                wrap.title = dock ? 'Live display - tap to go back to the controls' : 'Live display';
+            }).observe(holder);
+            wrap.addEventListener('click', () => {
+                if (wrap.classList.contains('docked')) document.querySelector('.room-header').scrollIntoView({ behavior: 'smooth', block: 'start' });
             });
         })();
 
