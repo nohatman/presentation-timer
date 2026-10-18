@@ -2249,6 +2249,16 @@ app.post('/api/local/restart', auth.requireDashboardAuth, requireLocalOperator, 
 
 // QR code (SVG) for a room link, for the dashboard. Authenticated so it isn't
 // an open QR service; POST so the token in the link stays out of URLs/logs.
+// The control page's Share links window: both links with QR codes, for a
+// room's CONTROL token only (a display link must never reveal the control link).
+app.post('/api/room-links', async (req, res) => {
+  const access = auth.resolveSocketAccess(req.body && req.body.token);
+  if (!access || access.role !== 'control') return res.status(403).json({ ok: false, error: 'Only a control link can share links.' });
+  const links = buildRoomLinks(shareBaseUrl(req.protocol, req.get('host')), access.room);
+  const qr = (text) => QRCode.toString(text, { type: 'svg', margin: 1, errorCorrectionLevel: 'M' });
+  res.json({ ok: true, slug: access.room.slug, ...links, controlQr: await qr(links.controlUrl), displayQr: await qr(links.displayUrl) });
+});
+
 app.post('/api/qr', auth.requireDashboardAuth, async (req, res) => {
   const text = req.body && req.body.text;
   if (typeof text !== 'string' || !text || text.length > 2000) {

@@ -94,7 +94,7 @@
         /* Mini */
         .room-card.mini .well { margin-top: 8px; padding: 8px 10px; }
         .room-card.mini .timer-display { font-size: 2.6rem; }
-        .mini-actions { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr) 40px; gap: 5px; padding: 8px 10px 10px; margin-top: auto; }
+        .mini-actions { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.9fr); gap: 5px; padding: 8px 10px 10px; margin-top: auto; }
         .mini-actions .key, .row-actions .key { padding-left: 4px; padding-right: 4px; overflow: hidden; }
         .mini-actions .key { font-size: 0.92rem; letter-spacing: 0; }
         .room-card.mini .room-info { padding: 8px 10px 0; }
@@ -109,7 +109,7 @@
         .room-row .room-name { font-size: 1.05rem; }
         .room-row .timer-display { font-size: 1.7rem; }
         .row-meta { color: var(--ink-2); font-size: 0.92rem; white-space: nowrap; }
-        .row-actions { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr) 40px; gap: 5px; }
+        .row-actions { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.9fr); gap: 5px; }
 
         /* Which screen a room is on (Windows app) */
         .screen-chip { font: inherit; font-size: 0.9rem; font-weight: 600; background: transparent; border: 1px dashed #4a4d52; color: var(--ink-2); border-radius: var(--radius); padding: 3px 8px; cursor: pointer; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; display: inline-flex; align-items: center; gap: 6px; }
@@ -639,14 +639,14 @@
         // "cannot be recovered" language - links can be reopened from the
         // room card or regenerated later, and regeneration is always its own
         // separately-confirmed step (never triggered by opening this modal).
-        function renderRoomLinksModal(title, roomSlug, controlUrl, displayUrl) {
+        function renderRoomLinksModal(title, roomSlug, controlUrl, displayUrl, roomId) {
             const canShare = typeof navigator.share === 'function';
             return `
                 <h2 id="modalTitle">${escapeHtml(title)}</h2>
                 <p class="room-title">${escapeHtml(roomSlug)}</p>
                 <p>Use the control link for the operator and the display link for the presentation screen. You can open these links again from the room card.</p>
-                ${renderLinkField('Control link', 'controlLinkText', controlUrl, `${roomSlug} - Control`, canShare)}
-                ${renderLinkField('Display link', 'displayLinkText', displayUrl, `${roomSlug} - Display`, canShare)}
+                ${renderLinkField('Display link (for a screen)', 'displayLinkText', displayUrl, `${roomSlug} - Display`, canShare)}
+                ${renderLinkField('Control link (anyone with it can run this room)', 'controlLinkText', controlUrl, `${roomSlug} - Control`, canShare)}
                 <div class="actions" style="justify-content:space-between;">
                     <span style="display:flex;gap:6px;flex-wrap:wrap;">
                         <button onclick="copyBothLinks(this)" class="key small flat">Copy both links</button>
@@ -654,6 +654,10 @@
                     </span>
                     <button onclick="closeModal()" class="key lit">Close</button>
                 </div>
+                ${roomId ? `<div class="actions" style="justify-content:flex-start;border-top:1px solid var(--seam);padding-top:12px;">
+                    <button onclick="regenerateLinks('${escapeHtml(roomId)}', this)" class="key small">New links</button>
+                    <button onclick="deleteRoom('${escapeHtml(roomId)}')" class="key small flat danger">Delete room</button>
+                </div>` : ''}
             `;
         }
 
@@ -943,11 +947,13 @@
         // or to scan from this dashboard with a phone or tablet.
         function showRoomLinks(id, triggerEl) {
             const room = roomsData.find(r => r.id === id);
-            if (room) openRoomLinksModal('Share links', room.slug, room.controlUrl, room.displayUrl, triggerEl);
+            if (room) openRoomLinksModal('Share links', room.slug, room.controlUrl, room.displayUrl, triggerEl, room.id);
         }
 
-        function openRoomLinksModal(title, roomSlug, controlUrl, displayUrl, triggerEl) {
-            openModal(renderRoomLinksModal(title, roomSlug, controlUrl, displayUrl), triggerEl);
+        // QR codes show straight away (they're what people come here for).
+        function openRoomLinksModal(title, roomSlug, controlUrl, displayUrl, triggerEl, roomId) {
+            openModal(renderRoomLinksModal(title, roomSlug, controlUrl, displayUrl, roomId), triggerEl);
+            ['displayLinkText', 'controlLinkText'].forEach((id) => toggleQr(id, document.body));
         }
 
         // Load saved card order from localStorage
@@ -1160,8 +1166,10 @@
             return `<button onclick="toggleRoomTimer('${id}', 'stopped')" class="key ready${size}">Start</button>`;
         }
 
+        // Mini / List cards: Share opens the links and QR codes straight away;
+        // New links and Delete room are at the bottom of that window.
         function moreButton(room) {
-            return `<button type="button" class="key more" aria-haspopup="menu" aria-label="More for ${escapeHtml(room.slug)}" onclick="openRoomMenu('${escapeHtml(room.id)}', this)">⋯</button>`;
+            return `<button type="button" class="key more" aria-label="Share links and QR codes for ${escapeHtml(room.slug)}" onclick="showRoomLinks('${escapeHtml(room.id)}', this)">Share</button>`;
         }
 
         function tallyLamp(room) {
