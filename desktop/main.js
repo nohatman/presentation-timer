@@ -583,12 +583,14 @@ function buildMenu() {
             label: `${screenLabel(entry)}  →  ${room ? room.slug : 'nothing'}`,
             enabled: settings.outputEnabled,
             submenu: [
-              { label: 'Nothing', type: 'radio', checked: !current, click: () => setScreenRoom(entry, null) },
+              // Ticks, not radio dots: the separator below split the radio group, so
+              // Windows put a dot on "Nothing" and on the room. Only the choice is ticked.
+              { label: 'Nothing', type: 'checkbox', checked: !current, click: () => setScreenRoom(entry, null) },
               { type: 'separator' },
               ...(rooms.length
                 ? rooms.map((r) => ({
                   label: r.licenceLocked ? `${r.slug} (not in the free version)` : r.slug,
-                  type: 'radio', checked: current === r.id, enabled: !r.licenceLocked,
+                  type: 'checkbox', checked: current === r.id, enabled: !r.licenceLocked,
                   click: () => setScreenRoom(entry, r.id),
                 }))
                 : [{ label: 'No rooms yet', enabled: false }]),
