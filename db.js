@@ -163,6 +163,29 @@ ensureColumn('clients', 'api_key_rotated_at', 'INTEGER');
 // and never expires.
 ensureColumn('rooms', 'expires_at', 'INTEGER');
 
+// Public links for a Windows laptop's rooms (see "Relay" below). Online only:
+// a laptop registers once (relay_sessions, secret stored hashed), then publishes
+// its rooms; each gets public control/display tokens that stay the same for
+// that laptop and room, so printed QR codes keep working.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS relay_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    secret_hash TEXT NOT NULL UNIQUE,
+    created_at INTEGER NOT NULL,
+    last_seen_at INTEGER
+  );
+  CREATE TABLE IF NOT EXISTS relay_rooms (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id INTEGER NOT NULL REFERENCES relay_sessions(id),
+    local_room_id TEXT NOT NULL,
+    slug TEXT NOT NULL,
+    control_token TEXT NOT NULL UNIQUE,
+    display_token TEXT NOT NULL UNIQUE,
+    created_at INTEGER NOT NULL,
+    UNIQUE(session_id, local_room_id)
+  );
+`);
+
 // Paired screens (see "Paired screens" below): a browser that opened /screen.
 // Pending until a dashboard pairs it with its code; then it belongs to a client
 // and shows the room in room_id (or nothing, while room_id is NULL).
@@ -1195,6 +1218,60 @@ function touchScreen(id, now = Date.now()) {
   db.prepare('UPDATE screens SET last_seen_at = ? WHERE id = ?').run(now, id);
 }
 
+// ============================================
+// Relay (public links for a Windows laptop's rooms)
+// ============================================
+
+function createRelaySession(now = Date.now()) {
+  const secret = 'rs_' + crypto.randomBytes(32).toString('base64url');
+  const info = db.prepare('INSERT INTO relay_sessions (secret_hash, created_at, last_seen_at) VALUES (?, ?, ?)').run(hashApiKey(secret), now, now);
+  return { id: info.lastInsertRowid, secret };
+}
+
+function getRelaySessionBySecret(secret) {
+  if (!secret || typeof secret !== 'string') return null;
+  return db.prepare('SELECT * FROM relay_sessions WHERE secret_hash = ?').get(hashApiKey(secret)) || null;
+}
+
+function touchRelaySession(id, now = Date.now()) {
+  db.prepare('UPDATE relay_sessions SET last_seen_at = ? WHERE id = ?').run(now, id);
+}
+
+// Make sure each of these rooms has public tokens (kept if it already does,
+// slug refreshed); rooms the laptop no longer has are dropped. -> rows.
+function syncRelayRooms(sessionId, rooms, now = Date.now()) {
+  const keep = new Set();
+  for (const r of rooms) {
+    const localId = String(r.localId);
+    keep.add(localId);
+    const existing = db.prepare('SELECT * FROM relay_rooms WHERE session_id = ? AND local_room_id = ?').get(sessionId, localId);
+    if (existing) {
+      if (existing.slug !== r.slug) db.prepare('UPDATE relay_rooms SET slug = ? WHERE id = ?').run(r.slug, existing.id);
+    } else {
+      db.prepare('INSERT INTO relay_rooms (session_id, local_room_id, slug, control_token, display_token, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+        .run(sessionId, localId, r.slug, 'r' + generateToken(), 'r' + generateToken(), now);
+    }
+  }
+  for (const row of db.prepare('SELECT id, local_room_id FROM relay_rooms WHERE session_id = ?').all(sessionId)) {
+    if (!keep.has(row.local_room_id)) db.prepare('DELETE FROM relay_rooms WHERE id = ?').run(row.id);
+  }
+  return db.prepare('SELECT * FROM relay_rooms WHERE session_id = ?').all(sessionId);
+}
+
+// A public token -> { relayRoom, role } or null.
+function getRelayRoomByToken(token) {
+  if (!token || typeof token !== 'string' || token[0] !== 'r') return null;
+  const row = db.prepare('SELECT * FROM relay_rooms WHERE control_token = ? OR display_token = ?').get(token, token);
+  if (!row) return null;
+  return { relayRoom: row, role: row.control_token === token ? 'control' : 'display' };
+}
+
+// New public links for one room (the laptop's "New public links").
+function regenerateRelayRoomTokens(sessionId, localRoomId) {
+  db.prepare('UPDATE relay_rooms SET control_token = ?, display_token = ? WHERE session_id = ? AND local_room_id = ?')
+    .run('r' + generateToken(), 'r' + generateToken(), sessionId, String(localRoomId));
+}
+
 // Pending screens nobody paired within the hour. -> their ids (already deleted).
 function deleteExpiredPendingScreens(now = Date.now()) {
   const rows = db.prepare('SELECT id FROM screens WHERE client_id IS NULL AND created_at <= ?').all(now - SCREEN_PENDING_TTL_MS);
@@ -1276,6 +1353,13 @@ module.exports = {
   setRoomBackground,
   getRoomBackground,
   deleteRoomBackground,
+  // relay
+  createRelaySession,
+  getRelaySessionBySecret,
+  touchRelaySession,
+  syncRelayRooms,
+  getRelayRoomByToken,
+  regenerateRelayRoomTokens,
   // paired screens
   SCREEN_PENDING_TTL_MS,
   normalizePairCode,

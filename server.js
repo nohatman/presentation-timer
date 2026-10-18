@@ -15,6 +15,8 @@ const trials = require('./trials');
 const { createLicenceManager } = require('./licence');
 const QRCode = require('qrcode');
 const { selectLanAddresses } = require('./tools/local-server/lib/lan');
+const { createRelayHub } = require('./relayHub');
+const { createRelayAgent } = require('./relayAgent');
 const firewall = require('./tools/local-server/lib/firewall');
 
 // Base URL for links meant for OTHER devices. On the Local Show Server, a page
@@ -334,6 +336,10 @@ io.on('connection', (socket) => {
   noteRemotePeer(socket.handshake.address);
   if (socket.handshake.auth && socket.handshake.auth.screenToken) return handleScreenSocket(socket);
   const token = (socket.handshake.auth && socket.handshake.auth.token) || socket.handshake.query.token;
+  if (relayHub) {
+    const found = db.getRelayRoomByToken(token);
+    if (found) return relayHub.handlePanelSocket(socket, found); // a public link to a Windows laptop's room
+  }
   const access = auth.resolveSocketAccess(token);
 
   if (!access) {
@@ -875,7 +881,15 @@ function requireBackgroundController(req, res, next) {
   next();
 }
 
-app.put('/api/display-background', requireBackgroundController,
+// A public link (Share over the internet) can't upload: the image lives on the laptop.
+function refusePublicBackgroundChange(req, res, next) {
+  if (relayHub && db.getRelayRoomByToken(req.get('X-Room-Token') || req.query.token)) {
+    return res.status(409).json({ ok: false, error: 'Change the background image on the show laptop.' });
+  }
+  next();
+}
+
+app.put('/api/display-background', refusePublicBackgroundChange, requireBackgroundController,
   express.raw({ type: () => true, limit: BG_MAX_BYTES }), (req, res) => {
     const data = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
     const mime = sniffImageMime(data);
@@ -888,7 +902,7 @@ app.put('/api/display-background', requireBackgroundController,
     res.json({ ok: true, version: timerState.displayBgImage });
   });
 
-app.delete('/api/display-background', requireBackgroundController, (req, res) => {
+app.delete('/api/display-background', refusePublicBackgroundChange, requireBackgroundController, (req, res) => {
   db.deleteRoomBackground(Number(req.roomId));
   const timerState = timerRooms.get(req.roomId);
   timerState.displayBgImage = null;
@@ -899,7 +913,14 @@ app.delete('/api/display-background', requireBackgroundController, (req, res) =>
 
 // ?token=<control or display token>&v=<version>. The version is in the URL, so a
 // given URL's bytes never change and can be cached for as long as the browser likes.
-app.get('/api/display-background', (req, res) => {
+app.get('/api/display-background', async (req, res) => {
+  const relayed = relayHub && db.getRelayRoomByToken(req.query.token);
+  if (relayed) {
+    const bg = await relayHub.fetchBackground(relayed.relayRoom);
+    if (!bg) return res.status(404).end();
+    res.set({ 'Content-Type': bg.mime, 'Cache-Control': 'private, max-age=31536000, immutable', 'X-Content-Type-Options': 'nosniff' });
+    return res.send(Buffer.from(bg.data, 'base64'));
+  }
   const access = roomFromToken(req);
   if (!access) return res.status(401).end();
   const bg = db.getRoomBackground(Number(access.roomId));
@@ -948,8 +969,11 @@ function summarizeRoom(row, req) {
 
   const baseUrl = shareBaseUrl(req.protocol, req.get('host'));
   const links = buildRoomLinks(baseUrl, row);
+  const publicLinks = relayAgent ? relayAgent.status().links[roomId] : null;
 
   return {
+    publicControlUrl: publicLinks ? publicLinks.controlUrl : null,
+    publicDisplayUrl: publicLinks ? publicLinks.displayUrl : null,
     id: roomId,
     slug: row.slug,
     clientName: row.client_name || null, // only present in the platform-admin listing
@@ -1014,6 +1038,7 @@ app.post('/api/rooms', auth.requireDashboardAuth, (req, res) => {
   db.writeRoomState(room.id, defaultState);
 
   console.log(`📦 Created room "${cleanSlug}" (id=${room.id}) for client "${req.client.name}"`);
+  republishRooms();
 
   const baseUrl = shareBaseUrl(req.protocol, req.get('host'));
   const links = buildRoomLinks(baseUrl, room);
@@ -1040,6 +1065,7 @@ app.delete('/api/rooms/:roomId', auth.requireDashboardAuth, auth.resolveOwnedRoo
   }
 
   console.log(`🗑️  Manually deleted room: ${room.slug} (id=${roomId})`);
+  republishRooms();
   res.json({ success: true, message: 'Room deleted' });
 });
 
@@ -1863,6 +1889,39 @@ const STARTED_AT = Date.now();
 const STARTED_BUILD = buildInfo.getBuildInfo(__dirname);
 const LOCAL_MODE = process.env.FOXY_MODE === 'local'; // set only by the Local Show Server launcher
 
+// ---- Share over the internet ----
+// Online: the hub that public links connect to. Laptop: the agent that connects
+// out to Online (only while the operator has it switched on). See relayHub.js /
+// relayAgent.js.
+const PUBLIC_ONLINE_URL = (process.env.FOXY_ONLINE_URL || 'https://foxytimer.com').replace(/\/$/, '');
+function publicBase(headers, secure) {
+  if (process.env.FOXY_PUBLIC_URL) return process.env.FOXY_PUBLIC_URL.replace(/\/$/, '');
+  const proto = (headers['x-forwarded-proto'] || '').split(',')[0] || (secure ? 'https' : 'http');
+  return `${proto}://${headers.host}`;
+}
+function publicLinksFromRequest(row, req) {
+  return buildRoomLinks(publicBase(req.headers, req.secure), { control_token: row.control_token, display_token: row.display_token });
+}
+const relayHub = LOCAL_MODE ? null : createRelayHub({
+  io, db, log: (m) => console.log(m),
+  buildPublicLinks: (row, handshake) => buildRoomLinks(publicBase(handshake.headers, handshake.secure), { control_token: row.control_token, display_token: row.display_token }),
+});
+const relayAgent = LOCAL_MODE ? createRelayAgent({
+  db, port: Number(process.env.PORT || 3000), onlineUrl: PUBLIC_ONLINE_URL, log: (m) => console.log(m),
+  getRooms: () => db.getRoomsForClient(db.getOrCreateLocalClient().id).map((r) => ({ localId: String(r.id), slug: r.slug })),
+}) : null;
+function republishRooms() { if (relayAgent) relayAgent.publish(); }
+
+// A laptop asks for public links the first time it's switched on. No account:
+// limited per network, and it can only ever publish its own rooms.
+const relayRegisterLimiter = demoRooms.createHourlyLimiter(10);
+app.post('/api/relay/register', (req, res) => {
+  if (LOCAL_MODE) return res.status(404).json({ ok: false, error: 'Not available on Foxy Timer for Windows' });
+  if (!relayRegisterLimiter.take(req.ip)) return res.status(429).json({ ok: false, error: 'Too many requests from this network. Try again later.' });
+  const session = db.createRelaySession();
+  res.json({ ok: true, secret: session.secret });
+});
+
 // Foxy Timer for Windows trial (licence.js). Full or limited is decided at
 // startup; limited = the first room only, plus a small mark on displays.
 // Online has no licence (null) and is never limited.
@@ -2208,6 +2267,15 @@ app.post('/api/local/licence/check', auth.requireDashboardAuth, requireLocalOper
   res.json({ ok: true, ...(await licence.checkIn()) });
 });
 
+// Share over the internet: { enabled: true | false }
+app.get('/api/local/relay', auth.requireDashboardAuth, requireLocalOperator, (req, res) => {
+  res.json({ ok: true, ...relayAgent.status() });
+});
+app.post('/api/local/relay', auth.requireDashboardAuth, requireLocalOperator, async (req, res) => {
+  const on = !!(req.body && req.body.enabled);
+  res.json({ ok: true, ...(on ? await relayAgent.start() : relayAgent.stop()) });
+});
+
 // Choose the network other devices use: { adapter: name } or { adapter: null } for automatic.
 app.post('/api/local/address', auth.requireDashboardAuth, requireLocalOperator, async (req, res) => {
   const adapter = req.body && req.body.adapter;
@@ -2252,11 +2320,22 @@ app.post('/api/local/restart', auth.requireDashboardAuth, requireLocalOperator, 
 // The control page's Share links window: both links with QR codes, for a
 // room's CONTROL token only (a display link must never reveal the control link).
 app.post('/api/room-links', async (req, res) => {
-  const access = auth.resolveSocketAccess(req.body && req.body.token);
+  const token = req.body && req.body.token;
+  const qr = (text) => QRCode.toString(text, { type: 'svg', margin: 1, errorCorrectionLevel: 'M' });
+  const relayed = relayHub && db.getRelayRoomByToken(token);
+  if (relayed) { // a phone using a public link: the public links are the only ones it can use
+    if (relayed.role !== 'control') return res.status(403).json({ ok: false, error: 'Only a control link can share links.' });
+    const links = publicLinksFromRequest(relayed.relayRoom, req);
+    return res.json({ ok: true, slug: relayed.relayRoom.slug, ...links, controlQr: await qr(links.controlUrl), displayQr: await qr(links.displayUrl) });
+  }
+  const access = auth.resolveSocketAccess(token);
   if (!access || access.role !== 'control') return res.status(403).json({ ok: false, error: 'Only a control link can share links.' });
   const links = buildRoomLinks(shareBaseUrl(req.protocol, req.get('host')), access.room);
-  const qr = (text) => QRCode.toString(text, { type: 'svg', margin: 1, errorCorrectionLevel: 'M' });
-  res.json({ ok: true, slug: access.room.slug, ...links, controlQr: await qr(links.controlUrl), displayQr: await qr(links.displayUrl) });
+  const pub = relayAgent ? relayAgent.status().links[String(access.room.id)] : null;
+  res.json({
+    ok: true, slug: access.room.slug, ...links, controlQr: await qr(links.controlUrl), displayQr: await qr(links.displayUrl),
+    ...(pub ? { publicControlUrl: pub.controlUrl, publicDisplayUrl: pub.displayUrl, publicControlQr: await qr(pub.controlUrl), publicDisplayQr: await qr(pub.displayUrl) } : {}),
+  });
 });
 
 app.post('/api/qr', auth.requireDashboardAuth, async (req, res) => {

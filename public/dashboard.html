@@ -42,6 +42,10 @@
         #laptopAddress { font-family: var(--mono); font-size: 0.88rem; color: var(--info); overflow-wrap: anywhere; }
         #laptopAddress select.field { font-family: var(--mono); font-size: 0.88rem; color: var(--ink); width: 100%; min-height: 34px; padding: 4px 6px; }
         .laptop-body .address-cell { grid-column: span 2; }
+        .relay-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        #relayStatus.live { color: var(--go); }
+        #relayStatus.offline { color: var(--warn); }
+        .public-links-head { margin: 18px 0 8px; padding-top: 12px; border-top: 1px solid var(--seam); font-weight: 700; color: var(--ink); }
         @media (max-width: 560px) { .laptop-body .address-cell { grid-column: auto; } }
         .laptop-address-note { display: block; font-size: 0.85rem; color: var(--ink-2); margin-top: 3px; font-family: var(--ui); }
         .laptop-warning { margin-top: 12px; background: #2b2412; border: 1px solid #5a4410; border-radius: var(--radius); padding: 10px 12px; color: #f3dfb5; font-size: 0.95rem; line-height: 1.5; }
@@ -245,6 +249,8 @@
             <div><span class="laptop-label">Firewall</span><span id="laptopFirewall">Checking…</span></div>
             <div><span class="laptop-label">Phones &amp; screens</span><span id="laptopReach">Not tested yet</span></div>
             <div><span class="laptop-label">Version</span><span id="licenceText">…</span></div>
+            <div class="address-cell"><span class="laptop-label">Over the internet</span>
+                <span class="relay-row"><span id="relayStatus">Off</span> <button type="button" class="key small" id="relayToggle" onclick="toggleRelay(this)">Turn on</button></span></div>
         </div>
         <div id="laptopWarning" class="laptop-warning" hidden></div>
         <div id="laptopCheck" class="laptop-check well" hidden>
@@ -378,6 +384,8 @@
                         document.getElementById('laptopPanel').hidden = false;
                         refreshLaptopPanel();
                         setInterval(refreshLaptopPanel, 30000);
+                        refreshRelay();
+                        setInterval(refreshRelay, 5000);
                         refreshLicence();
                         setInterval(refreshLicence, 60000);
                         document.title = 'Foxy Timer for Windows - Dashboard';
@@ -639,12 +647,17 @@
         // "cannot be recovered" language - links can be reopened from the
         // room card or regenerated later, and regeneration is always its own
         // separately-confirmed step (never triggered by opening this modal).
-        function renderRoomLinksModal(title, roomSlug, controlUrl, displayUrl, roomId) {
+        function renderRoomLinksModal(title, roomSlug, controlUrl, displayUrl, roomId, room) {
+            const pub = room && room.publicDisplayUrl ? room : null;
             const canShare = typeof navigator.share === 'function';
             return `
                 <h2 id="modalTitle">${escapeHtml(title)}</h2>
                 <p class="room-title">${escapeHtml(roomSlug)}</p>
                 <p>Use the control link for the operator and the display link for the presentation screen. You can open these links again from the room card.</p>
+                ${pub ? `<div class="public-links-head" style="border-top:0;padding-top:0;margin-top:0;">Over the internet (works on mobile data)</div>
+                    ${renderLinkField('Display link (for a screen)', 'publicDisplayLinkText', pub.publicDisplayUrl, `${roomSlug} - Display`, canShare)}
+                    ${renderLinkField('Control link (anyone with it can run this room)', 'publicControlLinkText', pub.publicControlUrl, `${roomSlug} - Control`, canShare)}
+                    <div class="public-links-head">On the show network</div>` : ''}
                 ${renderLinkField('Display link (for a screen)', 'displayLinkText', displayUrl, `${roomSlug} - Display`, canShare)}
                 ${renderLinkField('Control link (anyone with it can run this room)', 'controlLinkText', controlUrl, `${roomSlug} - Control`, canShare)}
                 <div class="actions" style="justify-content:space-between;">
@@ -887,6 +900,54 @@
             }
         }
 
+        // ---- Share over the internet (see relayAgent.js) ----
+        let relayInfo = null;
+        async function refreshRelay() {
+            try {
+                const response = await authFetch('/api/local/relay');
+                const data = await response.json();
+                if (data.ok) renderRelay(data);
+            } catch (err) { /* keep the last reading */ }
+        }
+        function renderRelay(r) {
+            relayInfo = r;
+            const el = document.getElementById('relayStatus');
+            const key = document.getElementById('relayToggle');
+            key.disabled = false;
+            if (!r.enabled) {
+                el.textContent = 'Off. Turn it on to give each room a foxytimer.com link and QR that work on mobile data.';
+                el.className = ''; key.textContent = 'Turn on';
+                return;
+            }
+            key.textContent = 'Turn off';
+            if (r.state === 'live') {
+                el.textContent = 'On: each room has a foxytimer.com link. Press Share on a room for the links and QR codes.';
+                el.className = 'live';
+            } else if (r.state === 'connecting') {
+                el.textContent = 'Connecting to foxytimer.com…'; el.className = '';
+            } else {
+                el.textContent = r.error || 'On, but foxytimer.com can\u2019t be reached right now. Local links still work; it keeps trying.';
+                el.className = 'offline';
+            }
+        }
+        async function toggleRelay(btn) {
+            const turningOn = !(relayInfo && relayInfo.enabled);
+            if (turningOn) {
+                const ok = await uiConfirm({
+                    title: 'Share over the internet?',
+                    body: 'Each room gets a foxytimer.com link and QR code that work on any phone, even on mobile data, using this laptop\u2019s internet connection.\n\nAnyone with a control link can run that room. Turn this off any time and the internet links stop working straight away. The show network carries on either way.',
+                    okLabel: 'Turn on'
+                }, btn);
+                if (!ok) return;
+            }
+            btn.disabled = true;
+            const response = await authFetch('/api/local/relay', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: turningOn }) });
+            const data = await response.json().catch(() => ({}));
+            if (data.ok) renderRelay(data);
+            setTimeout(() => { refreshRelay(); fetchRooms(); }, 1500);
+            setTimeout(() => { refreshRelay(); fetchRooms(); }, 4000);
+        }
+
         async function refreshLaptopPanel(force) {
             try {
                 const response = await authFetch('/api/local/status' + (force ? '?refresh=1' : ''));
@@ -947,13 +1008,14 @@
         // or to scan from this dashboard with a phone or tablet.
         function showRoomLinks(id, triggerEl) {
             const room = roomsData.find(r => r.id === id);
-            if (room) openRoomLinksModal('Share links', room.slug, room.controlUrl, room.displayUrl, triggerEl, room.id);
+            if (room) openRoomLinksModal('Share links', room.slug, room.controlUrl, room.displayUrl, triggerEl, room.id, room);
         }
 
         // QR codes show straight away (they're what people come here for).
-        function openRoomLinksModal(title, roomSlug, controlUrl, displayUrl, triggerEl, roomId) {
-            openModal(renderRoomLinksModal(title, roomSlug, controlUrl, displayUrl, roomId), triggerEl);
-            ['displayLinkText', 'controlLinkText'].forEach((id) => toggleQr(id, document.body));
+        function openRoomLinksModal(title, roomSlug, controlUrl, displayUrl, triggerEl, roomId, room) {
+            openModal(renderRoomLinksModal(title, roomSlug, controlUrl, displayUrl, roomId, room), triggerEl);
+            ['publicDisplayLinkText', 'publicControlLinkText', 'displayLinkText', 'controlLinkText']
+                .forEach((id) => { if (document.getElementById(id)) toggleQr(id, document.body); });
         }
 
         // Load saved card order from localStorage
