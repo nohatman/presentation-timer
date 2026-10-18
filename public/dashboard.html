@@ -40,6 +40,10 @@
         .laptop-body { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px 24px; margin-top: 12px; font-size: 0.95rem; }
         .laptop-label { display: block; font-size: 0.85rem; color: var(--ink-2); margin-bottom: 1px; }
         #laptopAddress { font-family: var(--mono); font-size: 0.88rem; color: var(--info); overflow-wrap: anywhere; }
+        #laptopAddress select.field { font-family: var(--mono); font-size: 0.88rem; color: var(--ink); width: 100%; min-height: 34px; padding: 4px 6px; }
+        .laptop-body .address-cell { grid-column: span 2; }
+        @media (max-width: 560px) { .laptop-body .address-cell { grid-column: auto; } }
+        .laptop-address-note { display: block; font-size: 0.85rem; color: var(--ink-2); margin-top: 3px; font-family: var(--ui); }
         .laptop-warning { margin-top: 12px; background: #2b2412; border: 1px solid #5a4410; border-radius: var(--radius); padding: 10px 12px; color: #f3dfb5; font-size: 0.95rem; line-height: 1.5; }
         .laptop-warning b { color: var(--warn); }
         .laptop-warning .row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
@@ -237,7 +241,7 @@
         </div>
         <div class="laptop-body">
             <div><span class="laptop-label">Status</span><span id="laptopStatusText">Running</span></div>
-            <div><span class="laptop-label">Address for other devices</span><span id="laptopAddress">…</span></div>
+            <div class="address-cell"><span class="laptop-label">Address for other devices</span><span id="laptopAddress">…</span></div>
             <div><span class="laptop-label">Firewall</span><span id="laptopFirewall">Checking…</span></div>
             <div><span class="laptop-label">Phones &amp; screens</span><span id="laptopReach">Not tested yet</span></div>
             <div><span class="laptop-label">Version</span><span id="licenceText">…</span></div>
@@ -718,12 +722,38 @@
             unknown: 'Couldn\u2019t check'
         };
 
+        // The address other devices use. With more than one network (e.g. venue
+        // Wi-Fi and a closed show network), it's a choice: links, QR codes,
+        // Companion and paired screens all use the one picked here.
+        let laptopAddressUrl = '';
+        function renderLaptopAddress(s) {
+            const el = document.getElementById('laptopAddress');
+            const addr = s.addresses[0];
+            laptopAddressUrl = addr ? addr.url : 'Not on a network';
+            if (el.contains(document.activeElement)) return; // the picker is open
+            if (!addr || s.addresses.length < 2) { el.textContent = laptopAddressUrl; return; }
+            const options = s.addresses.map((a) => `<option value="${escapeHtml(a.name)}"${a === addr ? ' selected' : ''}>${escapeHtml(a.url.replace(/^https?:\/\//, ''))} · ${escapeHtml(a.name)}${a.virtual ? ' (virtual)' : ''}</option>`).join('');
+            const note = s.addressChoiceMissing
+                ? `The chosen network (${escapeHtml(s.addressChoiceMissing)}) isn't connected, so this is the automatic choice.`
+                : s.addressChoice ? 'Chosen by you. Phones and screens must be on this network.' : 'Picked automatically. This laptop is on more than one network: choose the show network.';
+            el.innerHTML = `<select class="field" aria-label="Network for phones and screens" onchange="chooseLaptopAddress(this.value)">${options}</select><span class="laptop-address-note">${note}</span>`;
+        }
+        async function chooseLaptopAddress(adapter) {
+            const response = await authFetch('/api/local/address', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ adapter })
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!data.ok) { uiNotice("Couldn't change the network", data.error || 'Please try again.'); return; }
+            document.activeElement.blur();
+            renderLaptopPanel(data);
+            fetchRooms();
+            fetchScreens();
+            uiToast(`Links now use ${data.addresses[0].url}. Re-send any links or QR codes shared before.`);
+        }
+
         function renderLaptopPanel(s) {
             const addr = s.addresses[0];
-            document.getElementById('laptopAddress').textContent = addr ? addr.url : 'Not on a network';
-            if (s.addresses.length > 1) {
-                document.getElementById('laptopAddress').title = 'Other addresses: ' + s.addresses.slice(1).map(a => `${a.url} (${a.name})`).join(', ');
-            }
+            renderLaptopAddress(s);
             document.getElementById('laptopStatusText').textContent = `Running since ${new Date(s.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
             const fw = s.firewall || { state: 'unknown' };
             const net = fw.networkName ? ` on "${fw.networkName}"${fw.category ? ` (${fw.category} network)` : ''}` : '';
@@ -751,13 +781,20 @@
         // that keeps devices apart.
         let checkQrFor = null;
         let reachPoll = null;
+        let showCheckAgain = false; // "Check another phone" after one has already connected
+        let lastLaptopStatus = null;
+        function checkAnotherPhone() {
+            showCheckAgain = true;
+            if (lastLaptopStatus) renderLaptopPanel(lastLaptopStatus);
+        }
         function renderReachCheck(s, addr, fw) {
             const reach = document.getElementById('laptopReach');
             const box = document.getElementById('laptopCheck');
-            if (s.remoteDevice) {
+            lastLaptopStatus = s;
+            if (s.remoteDevice && !showCheckAgain) {
                 const at = new Date(s.remoteDevice.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                reach.textContent = `✓ Reached from another device at ${at}`;
-                reach.className = 'ok';
+                reach.innerHTML = `✓ Reached from another device at ${at} · <a href="#" onclick="checkAnotherPhone(); return false;">Check another phone</a>`;
+                reach.className = 'ok'; // the collapsed summary reads this
                 box.hidden = true;
                 return;
             }
@@ -1370,7 +1407,7 @@
             const reachOk = reach.classList.contains('ok');
             document.getElementById('laptopSummary').innerHTML = [
                 escapeHtml(text('laptopStatusText').replace(/ since .*/, '')),
-                escapeHtml(text('laptopAddress')),
+                escapeHtml(laptopAddressUrl),
                 'Firewall: ' + escapeHtml(text('laptopFirewall').split(' on "')[0].toLowerCase()),
                 reachOk ? '<span class="ok">Phones ✓</span>' : 'Phones: not tested',
                 escapeHtml(text('licenceText')),

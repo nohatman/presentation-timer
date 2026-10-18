@@ -22,7 +22,7 @@ const firewall = require('./tools/local-server/lib/firewall');
 // reach - so those links use the laptop's LAN address instead.
 function shareBaseUrl(proto, host) {
   if (process.env.FOXY_MODE === 'local' && /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i.test(host || '')) {
-    const lan = selectLanAddresses().primary;
+    const lan = chosenLan().primary;
     const port = (host.match(/:(\d+)$/) || [])[1];
     if (lan) return `http://${lan.address}${port ? ':' + port : ''}`;
   }
@@ -2164,16 +2164,31 @@ app.get('/check', (req, res) => {
 <p style="color:#aaa;line-height:1.5">The show laptop now shows the check as passed.<br>Control and Display links will work from here too.</p></div></body>`);
 });
 
-async function laptopStatus(req, opts) {
+// Which of this laptop's networks other devices should use. Automatic picks
+// the first real adapter Windows lists, which can be the wrong one when the
+// laptop is on two networks (e.g. venue Wi-Fi + a closed show network), so the
+// operator can choose. Kept by adapter NAME: the address it gets can change.
+function chosenLan() {
   const lan = selectLanAddresses();
+  const preferred = process.env.FOXY_MODE === 'local' ? db.getMeta('lan_adapter') : null;
+  const picked = preferred ? lan.candidates.find((c) => c.name === preferred) : null;
+  return { ...lan, primary: picked || lan.primary, preferred: preferred || null, preferredMissing: !!preferred && !picked };
+}
+
+async function laptopStatus(req, opts) {
+  const lan = chosenLan();
   const port = Number(process.env.PORT || 3000);
+  // The chosen network first: the dashboard treats addresses[0] as "the" address.
+  const ordered = lan.primary ? [lan.primary].concat(lan.candidates.filter((c) => c !== lan.primary)) : lan.candidates;
   return {
     ok: true,
     pid: process.pid,
     startedAt: new Date(STARTED_AT).toISOString(),
     build: STARTED_BUILD.label,
     port,
-    addresses: lan.candidates.map((c) => ({ name: c.name, address: c.address, url: `http://${c.address}:${port}`, virtual: c.virtual })),
+    addresses: ordered.map((c) => ({ name: c.name, address: c.address, url: `http://${c.address}:${port}`, virtual: c.virtual })),
+    addressChoice: lan.preferred && !lan.preferredMissing ? lan.preferred : null, // null = automatic
+    addressChoiceMissing: lan.preferredMissing ? lan.preferred : null,
     firewall: lan.primary ? await firewallStatus(lan.primary.name, opts) : { state: 'unknown', reason: 'no-network' },
     remoteDevice: lastRemoteDevice
   };
@@ -2191,6 +2206,19 @@ app.get('/api/local/licence', auth.requireDashboardAuth, requireLocalOperator, (
 
 app.post('/api/local/licence/check', auth.requireDashboardAuth, requireLocalOperator, async (req, res) => {
   res.json({ ok: true, ...(await licence.checkIn()) });
+});
+
+// Choose the network other devices use: { adapter: name } or { adapter: null } for automatic.
+app.post('/api/local/address', auth.requireDashboardAuth, requireLocalOperator, async (req, res) => {
+  const adapter = req.body && req.body.adapter;
+  if (adapter === null || adapter === undefined || adapter === '') {
+    db.setMeta('lan_adapter', '');
+  } else if (typeof adapter === 'string' && selectLanAddresses().candidates.some((c) => c.name === adapter)) {
+    db.setMeta('lan_adapter', adapter);
+  } else {
+    return res.status(400).json({ ok: false, error: 'That network is not connected.' });
+  }
+  res.json(await laptopStatus(req, { refresh: true }));
 });
 
 app.post('/api/local/firewall/allow', auth.requireDashboardAuth, requireLocalOperator, async (req, res) => {
