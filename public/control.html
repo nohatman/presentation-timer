@@ -104,6 +104,12 @@
         label.checkbox-label:hover {
             border-color: var(--ink-3);
         }
+        body.client-view .view-only-bar { background: var(--panel); color: var(--ink); border-top: 1px solid var(--edge); }
+        body.client-view .view-only-takeover,
+        body.client-view #controllerTakeOverBtn,
+        body.client-view #deviceNameBtn,
+        body.client-view #dashboardLink, body.client-view #dashboardLinkSep,
+        body.client-view #shareLinksLink, body.client-view #shareLinksSep { display: none !important; }
         label.checkbox-label.timer-on-start { margin: 8px 0 0; padding: 0; border: 0; background: none; font-size: 0.95rem; color: var(--ink-2); min-height: 32px; }
         label.checkbox-label input[type="checkbox"] {
             width: 20px;
@@ -1477,7 +1483,7 @@
                 <a href="/dashboard" target="foxy-dashboard" id="dashboardLink"><span class="link-long">Dashboard</span><span class="link-short">Dashboard</span></a>
                 <span style="color: var(--ink-3); margin: 0 8px;" id="dashboardLinkSep">|</span>
                 <a href="/help" target="foxy-help" title="Help: connecting devices, Companion, show-day tips">Help</a>
-                <span style="color: var(--ink-3); margin: 0 8px;">|</span>
+                <span style="color: var(--ink-3); margin: 0 8px;" id="shareLinksSep">|</span>
                 <a href="#" id="shareLinksLink" onclick="openShareLinks(); return false;" title="This room's display and control links, with QR codes to scan">Share links &amp; QR</a>
             </div>
         </div>
@@ -1529,7 +1535,7 @@
         <div id="takeOverModalOverlay" class="dialog-overlay" data-view-ok style="display: none;" onclick="if (event.target === this) closeTakeOverModal();">
             <div id="takeOverModal" role="dialog" aria-modal="true" aria-labelledby="takeOverModalTitle" tabindex="-1" class="dialog" style="max-width: 420px;">
                 <h2 id="takeOverModalTitle">Take control of this room?</h2>
-                <p>This will immediately transfer control to this device. <span id="takeOverLoser">The current controller</span> will become an observer.</p>
+                <p id="takeOverModalText">This will immediately transfer control to this device. <span id="takeOverLoser">The current controller</span> will become an observer.</p>
                 <div class="actions">
                     <button class="key flat" onclick="closeTakeOverModal()">Cancel</button>
                     <button id="takeOverConfirmBtn" class="key lit" onclick="confirmTakeOver()">Take control</button>
@@ -1988,6 +1994,17 @@
                         <span>Room label (bottom corner)</span>
                     </label>
                 </div>
+            </div>
+        </details>
+
+        <!-- Who can take control of this room (see requestControl in server.js). -->
+        <details class="section" id="takingControlSection" style="grid-column: 1 / -1;">
+            <summary data-view-ok style="cursor:pointer;margin-bottom:0;">Taking control</summary>
+            <div style="margin-top:12px;">
+                <label class="checkbox-label" style="max-width:560px;">
+                    <input type="checkbox" id="takeOverAsk" onchange="socket.emit('updateSettings', { takeOverAsk: this.checked })">
+                    <span>Ask before handing over: when another device presses Take over, whoever is in control is asked to Allow or Refuse. No answer within 15 seconds hands control over anyway.</span>
+                </label>
             </div>
         </details>
 
@@ -2546,6 +2563,19 @@
             return fresh;
         }
 
+        // Opened with a View link (roomInfo.viewer): watch everything, change
+        // nothing. The server refuses every command from it anyway; this just
+        // makes the page say so and hides what it can't use.
+        let clientView = false;
+        // "Ask before handing over": this panel asking for control / being asked (see takeOverAsking below)
+        let takeOverAsking = null; // { holderName, until, timer }
+        let takeOverAsked = null;  // { id, timer }
+        function enterClientView() {
+            clientView = true;
+            document.body.classList.add('client-view');
+            renderControllerStatusBar();
+        }
+
         let deviceNameIsNew = false; // first ever visit on this device: introduce the name once
         let myDeviceName = loadDeviceName();
 
@@ -2555,6 +2585,7 @@
         // has settled first.
         if (deviceNameIsNew) {
             setTimeout(async () => {
+                if (clientView) return; // a View link has no name to show anyone
                 const rename = await uiConfirm({
                     title: `This device is "${myDeviceName}"`,
                     body: `Other control panels in this room see this name - e.g. "${myDeviceName} is in control". You can change it any time by tapping your name at the top of the page.`,
@@ -2738,11 +2769,13 @@
                 ? '<div class="share-section first">Over the internet (works on mobile data)</div>' +
                   item('Display', 'For a screen: shows the timer only.', data.publicDisplayUrl, data.publicDisplayQr, 'publicDisplay') +
                   item('Control', 'For another operator: anyone with it can run this room.', data.publicControlUrl, data.publicControlQr, 'publicControl') +
+                  (data.publicViewUrl ? item('View', 'For a client: sees everything, can change nothing.', data.publicViewUrl, data.publicViewQr, 'publicView') : '') +
                   '<div class="share-section">On the show network</div>'
                 : '';
             document.getElementById('shareBody').innerHTML = pub +
                 item('Display', 'For a screen: shows the timer only.', data.displayUrl, data.displayQr, 'display') +
-                item('Control', 'For another operator: anyone with it can run this room.', data.controlUrl, data.controlQr, 'control');
+                item('Control', 'For another operator: anyone with it can run this room.', data.controlUrl, data.controlQr, 'control') +
+                (data.viewUrl ? item('View', 'For a client: sees everything, can change nothing.', data.viewUrl, data.viewQr, 'view') : '');
             overlay.style.display = 'flex';
             document.getElementById('shareBox').focus();
         }
@@ -2754,7 +2787,8 @@
         }
         function shareShareLink(key) {
             const url = shareLinksData && shareLinksData[key + 'Url'];
-            if (url) navigator.share({ title: `${shareLinksData.slug} - ${key === 'display' ? 'Display' : 'Control'}`, url }).catch(() => {});
+            const what = /display/i.test(key) ? 'Display' : /view/i.test(key) ? 'View' : 'Control';
+            if (url) navigator.share({ title: `${shareLinksData.slug} - ${what}`, url }).catch(() => {});
         }
         document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && document.getElementById('shareOverlay').style.display === 'flex') closeShareLinks(); });
 
@@ -2795,12 +2829,14 @@
             // Timer / Clock follow the room, whoever changed it (another panel, Companion, Start).
             if (state.outputMode) updateOutputModeButtons(state.outputMode);
             document.getElementById('timerOnStart').checked = !!state.timerOnStart;
+            document.getElementById('takeOverAsk').checked = !!state.takeOverAsk;
             // roomInfo is only ever sent once, on the first state after connecting
             // (see server.js) - it carries the display link, which this control
             // panel has no other way to know (it's a separate secret from its own
             // control token).
             if (state.roomInfo && !roomInfo) {
                 roomInfo = state.roomInfo;
+                if (roomInfo.viewer) enterClientView();
                 roomNameEl.textContent = roomInfo.slug;
                 displayLink.href = roomInfo.displayUrl;
                 // Point the Preview at the real display page - it connects with its
@@ -2964,8 +3000,16 @@
             const count = document.getElementById('controllerStatusCount');
             const takeOverBtn = document.getElementById('controllerTakeOverBtn');
 
+            if (clientView) {
+                setViewOnly(true, '- this link can watch, not change anything');
+                badge.textContent = 'Watching';
+                badge.style.background = 'var(--key)';
+                count.textContent = '';
+                return;
+            }
             const who = activeControllerName || 'another panel';
-            setViewOnly(!isActiveController, controllerOnThisDevice
+            if (takeOverAsking && !isActiveController) { setViewOnly(true); showTakeOverAsking(); }
+            else setViewOnly(!isActiveController, controllerOnThisDevice
                 ? '- control moved to another tab on this device'
                 : controllerReconnecting
                 ? `- ${activeControllerName || 'the controlling panel'} is disconnected`
@@ -3121,7 +3165,15 @@
         }
 
         function openTakeOverModal() {
-            document.getElementById('takeOverLoser').textContent = activeControllerName || 'The current controller';
+            if (takeOverAsking) { cancelTakeOverAsk(); return; } // the bar's key is "Cancel" while asking
+            const holder = activeControllerName || 'The current controller';
+            const ask = !!currentState.takeOverAsk && !controllerReconnecting && !!activeControllerId;
+            document.getElementById('takeOverModalTitle').textContent = ask ? 'Ask for control of this room?' : 'Take control of this room?';
+            document.getElementById('takeOverModalText').innerHTML = ask
+                ? `<span id="takeOverLoser"></span> will be asked to hand over. If they don't answer within 15 seconds, control comes to this device.`
+                : `This will immediately transfer control to this device. <span id="takeOverLoser"></span> will become an observer.`;
+            document.getElementById('takeOverConfirmBtn').textContent = ask ? 'Ask' : 'Take control';
+            document.getElementById('takeOverLoser').textContent = holder;
             const overlay = document.getElementById('takeOverModalOverlay');
             const modal = document.getElementById('takeOverModal');
             overlay.style.display = 'flex';
@@ -3140,6 +3192,63 @@
             socket.emit('requestControl');
             closeTakeOverModal();
         }
+
+        // ---- "Ask before handing over" (Taking control) ----
+        // Asking: the view-only bar counts down and its Take over key becomes
+        // Cancel. Asked: the panel in control gets Allow / Refuse.
+        function showTakeOverAsking() {
+            const left = Math.max(0, Math.ceil((takeOverAsking.until - Date.now()) / 1000));
+            document.getElementById('viewOnlyReason').textContent = `- asking ${takeOverAsking.holderName || 'the controller'} for control... ${left}`;
+        }
+        function stopTakeOverAsking() {
+            if (!takeOverAsking) return;
+            clearInterval(takeOverAsking.timer);
+            takeOverAsking = null;
+            document.querySelectorAll('.view-only-takeover, #controllerTakeOverBtn').forEach(b => { b.textContent = 'Take over'; });
+            renderControllerStatusBar();
+        }
+        function cancelTakeOverAsk() {
+            socket.emit('takeOverCancel');
+            stopTakeOverAsking();
+        }
+        function showControlNotice(message) {
+            const notice = document.getElementById('controlRejectedNotice');
+            notice.textContent = message;
+            notice.style.display = 'block';
+            clearTimeout(notice._hideTimer);
+            notice._hideTimer = setTimeout(() => { notice.style.display = 'none'; }, 5000);
+        }
+        socket.on('takeOverAsking', ({ holderName, seconds }) => {
+            stopTakeOverAsking();
+            takeOverAsking = { holderName, until: Date.now() + seconds * 1000, timer: setInterval(() => showTakeOverAsking(), 250) };
+            document.querySelectorAll('.view-only-takeover, #controllerTakeOverBtn').forEach(b => { b.textContent = 'Cancel'; });
+            showTakeOverAsking();
+        });
+        socket.on('takeOverResult', ({ result, holderName }) => {
+            stopTakeOverAsking();
+            const who = holderName || 'The controller';
+            if (result === 'refused') showControlNotice(`${who} said no - control stays with them.`);
+            else if (result === 'busy') showControlNotice('Another device is already asking for control. Try again in a moment.');
+        });
+
+        socket.on('takeOverRequest', async ({ id, requesterName, seconds }) => {
+            const who = requesterName || 'Another device';
+            const until = Date.now() + seconds * 1000;
+            const body = () => `Allow hands control to ${who}; this device becomes an observer. If you don't answer, control passes to them in ${Math.max(0, Math.ceil((until - Date.now()) / 1000))} seconds.`;
+            takeOverAsked = { id, timer: setInterval(() => { document.getElementById('appDialogBody').textContent = body(); }, 250) };
+            const allow = await uiConfirm({ title: `${who} wants control`, body: body(), okLabel: 'Allow', cancelLabel: 'Refuse' });
+            if (!takeOverAsked || takeOverAsked.id !== id) return; // already settled (no answer / they cancelled)
+            clearInterval(takeOverAsked.timer);
+            takeOverAsked = null;
+            socket.emit('takeOverAnswer', { id, allow: !!allow });
+        });
+        socket.on('takeOverRequestEnded', ({ result, requesterName }) => {
+            if (!takeOverAsked) return;
+            clearInterval(takeOverAsked.timer);
+            takeOverAsked = null;
+            closeAppDialog(false);
+            if (result === 'cancelled') showControlNotice(`${requesterName || 'The other device'} stopped asking - you're still in control.`);
+        });
 
         function updateStatus() {
             const statusBadge = document.getElementById('statusBadge');

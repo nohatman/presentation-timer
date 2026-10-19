@@ -151,3 +151,13 @@ test('refusals, background images, and what a public display may see', async () 
   assert.match(share.controlQr, /<svg/);
   assert.equal((await post('/api/room-links', { token: tokenOf(lap.links['3'].displayUrl) })).status, 403);
 });
+
+test('a public View link reaches the laptop as a View panel', async () => {
+  const lap = await laptop([{ localId: '9', slug: 'Room' }]);
+  assert.match(lap.links['9'].viewUrl, /\/control\?token=r/);
+  const opened = new Promise((resolve) => lap.socket.once('panelOpen', resolve));
+  connect(BASE_URL, { token: tokenOf(lap.links['9'].viewUrl) });
+  assert.equal((await opened).role, 'view');
+  const share = await post('/api/room-links', { token: tokenOf(lap.links['9'].viewUrl) });
+  assert.equal(share.status, 403, 'a View link cannot fetch the share links');
+});

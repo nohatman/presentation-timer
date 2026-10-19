@@ -120,7 +120,7 @@ function createRelayAgent({ db, port, onlineUrl, getRooms, fetchImpl = fetch, lo
       socket.emit('panelRefused', { panelKey: msg.panelKey, message: 'This room is no longer on the show laptop.' });
       return;
     }
-    const token = msg.role === 'control' ? room.control_token : room.display_token;
+    const token = msg.role === 'control' ? room.control_token : msg.role === 'view' ? room.view_token : room.display_token;
     const auth = { token };
     for (const k of ['deviceName', 'panelId', 'deviceId']) if (msg.auth && typeof msg.auth[k] === 'string') auth[k] = msg.auth[k];
     const local = ioClient(`http://127.0.0.1:${port}`, { auth, transports: ['websocket'], reconnection: false, forceNew: true });
@@ -155,7 +155,13 @@ function createRelayAgent({ db, port, onlineUrl, getRooms, fetchImpl = fetch, lo
     if (value && typeof value === 'object') {
       const out = {};
       for (const [k, v] of Object.entries(value)) out[k] = rewrite(v, localId);
-      if (out.roomInfo && links[localId]) out.roomInfo = { ...out.roomInfo, ...links[localId] };
+      // Swap each local link the page was given for its public twin - only those
+      // it already had, so a display or View link never learns the control link.
+      if (out.roomInfo && links[localId]) {
+        const pub = links[localId];
+        out.roomInfo = { ...out.roomInfo };
+        for (const k of ['controlUrl', 'displayUrl', 'viewUrl']) if (out.roomInfo[k] && pub[k]) out.roomInfo[k] = pub[k];
+      }
       return out;
     }
     return value;

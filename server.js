@@ -102,6 +102,29 @@ const roomControllers = new Map();
 // nothing, since every other panel can Take Over with one tap at any moment.
 const CONTROLLER_GRACE_MS = Number(process.env.CONTROLLER_GRACE_MS) || 30 * 60 * 1000;
 const roomControllerPanels = new Map(); // roomId -> { panelId, deviceId, name }
+
+// "Ask first" Take over (the room's takeOverAsk setting): one request at a time
+// per room. The panel in control gets Allow / Refuse; no answer within
+// TAKE_OVER_ASK_MS hands control over anyway, so a phone left in a pocket can
+// never block the show. If the controller disconnects meanwhile, it hands over
+// straight away.
+const TAKE_OVER_ASK_MS = Number(process.env.TAKE_OVER_ASK_MS) || 15000;
+const takeOverRequests = new Map(); // roomId -> { id, requesterId, holderId, timer }
+
+function endTakeOverRequest(roomId, result) {
+  const req = takeOverRequests.get(roomId);
+  if (!req) return;
+  clearTimeout(req.timer);
+  takeOverRequests.delete(roomId);
+  const requester = io.sockets.sockets.get(req.requesterId);
+  const holder = io.sockets.sockets.get(req.holderId);
+  if ((result === 'allowed' || result === 'timeout' || result === 'holderLeft') && requester) {
+    setRoomController(roomId, requester);
+    broadcastControllerStatus(roomId);
+  }
+  if (requester) requester.emit('takeOverResult', { result, holderName: holder ? holder.deviceName : null });
+  if (holder) holder.emit('takeOverRequestEnded', { result, requesterName: requester ? requester.deviceName : null });
+}
 const controllerGraceTimers = new Map(); // roomId -> timeout, only while a reservation is pending
 
 function clearControllerGrace(roomId) {
@@ -263,6 +286,7 @@ function createDefaultTimerState() {
     showClock: false,
     outputMode: 'timer', // 'timer' | 'clock'
     timerOnStart: false, // a display showing the clock switches back to the timer on Start
+    takeOverAsk: false,  // Take over asks whoever is in control first (see requestControl)
     displayScale: 1.5, // Display size multiplier (0.5 - 2.0)
     // Display appearance - lets an operator brand/chromakey a shared display
     // link without touching the main timer controls. Hex colors; visibility
@@ -349,7 +373,7 @@ io.on('connection', (socket) => {
     return;
   }
 
-  const { roomId, role } = access; // role: 'control' | 'display', derived server-side
+  const { roomId, role } = access; // role: 'control' | 'display' | 'view', derived server-side
   if (!licenceAllowsRoom(roomId)) {
     socket.emit('authError', { reason: 'licence', message: LIMITED_ROOM_MESSAGE });
     socket.disconnect(true);
@@ -379,10 +403,11 @@ io.on('connection', (socket) => {
   // freshly-loaded control/display never shows a stale value.
   if (initialState) timerModes.syncStoppedDuration(initialState, Date.now());
   let roomInfo = { slug: access.room.slug };
-  if (role === 'control') {
+  if (role === 'control' || role === 'view') {
     const proto = socket.handshake.headers['x-forwarded-proto'] || (socket.handshake.secure ? 'https' : 'http');
-    const baseUrl = shareBaseUrl(proto, socket.handshake.headers.host);
-    roomInfo = { ...roomInfo, ...buildRoomLinks(baseUrl, access.room) };
+    const links = buildRoomLinks(shareBaseUrl(proto, socket.handshake.headers.host), access.room);
+    // A View link (watch only) gets the display link for its preview, and that's all.
+    roomInfo = role === 'control' ? { ...roomInfo, ...links } : { ...roomInfo, displayUrl: links.displayUrl, viewer: true };
   }
   socket.emit('timerState', { ...initialState, serverNow: Date.now(), ...(roomInfo ? { roomInfo } : {}) });
 
@@ -434,13 +459,44 @@ io.on('connection', (socket) => {
     return true;
   }
 
-  // Any control-token holder can take over at any time - no approval step, no
-  // hard lock. A stuck/disconnected "active controller" must never be able to
-  // block a legitimate operator during a live event.
+  // Any control-token holder can take over at any time. By default straight
+  // away; with the room's "Ask first" setting the panel in control is asked,
+  // and no answer within TAKE_OVER_ASK_MS hands over anyway. Either way a
+  // stuck/disconnected "active controller" can never block a legitimate
+  // operator during a live event: a missing, reconnecting or same-device
+  // holder is never asked.
   socket.on('requestControl', () => {
     if (socket.clientType !== 'control') return;
+    const state = getRoomState(roomId);
+    const holderId = roomControllers.get(roomId);
+    const holder = holderId && io.sockets.sockets.get(holderId);
+    const sameDevice = holder && socket.deviceId && holder.deviceId === socket.deviceId;
+    if (state && state.takeOverAsk && holder && holder.id !== socket.id && !sameDevice) {
+      const pending = takeOverRequests.get(roomId);
+      if (pending) {
+        if (pending.requesterId !== socket.id) socket.emit('takeOverResult', { result: 'busy', holderName: holder.deviceName || null });
+        return;
+      }
+      const request = { id: crypto.randomBytes(6).toString('hex'), requesterId: socket.id, holderId: holder.id, timer: null };
+      request.timer = setTimeout(() => endTakeOverRequest(roomId, 'timeout'), TAKE_OVER_ASK_MS);
+      takeOverRequests.set(roomId, request);
+      holder.emit('takeOverRequest', { id: request.id, requesterName: socket.deviceName || null, seconds: TAKE_OVER_ASK_MS / 1000 });
+      socket.emit('takeOverAsking', { holderName: holder.deviceName || null, seconds: TAKE_OVER_ASK_MS / 1000 });
+      return;
+    }
     setRoomController(roomId, socket); // also cancels any reservation for a reconnecting controller
     broadcastControllerStatus(roomId);
+  });
+  // The panel in control answers: { id, allow }
+  socket.on('takeOverAnswer', (msg) => {
+    const pending = takeOverRequests.get(roomId);
+    if (!pending || !msg || msg.id !== pending.id || pending.holderId !== socket.id) return;
+    endTakeOverRequest(roomId, msg.allow ? 'allowed' : 'refused');
+  });
+  // The asking panel gives up.
+  socket.on('takeOverCancel', () => {
+    const pending = takeOverRequests.get(roomId);
+    if (pending && pending.requesterId === socket.id) endTakeOverRequest(roomId, 'cancelled');
   });
 
   // Rename this panel. Allowed for observers too - it's a label for this
@@ -466,7 +522,7 @@ io.on('connection', (socket) => {
     // Mode/duration/end-at handling (incl. computing the End at run length from
     // the server clock + operator timezone) lives in timerModes.js.
     timerModes.startTimer(timerState, data, Date.now());
-    if (data.speed !== undefined) timerState.speed = data.speed;
+    if (data.speed !== undefined) timerModes.setSpeed(timerState, data.speed, Date.now());
     if (data.amberThresholdMs !== undefined) timerState.amberThresholdMs = data.amberThresholdMs;
     if (data.redThresholdMs !== undefined) timerState.redThresholdMs = data.redThresholdMs;
     if (data.countUp !== undefined) timerState.countUp = data.countUp;
@@ -540,13 +596,14 @@ io.on('connection', (socket) => {
     const timerState = getRoomState(roomId);
     if (!timerState) return;
     timerModes.applyTimerConfig(timerState, data, Date.now());
-    if (data.speed !== undefined) timerState.speed = data.speed;
+    if (data.speed !== undefined) timerModes.setSpeed(timerState, data.speed, Date.now());
     if (data.amberThresholdMs !== undefined) timerState.amberThresholdMs = data.amberThresholdMs;
     if (data.redThresholdMs !== undefined) timerState.redThresholdMs = data.redThresholdMs;
     if (data.countUp !== undefined) timerState.countUp = data.countUp;
     applyCountSettings(timerState, data);
     if (data.showClock !== undefined) timerState.showClock = data.showClock;
     if (data.timerOnStart !== undefined) timerState.timerOnStart = !!data.timerOnStart;
+    if (data.takeOverAsk !== undefined) timerState.takeOverAsk = !!data.takeOverAsk;
     if (data.displayScale !== undefined) timerState.displayScale = data.displayScale;
     if (isHexColor(data.timerColorNormal)) timerState.timerColorNormal = data.timerColorNormal;
     if (isHexColor(data.timerColorAmber)) timerState.timerColorAmber = data.timerColorAmber;
@@ -658,6 +715,12 @@ io.on('connection', (socket) => {
         io.to(roomId).emit('bridgeStatusUpdate', bridgeStatusRegistry.effectiveStatus(roomId));
       }
     }
+
+    // An "Ask first" Take over in progress: the asker leaving cancels it; the
+    // panel being asked leaving hands control over now rather than reserving it.
+    const pendingAsk = takeOverRequests.get(roomId);
+    if (pendingAsk && pendingAsk.requesterId === socket.id) endTakeOverRequest(roomId, 'cancelled');
+    else if (pendingAsk && pendingAsk.holderId === socket.id) endTakeOverRequest(roomId, 'holderLeft');
 
     // If the departing socket was the active controller: keep its seat reserved
     // for CONTROLLER_GRACE_MS so the same panel reconnecting (refresh, phone
@@ -976,6 +1039,7 @@ function summarizeRoom(row, req) {
   return {
     publicControlUrl: publicLinks ? publicLinks.controlUrl : null,
     publicDisplayUrl: publicLinks ? publicLinks.displayUrl : null,
+    publicViewUrl: publicLinks ? publicLinks.viewUrl || null : null,
     id: roomId,
     slug: row.slug,
     clientName: row.client_name || null, // only present in the platform-admin listing
@@ -991,6 +1055,7 @@ function summarizeRoom(row, req) {
     redThresholdMs: state.redThresholdMs,
     controlUrl: links.controlUrl,
     displayUrl: links.displayUrl,
+    viewUrl: links.viewUrl || null,
     licenceLocked: !licenceAllowsRoom(roomId)
   };
 }
@@ -1689,6 +1754,13 @@ app.get('/api/rooms/:roomId/companion', ...roomAuth, (req, res) => {
     countStyle:    countingUp ? 'up' : (s.countUp ? 'downUp' : 'down'),
     timerOnStart:  !!s.timerOnStart,
     messageMode:   s.messageMode || 'none',
+    speed:         s.speed || 1,
+    // When the timer reaches 0:00 (epoch ms): running = the real finish; paused or
+    // stopped = "if started/resumed now". null when counting up or already past 0:00.
+    // Companion shows it in its own PC's time zone.
+    endsAtMs:      countingUp || isOvertime ? null
+      : (s.mode === 'running' && Number.isFinite(s.runEndAtMs)) ? Math.round(s.runEndAtMs)
+      : Math.round(Date.now() + Math.max(0, remainingMs) / (s.speed || 1)),
   });
 });
 
@@ -1878,17 +1950,20 @@ app.post('/api/rooms/:roomId/output', ...roomAuth, (req, res) => {
   res.json({ ok: true, roomId: req.params.roomId, outputMode: mode });
 });
 
-// POST how the timer counts. Body: { style: 'down' | 'downUp' | 'up' } (the control page's Count menu)
-// and/or { timerOnStart: boolean } ("Back to timer on Start").
+// POST how the timer counts. Body: { style: 'down' | 'downUp' | 'up' } (the control page's Count menu),
+// { timerOnStart: boolean } ("Back to timer on Start"), { speed } or { speedStep } (timer speed).
 app.post('/api/rooms/:roomId/settings', ...roomAuth, (req, res) => {
   const s = req.timerState;
-  const { style, timerOnStart } = req.body || {};
+  const { style, timerOnStart, speed, speedStep } = req.body || {};
   if (style !== undefined) {
     if (!['down', 'downUp', 'up'].includes(style)) return res.json({ ok: false, error: 'style must be "down", "downUp" or "up"' });
     s.countDirection = style === 'up' ? 'up' : 'down';
     s.countUp = style === 'downUp';
   }
   if (timerOnStart !== undefined) s.timerOnStart = !!timerOnStart;
+  // Timer speed: { speed: 1 } sets it, { speedStep: 0.05 } nudges it.
+  if (typeof speed === 'number' && Number.isFinite(speed)) timerModes.setSpeed(s, speed, Date.now());
+  else if (typeof speedStep === 'number' && Number.isFinite(speedStep)) timerModes.setSpeed(s, (s.speed || 1) + speedStep, Date.now());
   emitState(req.roomId, s);
   scheduleSave();
   res.json({ ok: true, roomId: req.params.roomId });
@@ -1934,11 +2009,11 @@ function publicBase(headers, secure) {
   return `${proto}://${headers.host}`;
 }
 function publicLinksFromRequest(row, req) {
-  return buildRoomLinks(publicBase(req.headers, req.secure), { control_token: row.control_token, display_token: row.display_token });
+  return buildRoomLinks(publicBase(req.headers, req.secure), { control_token: row.control_token, display_token: row.display_token, view_token: row.view_token });
 }
 const relayHub = LOCAL_MODE ? null : createRelayHub({
   io, db, log: (m) => console.log(m),
-  buildPublicLinks: (row, handshake) => buildRoomLinks(publicBase(handshake.headers, handshake.secure), { control_token: row.control_token, display_token: row.display_token }),
+  buildPublicLinks: (row, handshake) => buildRoomLinks(publicBase(handshake.headers, handshake.secure), { control_token: row.control_token, display_token: row.display_token, view_token: row.view_token }),
 });
 const relayAgent = LOCAL_MODE ? createRelayAgent({
   db, port: Number(process.env.PORT || 3000), onlineUrl: PUBLIC_ONLINE_URL, log: (m) => console.log(m),
@@ -2360,7 +2435,7 @@ app.post('/api/room-links', async (req, res) => {
   if (relayed) { // a phone using a public link: the public links are the only ones it can use
     if (relayed.role !== 'control') return res.status(403).json({ ok: false, error: 'Only a control link can share links.' });
     const links = publicLinksFromRequest(relayed.relayRoom, req);
-    return res.json({ ok: true, slug: relayed.relayRoom.slug, ...links, controlQr: await qr(links.controlUrl), displayQr: await qr(links.displayUrl) });
+    return res.json({ ok: true, slug: relayed.relayRoom.slug, ...links, controlQr: await qr(links.controlUrl), displayQr: await qr(links.displayUrl), ...(links.viewUrl ? { viewQr: await qr(links.viewUrl) } : {}) });
   }
   const access = auth.resolveSocketAccess(token);
   if (!access || access.role !== 'control') return res.status(403).json({ ok: false, error: 'Only a control link can share links.' });
@@ -2368,7 +2443,9 @@ app.post('/api/room-links', async (req, res) => {
   const pub = relayAgent ? relayAgent.status().links[String(access.room.id)] : null;
   res.json({
     ok: true, slug: access.room.slug, ...links, controlQr: await qr(links.controlUrl), displayQr: await qr(links.displayUrl),
+    ...(links.viewUrl ? { viewQr: await qr(links.viewUrl) } : {}),
     ...(pub ? { publicControlUrl: pub.controlUrl, publicDisplayUrl: pub.displayUrl, publicControlQr: await qr(pub.controlUrl), publicDisplayQr: await qr(pub.displayUrl) } : {}),
+    ...(pub && pub.viewUrl ? { publicViewUrl: pub.viewUrl, publicViewQr: await qr(pub.viewUrl) } : {}),
   });
 });
 

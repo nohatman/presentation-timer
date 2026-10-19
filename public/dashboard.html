@@ -422,7 +422,7 @@
                 }
                 input.value = '';
                 await fetchRooms();
-                openRoomLinksModal('Room created', slug, data.controlUrl, data.displayUrl, triggerEl);
+                openRoomLinksModal('Room created', slug, data.controlUrl, data.displayUrl, triggerEl, undefined, data);
             } catch (error) {
                 console.error('Error creating room:', error);
                 uiNotice("Couldn't create the room", 'Failed to create room. Please try again.');
@@ -653,13 +653,15 @@
             return `
                 <h2 id="modalTitle">${escapeHtml(title)}</h2>
                 <p class="room-title">${escapeHtml(roomSlug)}</p>
-                <p>Use the control link for the operator and the display link for the presentation screen. You can open these links again from the room card.</p>
+                <p>Control link for the operator, display link for the screen, view link for a client who wants to watch. You can open these again from the room card.</p>
                 ${pub ? `<div class="public-links-head" style="border-top:0;padding-top:0;margin-top:0;">Over the internet (works on mobile data)</div>
                     ${renderLinkField('Display link (for a screen)', 'publicDisplayLinkText', pub.publicDisplayUrl, `${roomSlug} - Display`, canShare)}
                     ${renderLinkField('Control link (anyone with it can run this room)', 'publicControlLinkText', pub.publicControlUrl, `${roomSlug} - Control`, canShare)}
+                    ${pub.publicViewUrl ? renderLinkField('View link (for a client: sees everything, changes nothing)', 'publicViewLinkText', pub.publicViewUrl, `${roomSlug} - View`, canShare) : ''}
                     <div class="public-links-head">On the show network</div>` : ''}
                 ${renderLinkField('Display link (for a screen)', 'displayLinkText', displayUrl, `${roomSlug} - Display`, canShare)}
                 ${renderLinkField('Control link (anyone with it can run this room)', 'controlLinkText', controlUrl, `${roomSlug} - Control`, canShare)}
+                ${room && room.viewUrl ? renderLinkField('View link (for a client: sees everything, changes nothing)', 'viewLinkText', room.viewUrl, `${roomSlug} - View`, canShare) : ''}
                 <div class="actions" style="justify-content:space-between;">
                     <span style="display:flex;gap:6px;flex-wrap:wrap;">
                         <button onclick="copyBothLinks(this)" class="key small flat">Copy both links</button>
@@ -1014,7 +1016,7 @@
         // QR codes show straight away (they're what people come here for).
         function openRoomLinksModal(title, roomSlug, controlUrl, displayUrl, triggerEl, roomId, room) {
             openModal(renderRoomLinksModal(title, roomSlug, controlUrl, displayUrl, roomId, room), triggerEl);
-            ['publicDisplayLinkText', 'publicControlLinkText', 'displayLinkText', 'controlLinkText']
+            ['publicDisplayLinkText', 'publicControlLinkText', 'publicViewLinkText', 'displayLinkText', 'controlLinkText', 'viewLinkText']
                 .forEach((id) => { if (document.getElementById(id)) toggleQr(id, document.body); });
         }
 

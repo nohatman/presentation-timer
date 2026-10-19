@@ -345,3 +345,22 @@ test('Back to timer on Start: Start and Take switch a clock display to the timer
   tm.loadRundownItem(take, 0, true, NOW);
   assert.equal(take.outputMode, 'timer');
 });
+
+test('setSpeed: mid-run the time shown stays put and only the rate changes', () => {
+  const shown = (s, now) => s.durationMs - (((s.pauseTime || now) - s.startTime - s.accumulatedPauseMs) * s.speed);
+  const s = fresh();
+  tm.startTimer(s, { durationMs: 30 * MIN }, NOW);
+  const t = NOW + 20 * MIN;
+  assert.equal(shown(s, t), 10 * MIN);
+  tm.setSpeed(s, 1.05, t);
+  assert.equal(Math.round(shown(s, t)), 10 * MIN, 'no jump when the speed changes');
+  assert.equal(Math.round(shown(s, t + 60000)), 10 * MIN - 63000, '1.05x from then on');
+  tm.setSpeed(s, 99, t);
+  assert.equal(s.speed, 4, 'clamped');
+  const e = fresh();
+  tm.applyTimerConfig(e, { durationMs: 10 * MIN }, NOW);
+  tm.startTimer(e, {}, NOW);
+  tm.applyEndAt(e, { endAtTarget: '14:30', endAtTzOffsetMin: BST }, NOW);
+  tm.setSpeed(e, 2, NOW + 10 * MIN);
+  assert.equal(e.runEndAtMs, NOW + 10 * MIN + 10 * MIN, 'End at run: 20 timer-minutes left at 2x = 10 real minutes');
+});

@@ -212,6 +212,25 @@ function nudge(state, deltaMs, nowMs) {
   return state;
 }
 
+// Timer speed. Mid-run, the time shown stays exactly where it is and only the
+// rate changes from now on (elapsed is (wall - start - pauses) * speed, so the
+// pause total is rebased; without that a speed change jumped the timer). An End-at
+// run's finish moves to match the new rate. Clamped to 0.25x - 4x.
+const MIN_SPEED = 0.25;
+const MAX_SPEED = 4;
+function setSpeed(state, speed, nowMs) {
+  const next = Math.round(Math.min(MAX_SPEED, Math.max(MIN_SPEED, Number(speed) || 1)) * 100) / 100;
+  const old = state.speed || 1;
+  if (state.startTime && next !== old) {
+    const ref = state.pauseTime || nowMs;
+    const elapsed = (ref - state.startTime - (state.accumulatedPauseMs || 0)) * old;
+    state.accumulatedPauseMs = ref - state.startTime - elapsed / next;
+    if (Number.isFinite(state.runEndAtMs)) state.runEndAtMs = ref + ((state.durationMs || 0) - elapsed) / next;
+  }
+  state.speed = next;
+  return state;
+}
+
 // Selecting/taking a rundown item: its duration becomes the Duration config and
 // Duration becomes the active mode. Any End at target is cleared (existing
 // behaviour) so it cannot silently reappear later.
@@ -243,4 +262,5 @@ module.exports = {
   resetTimer,
   nudge,
   loadRundownItem,
+  setSpeed,
 };

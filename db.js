@@ -186,6 +186,18 @@ db.exec(`
   );
 `);
 
+// View links (a client can watch the control page but change nothing): a third
+// token per room, added to existing rooms on first boot.
+function ensureViewTokens(table, prefix) {
+  ensureColumn(table, 'view_token', 'TEXT');
+  const missing = db.prepare(`SELECT id FROM ${table} WHERE view_token IS NULL`).all();
+  const set = db.prepare(`UPDATE ${table} SET view_token = ? WHERE id = ?`);
+  db.transaction(() => { for (const r of missing) set.run(prefix + generateToken(), r.id); })();
+  db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS ${table}_view_token ON ${table}(view_token)`);
+}
+ensureViewTokens('rooms', '');
+ensureViewTokens('relay_rooms', 'r');
+
 // Paired screens (see "Paired screens" below): a browser that opened /screen.
 // Pending until a dashboard pairs it with its code; then it belongs to a client
 // and shows the room in room_id (or nothing, while room_id is NULL).
@@ -919,8 +931,8 @@ function importLegacyRoomsJsonIfNeeded() {
     const now = Date.now();
 
     const insert = db.prepare(`
-      INSERT INTO rooms (event_id, slug, control_token, display_token, hidden, state_json, created_at, updated_at)
-      VALUES (@event_id, @slug, @control_token, @display_token, 0, @state_json, @created_at, @updated_at)
+      INSERT INTO rooms (event_id, slug, control_token, display_token, view_token, hidden, state_json, created_at, updated_at)
+      VALUES (@event_id, @slug, @control_token, @display_token, @view_token, 0, @state_json, @created_at, @updated_at)
     `);
 
     const importAll = db.transaction((rows) => {
@@ -930,6 +942,7 @@ function importLegacyRoomsJsonIfNeeded() {
           slug,
           control_token: generateToken(),
           display_token: generateToken(),
+          view_token: generateToken(),
           state_json: JSON.stringify(state),
           created_at: now,
           updated_at: now
@@ -965,9 +978,9 @@ function createRoom(clientId, slug, { expiresAt = null } = {}) {
 
   try {
     const info = db.prepare(`
-      INSERT INTO rooms (event_id, slug, control_token, display_token, hidden, state_json, created_at, updated_at, expires_at)
-      VALUES (?, ?, ?, ?, 0, '{}', ?, ?, ?)
-    `).run(eventId, slug, controlToken, displayToken, now, now, expiresAt);
+      INSERT INTO rooms (event_id, slug, control_token, display_token, view_token, hidden, state_json, created_at, updated_at, expires_at)
+      VALUES (?, ?, ?, ?, ?, 0, '{}', ?, ?, ?)
+    `).run(eventId, slug, controlToken, displayToken, generateToken(), now, now, expiresAt);
 
     return db.prepare('SELECT * FROM rooms WHERE id = ?').get(info.lastInsertRowid);
   } catch (err) {
@@ -982,8 +995,8 @@ function getRoomById(id) {
   return db.prepare('SELECT * FROM rooms WHERE id = ?').get(id) || null;
 }
 
-// Token can be either a control_token or a display_token - the matching column
-// determines the caller's role. Returns null if the token doesn't match anything.
+// Token can be a control_token, display_token or view_token - the matching column
+// determines the caller's role ('control' | 'display' | 'view'). Returns null if the token doesn't match anything.
 // Also joins in the owning client's status (as room.client_status) - Phase
 // 6c.3's socket-connection gate (auth.resolveSocketAccess) needs it to reject
 // a suspended client's rooms; every other existing caller field is unchanged.
@@ -1005,6 +1018,14 @@ function getRoomByToken(token) {
     WHERE rooms.display_token = ?
   `).get(token);
   if (room) return { room, role: 'display' };
+  room = db.prepare(`
+    SELECT rooms.*, clients.status AS client_status
+    FROM rooms
+    JOIN events ON events.id = rooms.event_id
+    JOIN clients ON clients.id = events.client_id
+    WHERE rooms.view_token = ?
+  `).get(token);
+  if (room) return { room, role: 'view' };
   return null;
 }
 
@@ -1059,9 +1080,10 @@ function regenerateRoomTokens(clientId, slug) {
   if (!room) return null;
   const controlToken = generateToken();
   const displayToken = generateToken();
-  db.prepare('UPDATE rooms SET control_token = ?, display_token = ?, updated_at = ? WHERE id = ?')
-    .run(controlToken, displayToken, Date.now(), room.id);
-  return { ...room, control_token: controlToken, display_token: displayToken };
+  const viewToken = generateToken();
+  db.prepare('UPDATE rooms SET control_token = ?, display_token = ?, view_token = ?, updated_at = ? WHERE id = ?')
+    .run(controlToken, displayToken, viewToken, Date.now(), room.id);
+  return { ...room, control_token: controlToken, display_token: displayToken, view_token: viewToken };
 }
 
 // Immediate (non-debounced) single-room write - used right after createRoom() so
@@ -1248,8 +1270,8 @@ function syncRelayRooms(sessionId, rooms, now = Date.now()) {
     if (existing) {
       if (existing.slug !== r.slug) db.prepare('UPDATE relay_rooms SET slug = ? WHERE id = ?').run(r.slug, existing.id);
     } else {
-      db.prepare('INSERT INTO relay_rooms (session_id, local_room_id, slug, control_token, display_token, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-        .run(sessionId, localId, r.slug, 'r' + generateToken(), 'r' + generateToken(), now);
+      db.prepare('INSERT INTO relay_rooms (session_id, local_room_id, slug, control_token, display_token, view_token, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+        .run(sessionId, localId, r.slug, 'r' + generateToken(), 'r' + generateToken(), 'r' + generateToken(), now);
     }
   }
   for (const row of db.prepare('SELECT id, local_room_id FROM relay_rooms WHERE session_id = ?').all(sessionId)) {
@@ -1261,15 +1283,15 @@ function syncRelayRooms(sessionId, rooms, now = Date.now()) {
 // A public token -> { relayRoom, role } or null.
 function getRelayRoomByToken(token) {
   if (!token || typeof token !== 'string' || token[0] !== 'r') return null;
-  const row = db.prepare('SELECT * FROM relay_rooms WHERE control_token = ? OR display_token = ?').get(token, token);
+  const row = db.prepare('SELECT * FROM relay_rooms WHERE control_token = ? OR display_token = ? OR view_token = ?').get(token, token, token);
   if (!row) return null;
-  return { relayRoom: row, role: row.control_token === token ? 'control' : 'display' };
+  return { relayRoom: row, role: row.control_token === token ? 'control' : row.view_token === token ? 'view' : 'display' };
 }
 
 // New public links for one room (the laptop's "New public links").
 function regenerateRelayRoomTokens(sessionId, localRoomId) {
-  db.prepare('UPDATE relay_rooms SET control_token = ?, display_token = ? WHERE session_id = ? AND local_room_id = ?')
-    .run('r' + generateToken(), 'r' + generateToken(), sessionId, String(localRoomId));
+  db.prepare('UPDATE relay_rooms SET control_token = ?, display_token = ?, view_token = ? WHERE session_id = ? AND local_room_id = ?')
+    .run('r' + generateToken(), 'r' + generateToken(), 'r' + generateToken(), sessionId, String(localRoomId));
 }
 
 // Pending screens nobody paired within the hour. -> their ids (already deleted).
