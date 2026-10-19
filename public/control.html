@@ -484,7 +484,10 @@
         .rundown-msg.ok { color: var(--go); }
         /* Share links window: each link with its QR code. */
         .share-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 6px; }
-        .share-item { display: grid; gap: 6px; align-content: start; }
+        .share-grid { row-gap: 6px; }
+        /* Title, hint, QR, link and keys line up across Display and Control, however the hints wrap. */
+        .share-item { display: grid; grid-row: span 5; grid-template-rows: subgrid; align-items: start; }
+        .share-item .row { margin-bottom: 10px; }
         .share-item h3 { margin: 0; font-size: 1.05rem; color: var(--ink); }
         .share-item .hint-line { font-size: 0.9rem; color: var(--ink-2); }
         .share-item .qr { width: 100%; max-width: 200px; aspect-ratio: 1; background: #fff; padding: 6px; border-radius: 2px; }
