@@ -136,6 +136,22 @@ test('Companion on a show laptop: details on the dashboard, and the key drives t
   assert.equal((await viaLan('GET', `/api/rooms/${encodeURIComponent('Main stage')}/companion`, auth)).json.mode, 'running');
   await viaLan('POST', `/api/rooms/${encodeURIComponent('Main stage')}/reset`, auth);
 
+  // Timer / Clock, how it counts and "Back to timer on Start" (module 1.4.0)
+  const room = `/api/rooms/${encodeURIComponent('Main stage')}`;
+  const send = (p, body) => request('POST', `${room}${p}`, { headers: auth, host: `192.168.1.50:${PORT}`, body });
+  assert.equal((await send('/output', { mode: 'toggle' })).json.outputMode, 'clock');
+  assert.equal((await send('/output', { mode: 'sideways' })).json.ok, false);
+  assert.ok((await send('/settings', { style: 'downUp', timerOnStart: true })).json.ok);
+  let c = (await viaLan('GET', `${room}/companion`, auth)).json;
+  assert.equal(c.outputMode, 'clock');
+  assert.equal(c.countStyle, 'downUp');
+  assert.equal(c.timerOnStart, true);
+  await viaLan('POST', `${room}/start`, auth);
+  c = (await viaLan('GET', `${room}/companion`, auth)).json;
+  assert.equal(c.outputMode, 'timer', 'Start switched the clock back to the timer');
+  await viaLan('POST', `${room}/reset`, auth);
+  await send('/settings', { style: 'down', timerOnStart: false });
+
   // A new key replaces the old one
   const renewed = await request('POST', '/api/local/companion/new-key', { headers: { Origin: `http://localhost:${PORT}` } });
   assert.notEqual(renewed.json.apiKey, apiKey);

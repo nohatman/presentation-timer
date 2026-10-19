@@ -328,3 +328,20 @@ test('applyEndAt: a target at or before now means tomorrow', () => {
   tm.applyEndAt(s, { endAtTarget: '13:59', endAtTzOffsetMin: BST }, NOW);
   assert.equal(s.runEndAtMs, NOW + (24 * 60 - 1) * MIN);
 });
+
+test('Back to timer on Start: Start and Take switch a clock display to the timer, only when ticked', () => {
+  const off = fresh({ outputMode: 'clock', showClock: true });
+  tm.startTimer(off, {}, NOW);
+  assert.equal(off.outputMode, 'clock', 'unticked: the display stays on the clock');
+
+  const on = fresh({ outputMode: 'clock', showClock: true, timerOnStart: true });
+  tm.startTimer(on, {}, NOW);
+  assert.equal(on.outputMode, 'timer');
+  assert.equal(on.showClock, false);
+
+  const take = fresh({ outputMode: 'clock', timerOnStart: true, rundown: [{ name: 'A', durationMs: 5 * MIN }] });
+  tm.loadRundownItem(take, 0, false, NOW);
+  assert.equal(take.outputMode, 'clock', 'loading an item without starting leaves the clock up');
+  tm.loadRundownItem(take, 0, true, NOW);
+  assert.equal(take.outputMode, 'timer');
+});

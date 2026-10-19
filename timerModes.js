@@ -128,6 +128,16 @@ function startTimer(state, data, nowMs) {
   state.startTime = nowMs;
   state.pauseTime = null;
   state.accumulatedPauseMs = 0;
+  return showTimerOnStart(state);
+}
+
+// "Back to timer on Start": a display showing the clock switches to the timer
+// when a run starts (Start, Take with auto-start, Companion).
+function showTimerOnStart(state) {
+  if (state.timerOnStart && state.outputMode === 'clock') {
+    state.outputMode = 'timer';
+    state.showClock = false;
+  }
   return state;
 }
 
@@ -217,7 +227,7 @@ function loadRundownItem(state, index, autoStart, nowMs) {
   state.accumulatedPauseMs = 0;
   state.runEndAtMs = null;
   state.mode = autoStart ? 'running' : 'stopped';
-  return state;
+  return autoStart ? showTimerOnStart(state) : state;
 }
 
 module.exports = {

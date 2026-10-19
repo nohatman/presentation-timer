@@ -104,6 +104,7 @@
         label.checkbox-label:hover {
             border-color: var(--ink-3);
         }
+        label.checkbox-label.timer-on-start { margin: 8px 0 0; padding: 0; border: 0; background: none; font-size: 0.95rem; color: var(--ink-2); min-height: 32px; }
         label.checkbox-label input[type="checkbox"] {
             width: 20px;
             height: 20px;
@@ -456,7 +457,8 @@
         .speed-demo b { font-family: var(--digits); font-size: 1.5rem; color: var(--ink); margin-left: 6px; font-variant-numeric: tabular-nums; }
         /* Scrolled past the preview (running order, message, settings...)? It
            floats small in the top corner so the display stays in view; tap it to
-           go back up. The holder keeps its space so nothing jumps. */
+           go back up. The holder keeps its space so nothing jumps. Phones, tablets
+           and laptops alike. */
         .preview-holder { width: 100%; display: flex; justify-content: center; }
         .display-preview-wrap.docked {
             position: fixed; z-index: 950;
@@ -1673,6 +1675,10 @@
                             </div>
                         </div>
                     </div>
+                    <label class="checkbox-label timer-on-start" title="If the display is showing the clock, Start switches it to the timer.">
+                        <input type="checkbox" id="timerOnStart" onchange="socket.emit('updateSettings', { timerOnStart: this.checked })">
+                        <span>Back to timer on Start</span>
+                    </label>
                 </div>
                 <div>
                     <div class="setup-heading">Quick presets <span class="presets-save-hint"><span class="mouse">· Ctrl+click to save</span><span class="touch">· Long-press to save</span></span></div>
@@ -2786,6 +2792,9 @@
         let slidersInitialised = false;
 
         socket.on('timerState', (state) => {
+            // Timer / Clock follow the room, whoever changed it (another panel, Companion, Start).
+            if (state.outputMode) updateOutputModeButtons(state.outputMode);
+            document.getElementById('timerOnStart').checked = !!state.timerOnStart;
             // roomInfo is only ever sent once, on the first state after connecting
             // (see server.js) - it carries the display link, which this control
             // panel has no other way to know (it's a separate secret from its own
@@ -3563,13 +3572,15 @@
             const wrap = document.getElementById('displayPreviewWrap');
             const frame = document.getElementById('displayPreviewFrame');
             frame.addEventListener('load', sendPreviewScale);
+            // Floats once over half of it has gone off the top: on a laptop the
+            // preview is big, and half a display is not "in sight".
             new IntersectionObserver(([entry]) => {
-                const dock = !entry.isIntersecting && entry.boundingClientRect.bottom < 0;
+                const dock = entry.intersectionRatio < 0.5 && entry.boundingClientRect.top < 0;
                 if (dock === wrap.classList.contains('docked')) return;
                 holder.style.height = dock ? `${holder.offsetHeight}px` : '';
                 wrap.classList.toggle('docked', dock);
                 wrap.title = dock ? 'Live display - tap to go back to the controls' : 'Live display';
-            }).observe(holder);
+            }, { threshold: [0, 0.25, 0.5, 0.75, 1] }).observe(holder);
             wrap.addEventListener('click', () => {
                 if (wrap.classList.contains('docked')) document.querySelector('.room-header').scrollIntoView({ behavior: 'smooth', block: 'start' });
             });

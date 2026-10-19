@@ -262,6 +262,7 @@ function createDefaultTimerState() {
     upWarnings: false, // counting up: use amber/red/overrun colours against the set length
     showClock: false,
     outputMode: 'timer', // 'timer' | 'clock'
+    timerOnStart: false, // a display showing the clock switches back to the timer on Start
     displayScale: 1.5, // Display size multiplier (0.5 - 2.0)
     // Display appearance - lets an operator brand/chromakey a shared display
     // link without touching the main timer controls. Hex colors; visibility
@@ -545,6 +546,7 @@ io.on('connection', (socket) => {
     if (data.countUp !== undefined) timerState.countUp = data.countUp;
     applyCountSettings(timerState, data);
     if (data.showClock !== undefined) timerState.showClock = data.showClock;
+    if (data.timerOnStart !== undefined) timerState.timerOnStart = !!data.timerOnStart;
     if (data.displayScale !== undefined) timerState.displayScale = data.displayScale;
     if (isHexColor(data.timerColorNormal)) timerState.timerColorNormal = data.timerColorNormal;
     if (isHexColor(data.timerColorAmber)) timerState.timerColorAmber = data.timerColorAmber;
@@ -1683,7 +1685,10 @@ app.get('/api/rooms/:roomId/companion', ...roomAuth, (req, res) => {
     rundownIndex:  idx,
     rundown:       rundown.map(item => ({ name: item.name || '' })),
     // Clock mode
-    outputMode:    s.outputMode
+    outputMode:    s.outputMode,
+    countStyle:    countingUp ? 'up' : (s.countUp ? 'downUp' : 'down'),
+    timerOnStart:  !!s.timerOnStart,
+    messageMode:   s.messageMode || 'none',
   });
 });
 
@@ -1858,6 +1863,35 @@ app.post('/api/rooms/:roomId/rundown/goto', ...roomAuth, (req, res) => {
   emitState(roomId, s);
   scheduleSave();
   res.json({ ok: true, roomId: req.params.roomId, rundownIndex: index });
+});
+
+// POST what the display shows. Body: { mode: 'timer' | 'clock' | 'toggle' }
+app.post('/api/rooms/:roomId/output', ...roomAuth, (req, res) => {
+  const s = req.timerState;
+  const want = req.body && req.body.mode;
+  const mode = want === 'toggle' ? (s.outputMode === 'clock' ? 'timer' : 'clock') : want;
+  if (mode !== 'timer' && mode !== 'clock') return res.json({ ok: false, error: 'mode must be "timer", "clock" or "toggle"' });
+  s.outputMode = mode;
+  s.showClock = mode === 'clock';
+  emitState(req.roomId, s);
+  scheduleSave();
+  res.json({ ok: true, roomId: req.params.roomId, outputMode: mode });
+});
+
+// POST how the timer counts. Body: { style: 'down' | 'downUp' | 'up' } (the control page's Count menu)
+// and/or { timerOnStart: boolean } ("Back to timer on Start").
+app.post('/api/rooms/:roomId/settings', ...roomAuth, (req, res) => {
+  const s = req.timerState;
+  const { style, timerOnStart } = req.body || {};
+  if (style !== undefined) {
+    if (!['down', 'downUp', 'up'].includes(style)) return res.json({ ok: false, error: 'style must be "down", "downUp" or "up"' });
+    s.countDirection = style === 'up' ? 'up' : 'down';
+    s.countUp = style === 'downUp';
+  }
+  if (timerOnStart !== undefined) s.timerOnStart = !!timerOnStart;
+  emitState(req.roomId, s);
+  scheduleSave();
+  res.json({ ok: true, roomId: req.params.roomId });
 });
 
 // POST set message on the display screen
