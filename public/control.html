@@ -2146,12 +2146,12 @@
             refreshEndAtDraftUI();
             const durEl = document.getElementById('duration');
             if (!durationInputFocused && !durationDirty) {
-                // While a Duration-mode run is live the field shows the live length
-                // (so nudges are visible). Otherwise it shows the configured Duration
-                // - never an End-at-derived value, so switching modes cannot leave a
-                // stale number behind.
-                const live = (state.mode === 'running' || state.mode === 'paused') && state.timerMode !== 'endAt';
-                const ms = live ? state.durationMs : (state.configDurationMs !== undefined ? state.configDurationMs : state.durationMs);
+                // The field always shows the Duration SETTING - never a nudged run's
+                // length (that's on the Running line above it), or the nudge would
+                // look like an unapplied draft that Reset applies and the X can't
+                // clear - and never an End-at-derived value, so switching modes
+                // cannot leave a stale number behind.
+                const ms = state.configDurationMs !== undefined ? state.configDurationMs : state.durationMs;
                 if (ms !== undefined) {
                     durEl.value = formatTimeInput(Math.floor(ms / 60000), Math.floor((ms % 60000) / 1000));
                 }
@@ -2182,16 +2182,18 @@
             if (!s.timerMode) { el.innerHTML = ''; return; } // no server state yet
             const run = s.mode === 'running' || s.mode === 'paused';
             const tag = s.mode === 'running' ? 'Running' : s.mode === 'paused' ? 'Paused' : 'Live';
-            let what;
+            let what, note = '';
             if (s.timerMode === 'endAt') {
                 what = s.endAtTarget ? `End at ${s.endAtTarget}` : 'End at (no time applied)';
             } else {
-                // Same value the Duration field shows when nothing is being edited
-                // (see applyServerTimerMode): the run's length while live, else the
-                // configured Duration.
-                what = `Duration ${fmtDurationMs(run ? s.durationMs : (s.configDurationMs !== undefined ? s.configDurationMs : s.durationMs))}`;
+                // The run's length while live (nudges included), else the configured
+                // Duration. A nudged run says what the setting is: Reset goes back to it.
+                const setting = s.configDurationMs !== undefined ? s.configDurationMs : s.durationMs;
+                what = `Duration ${fmtDurationMs(run ? s.durationMs : setting)}`;
+                if (run && s.durationMs !== setting) note = `nudged from ${fmtDurationMs(setting)}`;
             }
-            el.innerHTML = `<span class="setup-live-tag ${run ? s.mode : ''}">${tag}</span><span class="setup-live-value">${what}</span>`;
+            el.innerHTML = `<span class="setup-live-tag ${run ? s.mode : ''}">${tag}</span><span class="setup-live-value">${what}</span>`
+                + (note ? `<span class="setup-new-note">${note}</span>` : '');
         }
 
         // The End-at field is a DRAFT: typing/blur/focus changes never leave this page.
@@ -2272,11 +2274,6 @@
             if (durationDirty && currentState.mode === 'stopped') {
                 const end = new Date(Date.now() + draftMs).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
                 html = newRow(`Duration ${fmtDurationMs(draftMs)}`, `not live yet · would end ~${end}`);
-            } else if (durationDirty && currentState.timerMode !== 'endAt' && draftMs === currentState.durationMs) {
-                // Not a typed draft: a live nudge changed this run's length but not
-                // the Duration setting, and the box shows the live length (see
-                // applyServerTimerMode) - describe that truthfully, behaviour unchanged.
-                html = newRow(`Duration ${fmtDurationMs(draftMs)}`, `live run was nudged · setting is ${fmtDurationMs(committedMs)} (✕ restores it)`);
             } else if (durationDirty) {
                 html = newRow(`Duration ${fmtDurationMs(draftMs)}`, `not applied to the ${currentState.mode} timer · ±1/±5 change the live run`);
             } else if (currentTimerMode === 'duration' && currentState.timerMode === 'endAt') {
