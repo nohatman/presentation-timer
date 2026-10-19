@@ -13,7 +13,7 @@
             --bg: var(--desk);
             --bg-2: #232427;
             --card: var(--panel);
-            --line: #36383c;
+            --line: var(--edge);
             --text: var(--ink);
             --muted: var(--ink-2);
             --faint: var(--ink-3);
@@ -190,12 +190,12 @@
         label { display: grid; gap: 6px; font-size: 0.88rem; color: var(--muted); font-weight: 500; }
         input, textarea, select {
             font: inherit; font-size: 1rem; color: var(--text); background: var(--well);
-            border: 1px solid #3a3c40; border-radius: var(--radius); padding: 11px 13px; width: 100%;
+            border: 1px solid var(--edge); border-radius: var(--radius); padding: 11px 13px; width: 100%;
         }
         textarea { min-height: 110px; resize: vertical; }
         input:focus, textarea:focus, select:focus { outline: none; border-color: var(--info); }
         .interest { display: flex; flex-wrap: wrap; gap: 8px; }
-        .interest label { display: inline-flex; align-items: center; gap: 7px; border: 1px solid #3a3c40; border-radius: var(--radius); padding: 7px 13px; cursor: pointer; color: var(--text); font-size: 0.9rem; }
+        .interest label { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--edge); border-radius: var(--radius); padding: 7px 13px; cursor: pointer; color: var(--text); font-size: 0.9rem; }
         .interest input { width: auto; accent-color: var(--go); }
         .interest label:has(input:checked) { border-color: var(--ink-2); background: var(--key); }
         .form-note { font-size: 0.85rem; color: var(--faint); margin: 0; }

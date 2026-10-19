@@ -16,14 +16,19 @@
     color-scheme: dark;
 
     /* Surfaces, darkest to lightest */
-    --desk: #1d1e20;        /* page */
-    --well: #0d0d0e;        /* recessed: timer readouts, inputs */
-    --panel: #2a2b2e;       /* raised panels and cards */
-    --panel-hi: #313236;    /* panel hover / menu hover */
-    --key: #3b3d41;         /* unlit key */
-    --key-hi: #47494e;      /* unlit key hover */
-    --seam: #121314;        /* 1px edges between parts */
-    --bevel: rgba(255, 255, 255, 0.06); /* top highlight on raised parts */
+    /* Each layer a clear step from the next, so what you can press stands out
+       from what you can't, even on a dim screen. */
+    --desk: #0e0f10;        /* page: near black */
+    --well: #0a0a0b;        /* recessed: timer readouts, inputs */
+    --panel: #25272b;       /* raised panels and cards */
+    --panel-hi: #2d3034;    /* panel hover / menu hover */
+    --raised: #2f3236;      /* windows and menus over the page */
+    --key: #50545b;         /* unlit key */
+    --key-hi: #5d6168;      /* unlit key hover */
+    --seam: #000;           /* 1px edges between keys and wells */
+    --edge: #383b41;        /* outline of panels and cards */
+    --edge-hi: #5a5e65;     /* outline of windows and menus */
+    --bevel: rgba(255, 255, 255, 0.12); /* top highlight on raised parts */
 
     /* Text */
     --ink: #e4e5e7;
@@ -76,7 +81,7 @@ body.foxy {
 /* ---- Panels ---- */
 .panel {
     background: var(--panel);
-    border: 1px solid var(--seam);
+    border: 1px solid var(--edge);
     border-radius: var(--radius);
     box-shadow: inset 0 1px 0 var(--bevel);
 }
@@ -159,7 +164,7 @@ body.foxy {
 /* ---- Menus ---- */
 .menu {
     position: fixed; z-index: 900;
-    background: var(--panel); border: 1px solid var(--seam); border-radius: var(--radius);
+    background: var(--raised); border: 1px solid var(--edge-hi); border-radius: var(--radius);
     box-shadow: inset 0 1px 0 var(--bevel), 0 10px 30px rgba(0, 0, 0, 0.55);
     padding: 4px; min-width: 200px;
 }
@@ -173,7 +178,7 @@ body.foxy {
 .dialog-overlay { position: fixed; inset: 0; z-index: 1000; background: rgba(0, 0, 0, 0.65); display: flex; align-items: center; justify-content: center; padding: 16px; }
 .dialog-overlay[hidden] { display: none; }
 .dialog {
-    background: var(--panel); border: 1px solid var(--seam); border-radius: var(--radius);
+    background: var(--raised); border: 1px solid var(--edge-hi); border-radius: var(--radius);
     box-shadow: inset 0 1px 0 var(--bevel), 0 18px 50px rgba(0, 0, 0, 0.6);
     width: 100%; max-width: 480px; max-height: 90vh; overflow-y: auto; padding: 22px; outline: none;
 }
@@ -185,7 +190,7 @@ body.foxy {
 .toast {
     position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 1001;
     display: flex; align-items: center; gap: 10px;
-    background: var(--panel); color: var(--ink); border: 1px solid var(--seam); border-radius: var(--radius);
+    background: var(--raised); color: var(--ink); border: 1px solid var(--edge-hi); border-radius: var(--radius);
     box-shadow: inset 0 1px 0 var(--bevel), 0 8px 24px rgba(0, 0, 0, 0.5);
     padding: 10px 16px; font-weight: 600; max-width: calc(100vw - 32px);
 }

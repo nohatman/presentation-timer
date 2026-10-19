@@ -23,7 +23,7 @@
             padding: 2rem;
             border-radius: var(--radius);
             margin-bottom: 2rem;
-            border: 1px solid #3a3c40;
+            border: 1px solid var(--edge);
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -51,7 +51,7 @@
         }
         .nav-link {
             padding: 10px 16px;
-            border: 1px solid #3a3c40;
+            border: 1px solid var(--edge);
             border-radius: var(--radius);
             background: var(--panel);
             color: var(--ink);
@@ -72,7 +72,7 @@
         }
         .client-card {
             background: var(--panel);
-            border: 2px solid #3a3c40;
+            border: 2px solid var(--edge);
             border-radius: var(--radius);
             padding: 1.5rem;
             text-decoration: none;
@@ -91,7 +91,7 @@
             gap: 0.75rem;
             margin-bottom: 1rem;
             padding-bottom: 1rem;
-            border-bottom: 1px solid #3a3c40;
+            border-bottom: 1px solid var(--edge);
         }
         .client-name {
             font-size: 1.2rem;
@@ -139,7 +139,7 @@
         .enq-count { background: var(--key); color: #140800; font-size: 0.75rem; font-weight: 700; padding: 2px 9px; border-radius: var(--radius); }
         .enq-list { display: grid; gap: 0.75rem; }
         .enq {
-            background: var(--panel); border: 1px solid #3a3c40; border-left: 4px solid var(--key);
+            background: var(--panel); border: 1px solid var(--edge); border-left: 4px solid var(--key);
             border-radius: var(--radius); padding: 1rem 1.2rem;
         }
         .enq.handled { border-left-color: #4a4d52; opacity: 0.75; }
@@ -157,7 +157,7 @@
         /* Foxy Timer for Windows trials */
         .wintrials { margin-bottom: 2rem; }
         .wintrials h2 { font-size: 1.2rem; color: var(--ink); margin-bottom: 0.9rem; }
-        .wt-box { background: var(--panel); border: 1px solid #3a3c40; border-radius: var(--radius); padding: 1rem 1.2rem; }
+        .wt-box { background: var(--panel); border: 1px solid var(--edge); border-radius: var(--radius); padding: 1rem 1.2rem; }
         .wt-settings { display: grid; grid-template-columns: auto 1fr; gap: 0.7rem 1rem; align-items: center; }
         .wt-settings label { color: #bbb; font-size: 0.9rem; }
         .wt-settings input { padding: 8px 10px; border-radius: var(--radius); border: 1px solid #4a4d52; background: var(--well); color: var(--ink); font-size: 0.9rem; min-width: 0; }
@@ -168,7 +168,7 @@
         .wt-note { color: var(--ink-2); font-size: 0.85rem; }
         .wt-note.warn { color: #ffb74d; }
         .wt-table { width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.88rem; }
-        .wt-table th { text-align: left; color: var(--ink-2); font-weight: 500; padding: 6px 8px; border-bottom: 1px solid #3a3c40; }
+        .wt-table th { text-align: left; color: var(--ink-2); font-weight: 500; padding: 6px 8px; border-bottom: 1px solid var(--edge); }
         .wt-table td { padding: 8px; border-bottom: 1px solid #222; color: var(--ink); vertical-align: middle; }
         .wt-table input { width: 60px; padding: 5px 6px; border-radius: var(--radius); border: 1px solid #4a4d52; background: var(--well); color: var(--ink); }
         .wt-status-active { color: var(--go); }
@@ -247,7 +247,7 @@
          Escape and click-outside both close safely. Content is swapped per
          step by the wizard functions below. -->
     <div id="modalOverlay" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 1000; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box;" onclick="if (event.target === this) closeModal();">
-        <div id="modalBox" role="dialog" aria-modal="true" aria-labelledby="modalTitle" tabindex="-1" style="background: var(--panel); border: 1px solid #3a3c40; border-radius: var(--radius); padding: 24px; max-width: 440px; width: 100%; box-sizing: border-box; box-shadow: 0 8px 32px rgba(0,0,0,0.5); outline: none;">
+        <div id="modalBox" role="dialog" aria-modal="true" aria-labelledby="modalTitle" tabindex="-1" style="background: var(--panel); border: 1px solid var(--edge); border-radius: var(--radius); padding: 24px; max-width: 440px; width: 100%; box-sizing: border-box; box-shadow: 0 8px 32px rgba(0,0,0,0.5); outline: none;">
             <div id="modalContent"></div>
         </div>
     </div>
@@ -414,7 +414,7 @@
                 <p style="margin:0 0 16px 0;color:var(--ink);font-size:0.9rem;">This provisions a new client and a fresh API key for Companion/API integrations.</p>
                 ${errorMsg ? `<div style="background:var(--stop-key);color:#fff;padding:8px 12px;border-radius: var(--radius);margin-bottom:12px;font-size:0.85rem;">${escapeHtml(errorMsg)}</div>` : ''}
                 <label style="display:block;font-size:0.8rem;color:var(--ink-2);margin-bottom:6px;">Client name</label>
-                <input id="newClientNameInput" type="text" style="width:100%;padding:10px 12px;border-radius: var(--radius);border:1px solid #3a3c40;background:var(--desk);color:var(--ink);margin-bottom:20px;box-sizing:border-box;" placeholder="e.g. Acme Events" onkeypress="if(event.key==='Enter') submitCreateClient()">
+                <input id="newClientNameInput" type="text" style="width:100%;padding:10px 12px;border-radius: var(--radius);border:1px solid var(--edge);background:var(--desk);color:var(--ink);margin-bottom:20px;box-sizing:border-box;" placeholder="e.g. Acme Events" onkeypress="if(event.key==='Enter') submitCreateClient()">
                 ${modalButtonRow(`
                     <button onclick="closeModal()" style="${CANCEL_BTN_STYLE}">Cancel</button>
                     <button onclick="submitCreateClient()" style="${PRIMARY_BTN_STYLE}">Create</button>
@@ -456,7 +456,7 @@
             return `
                 <h2 id="modalTitle" style="margin:0 0 12px 0;font-size:1.2rem;color:var(--ink);">Client created — API key</h2>
                 <p style="margin:0 0 8px 0;color:var(--ink);font-size:0.9rem;line-height:1.5;">"${escapeHtml(clientName)}" was created. This key is for <strong>Companion and other API integrations</strong> — not for human dashboard login.</p>
-                <div id="apiKeyText" style="background:var(--desk);border:1px solid #3a3c40;border-radius: var(--radius);padding:12px;margin:12px 0;font-family:'Courier New',monospace;font-size:0.85rem;word-break:break-all;user-select:all;">${escapeHtml(apiKey)}</div>
+                <div id="apiKeyText" style="background:var(--desk);border:1px solid var(--edge);border-radius: var(--radius);padding:12px;margin:12px 0;font-family:'Courier New',monospace;font-size:0.85rem;word-break:break-all;user-select:all;">${escapeHtml(apiKey)}</div>
                 <p style="margin:0 0 8px 0;color:#f44336;font-size:0.82rem;">This key will not be shown again. Copy it now - if lost, the recovery path is API key rotation.</p>
                 <p style="margin:0 0 20px 0;color:var(--ink-2);font-size:0.82rem;line-height:1.5;">You don't need to send it to the customer: they can make their own key from <b>Dashboard → Companion</b>.</p>
                 <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;">
@@ -480,7 +480,7 @@
                 <p style="margin:0 0 16px 0;color:var(--ink);font-size:0.9rem;">They'll receive a one-time temporary password and must change it on first login.</p>
                 ${errorMsg ? `<div style="background:var(--stop-key);color:#fff;padding:8px 12px;border-radius: var(--radius);margin-bottom:12px;font-size:0.85rem;">${escapeHtml(errorMsg)}</div>` : ''}
                 <label style="display:block;font-size:0.8rem;color:var(--ink-2);margin-bottom:6px;">Email</label>
-                <input id="newUserEmailInput" type="email" style="width:100%;padding:10px 12px;border-radius: var(--radius);border:1px solid #3a3c40;background:var(--desk);color:var(--ink);margin-bottom:20px;box-sizing:border-box;" placeholder="e.g. jamie@client.com" onkeypress="if(event.key==='Enter') submitCreateFirstUser()">
+                <input id="newUserEmailInput" type="email" style="width:100%;padding:10px 12px;border-radius: var(--radius);border:1px solid var(--edge);background:var(--desk);color:var(--ink);margin-bottom:20px;box-sizing:border-box;" placeholder="e.g. jamie@client.com" onkeypress="if(event.key==='Enter') submitCreateFirstUser()">
                 ${modalButtonRow(`
                     <button onclick="finishClientWizard()" style="${CANCEL_BTN_STYLE}">Skip</button>
                     <button onclick="submitCreateFirstUser()" style="${PRIMARY_BTN_STYLE}">Create User</button>
@@ -532,7 +532,7 @@
             return `
                 <h2 id="modalTitle" style="margin:0 0 12px 0;font-size:1.2rem;color:var(--ink);">${escapeHtml(titleContext)} — temporary password</h2>
                 <p style="margin:0 0 8px 0;color:var(--ink);font-size:0.9rem;">Email: <strong>${escapeHtml(email)}</strong></p>
-                <div id="tempPasswordText" style="background:var(--desk);border:1px solid #3a3c40;border-radius: var(--radius);padding:12px;margin:12px 0;font-family:'Courier New',monospace;font-size:0.85rem;word-break:break-all;user-select:all;">${escapeHtml(tempPassword)}</div>
+                <div id="tempPasswordText" style="background:var(--desk);border:1px solid var(--edge);border-radius: var(--radius);padding:12px;margin:12px 0;font-family:'Courier New',monospace;font-size:0.85rem;word-break:break-all;user-select:all;">${escapeHtml(tempPassword)}</div>
                 <p style="margin:0 0 20px 0;color:#f44336;font-size:0.82rem;">This password will not be shown again. Share it with the user via a secure channel - they must change it on first login.</p>
                 <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;">
                     <button onclick="copyModalSecret('tempPasswordText', this)" style="${CANCEL_BTN_STYLE}">Copy</button>

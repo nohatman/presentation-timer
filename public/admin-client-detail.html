@@ -23,7 +23,7 @@
             padding: 2rem;
             border-radius: var(--radius);
             margin-bottom: 2rem;
-            border: 1px solid #3a3c40;
+            border: 1px solid var(--edge);
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -45,7 +45,7 @@
         }
         .nav-link {
             padding: 10px 16px;
-            border: 1px solid #3a3c40;
+            border: 1px solid var(--edge);
             border-radius: var(--radius);
             background: var(--panel);
             color: var(--ink);
@@ -77,7 +77,7 @@
         }
         .section {
             background: var(--panel);
-            border: 2px solid #3a3c40;
+            border: 2px solid var(--edge);
             border-radius: var(--radius);
             padding: 1.5rem;
             margin-bottom: 1.5rem;
@@ -87,7 +87,7 @@
             color: var(--ink);
             margin-bottom: 1rem;
             padding-bottom: 0.75rem;
-            border-bottom: 1px solid #3a3c40;
+            border-bottom: 1px solid var(--edge);
         }
         .profile-grid {
             display: flex;
@@ -155,7 +155,7 @@
             gap: 0.75rem;
             margin-bottom: 1rem;
             padding-bottom: 0.75rem;
-            border-bottom: 1px solid #3a3c40;
+            border-bottom: 1px solid var(--edge);
         }
         .section-header-row h2 {
             margin-bottom: 0;
@@ -238,7 +238,7 @@
          open and back to the trigger element on close, Escape and
          click-outside both close safely. -->
     <div id="modalOverlay" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 1000; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box;" onclick="if (event.target === this) closeModal();">
-        <div id="modalBox" role="dialog" aria-modal="true" aria-labelledby="modalTitle" tabindex="-1" style="background: var(--panel); border: 1px solid #3a3c40; border-radius: var(--radius); padding: 24px; max-width: 440px; width: 100%; box-sizing: border-box; box-shadow: 0 8px 32px rgba(0,0,0,0.5); outline: none;">
+        <div id="modalBox" role="dialog" aria-modal="true" aria-labelledby="modalTitle" tabindex="-1" style="background: var(--panel); border: 1px solid var(--edge); border-radius: var(--radius); padding: 24px; max-width: 440px; width: 100%; box-sizing: border-box; box-shadow: 0 8px 32px rgba(0,0,0,0.5); outline: none;">
             <div id="modalContent"></div>
         </div>
     </div>
@@ -527,7 +527,7 @@
             return `
                 <h2 id="modalTitle" style="margin:0 0 12px 0;font-size:1.2rem;color:var(--ink);">${escapeHtml(titleContext)} — temporary password</h2>
                 <p style="margin:0 0 8px 0;color:var(--ink);font-size:0.9rem;">Email: <strong>${escapeHtml(email)}</strong></p>
-                <div id="tempPasswordText" style="background:var(--desk);border:1px solid #3a3c40;border-radius: var(--radius);padding:12px;margin:12px 0;font-family:'Courier New',monospace;font-size:0.85rem;word-break:break-all;user-select:all;">${escapeHtml(tempPassword)}</div>
+                <div id="tempPasswordText" style="background:var(--desk);border:1px solid var(--edge);border-radius: var(--radius);padding:12px;margin:12px 0;font-family:'Courier New',monospace;font-size:0.85rem;word-break:break-all;user-select:all;">${escapeHtml(tempPassword)}</div>
                 <p style="margin:0 0 20px 0;color:#f44336;font-size:0.82rem;">This password will not be shown again. Share it with the user via a secure channel - they must change it on first login.</p>
                 <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;">
                     <button onclick="copyModalSecret('tempPasswordText', this)" style="${CANCEL_BTN_STYLE}">Copy</button>
@@ -548,7 +548,7 @@
                 <h2 id="modalTitle" style="margin:0 0 12px 0;font-size:1.2rem;color:var(--ink);">Edit client name</h2>
                 ${errorMsg ? `<div style="background:var(--stop-key);color:#fff;padding:8px 12px;border-radius: var(--radius);margin-bottom:12px;font-size:0.85rem;">${escapeHtml(errorMsg)}</div>` : ''}
                 <label style="display:block;font-size:0.8rem;color:var(--ink-2);margin-bottom:6px;">Client name</label>
-                <input id="editNameInput" type="text" value="${escapeHtml(currentClientName)}" style="width:100%;padding:10px 12px;border-radius: var(--radius);border:1px solid #3a3c40;background:var(--desk);color:var(--ink);margin-bottom:20px;box-sizing:border-box;" onkeypress="if(event.key==='Enter') submitEditName()">
+                <input id="editNameInput" type="text" value="${escapeHtml(currentClientName)}" style="width:100%;padding:10px 12px;border-radius: var(--radius);border:1px solid var(--edge);background:var(--desk);color:var(--ink);margin-bottom:20px;box-sizing:border-box;" onkeypress="if(event.key==='Enter') submitEditName()">
                 ${modalButtonRow(`
                     <button onclick="closeModal()" style="${CANCEL_BTN_STYLE}">Cancel</button>
                     <button onclick="submitEditName()" style="${PRIMARY_BTN_STYLE}">Save</button>
@@ -594,7 +594,7 @@
                 <p style="margin:0 0 16px 0;color:var(--ink);font-size:0.9rem;">They'll receive a one-time temporary password and must change it on first login.</p>
                 ${errorMsg ? `<div style="background:var(--stop-key);color:#fff;padding:8px 12px;border-radius: var(--radius);margin-bottom:12px;font-size:0.85rem;">${escapeHtml(errorMsg)}</div>` : ''}
                 <label style="display:block;font-size:0.8rem;color:var(--ink-2);margin-bottom:6px;">Email</label>
-                <input id="addUserEmailInput" type="email" style="width:100%;padding:10px 12px;border-radius: var(--radius);border:1px solid #3a3c40;background:var(--desk);color:var(--ink);margin-bottom:20px;box-sizing:border-box;" placeholder="e.g. jamie@client.com" onkeypress="if(event.key==='Enter') submitAddUser()">
+                <input id="addUserEmailInput" type="email" style="width:100%;padding:10px 12px;border-radius: var(--radius);border:1px solid var(--edge);background:var(--desk);color:var(--ink);margin-bottom:20px;box-sizing:border-box;" placeholder="e.g. jamie@client.com" onkeypress="if(event.key==='Enter') submitAddUser()">
                 ${modalButtonRow(`
                     <button onclick="closeModal()" style="${CANCEL_BTN_STYLE}">Cancel</button>
                     <button onclick="submitAddUser()" style="${PRIMARY_BTN_STYLE}">Create User</button>
@@ -640,7 +640,7 @@
                 <p style="margin:0 0 16px 0;color:var(--ink);font-size:0.9rem;">Current: <strong>${escapeHtml(currentEmail)}</strong>. Changing this will sign the user out of all active sessions.</p>
                 ${errorMsg ? `<div style="background:var(--stop-key);color:#fff;padding:8px 12px;border-radius: var(--radius);margin-bottom:12px;font-size:0.85rem;">${escapeHtml(errorMsg)}</div>` : ''}
                 <label style="display:block;font-size:0.8rem;color:var(--ink-2);margin-bottom:6px;">New email</label>
-                <input id="changeEmailInput" type="email" style="width:100%;padding:10px 12px;border-radius: var(--radius);border:1px solid #3a3c40;background:var(--desk);color:var(--ink);margin-bottom:20px;box-sizing:border-box;" onkeypress="if(event.key==='Enter') submitChangeEmail()">
+                <input id="changeEmailInput" type="email" style="width:100%;padding:10px 12px;border-radius: var(--radius);border:1px solid var(--edge);background:var(--desk);color:var(--ink);margin-bottom:20px;box-sizing:border-box;" onkeypress="if(event.key==='Enter') submitChangeEmail()">
                 ${modalButtonRow(`
                     <button onclick="closeModal()" style="${CANCEL_BTN_STYLE}">Cancel</button>
                     <button onclick="submitChangeEmail()" style="${PRIMARY_BTN_STYLE}">Save &amp; Sign Out Sessions</button>
@@ -804,7 +804,7 @@
             return `
                 <h2 id="modalTitle" style="margin:0 0 12px 0;font-size:1.2rem;color:var(--ink);">API key rotated</h2>
                 <p style="margin:0 0 8px 0;color:var(--ink);font-size:0.9rem;">New key for <strong>${escapeHtml(clientName)}</strong>:</p>
-                <div id="apiKeyText" style="background:var(--desk);border:1px solid #3a3c40;border-radius: var(--radius);padding:12px;margin:12px 0;font-family:'Courier New',monospace;font-size:0.85rem;word-break:break-all;user-select:all;">${escapeHtml(apiKey)}</div>
+                <div id="apiKeyText" style="background:var(--desk);border:1px solid var(--edge);border-radius: var(--radius);padding:12px;margin:12px 0;font-family:'Courier New',monospace;font-size:0.85rem;word-break:break-all;user-select:all;">${escapeHtml(apiKey)}</div>
                 <p style="margin:0 0 20px 0;color:var(--ink);font-size:0.82rem;">For security, this key cannot be viewed again. If it is lost, generate a replacement with Rotate API Key.</p>
                 <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;">
                     <button onclick="copyModalSecret('apiKeyText', this)" style="${CANCEL_BTN_STYLE}">Copy</button>
