@@ -292,6 +292,7 @@ function createDefaultTimerState() {
     outputMode: 'timer', // 'timer' | 'clock'
     timerOnStart: false, // a display showing the clock switches back to the timer on Start
     takeOverAsk: false,  // Take over asks whoever is in control first (see requestControl)
+    rundownAutoStart: false, // running order Take also starts the timer (control pages + Companion TAKE)
     displayScale: 1.5, // Display size multiplier (0.5 - 2.0)
     // Display appearance - lets an operator brand/chromakey a shared display
     // link without touching the main timer controls. Hex colors; visibility
@@ -615,6 +616,7 @@ io.on('connection', (socket) => {
     if (data.showClock !== undefined) timerState.showClock = data.showClock;
     if (data.timerOnStart !== undefined) timerState.timerOnStart = !!data.timerOnStart;
     if (data.takeOverAsk !== undefined) timerState.takeOverAsk = !!data.takeOverAsk;
+    if (data.rundownAutoStart !== undefined) timerState.rundownAutoStart = !!data.rundownAutoStart;
     if (data.displayScale !== undefined) timerState.displayScale = data.displayScale;
     if (isHexColor(data.timerColorNormal)) timerState.timerColorNormal = data.timerColorNormal;
     if (isHexColor(data.timerColorAmber)) timerState.timerColorAmber = data.timerColorAmber;
@@ -1764,6 +1766,7 @@ app.get('/api/rooms/:roomId/companion', ...roomAuth, (req, res) => {
     outputMode:    s.outputMode,
     countStyle:    countingUp ? 'up' : (s.countUp ? 'downUp' : 'down'),
     timerOnStart:  !!s.timerOnStart,
+    rundownAutoStart: !!s.rundownAutoStart,
     messageMode:   s.messageMode || 'none',
     speed:         s.speed || 1,
     configDurationMs: Number.isFinite(s.configDurationMs) ? s.configDurationMs : s.durationMs,
@@ -1992,13 +1995,14 @@ app.post('/api/rooms/:roomId/output', ...roomAuth, (req, res) => {
 // { timerOnStart: boolean } ("Back to timer on Start"), { speed } or { speedStep } (timer speed).
 app.post('/api/rooms/:roomId/settings', ...roomAuth, (req, res) => {
   const s = req.timerState;
-  const { style, timerOnStart, speed, speedStep } = req.body || {};
+  const { style, timerOnStart, speed, speedStep, rundownAutoStart } = req.body || {};
   if (style !== undefined) {
     if (!['down', 'downUp', 'up'].includes(style)) return res.json({ ok: false, error: 'style must be "down", "downUp" or "up"' });
     s.countDirection = style === 'up' ? 'up' : 'down';
     s.countUp = style === 'downUp';
   }
   if (timerOnStart !== undefined) s.timerOnStart = !!timerOnStart;
+  if (rundownAutoStart !== undefined) s.rundownAutoStart = !!rundownAutoStart;
   // Timer speed: { speed: 1 } sets it, { speedStep: 0.05 } nudges it.
   if (typeof speed === 'number' && Number.isFinite(speed)) timerModes.setSpeed(s, speed, Date.now());
   else if (typeof speedStep === 'number' && Number.isFinite(speedStep)) timerModes.setSpeed(s, (s.speed || 1) + speedStep, Date.now());

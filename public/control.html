@@ -1720,7 +1720,7 @@
                         <button onclick="rundownNext()" class="button secondary" style="flex:1;min-width:0;padding:12px 6px;">Next ▶</button>
                     </div>
                     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.95rem;color:var(--ink);">
-                        <input type="checkbox" id="rundownAutoStart" style="width:18px;height:18px;accent-color:var(--go);">
+                        <input type="checkbox" id="rundownAutoStart" style="width:18px;height:18px;accent-color:var(--go);" onchange="socket.emit('updateSettings', { rundownAutoStart: this.checked })">
                         Auto-start when taking
                     </label>
                     <small style="display:block;margin-top:6px;color:var(--ink-2);font-size:0.88rem;">↑↓ or Prev/Next to browse · Take or Enter to load to display · Space starts/pauses</small>
@@ -2848,6 +2848,7 @@
             if (state.outputMode) updateOutputModeButtons(state.outputMode);
             document.getElementById('timerOnStart').checked = !!state.timerOnStart;
             document.getElementById('takeOverAsk').checked = !!state.takeOverAsk;
+            document.getElementById('rundownAutoStart').checked = !!state.rundownAutoStart; // a room setting: Companion's TAKE follows it too
             // roomInfo is only ever sent once, on the first state after connecting
             // (see server.js) - it carries the display link, which this control
             // panel has no other way to know (it's a separate secret from its own
