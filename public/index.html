@@ -299,7 +299,7 @@
             <a href="#contact">Feedback</a>
             <a class="login" href="/dashboard">Log in</a>
             <a class="btn btn-primary" href="/try" data-for="online">Try it now</a>
-            <a class="btn btn-primary" href="#start" data-for="windows">Download</a>
+            <a class="btn btn-primary" id="navDownload" href="#start" data-for="windows">Download</a>
         </nav>
     </div>
 </header>
@@ -400,6 +400,7 @@
                     <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></div>
                     <h3>Works with Companion</h3>
                     <p>A native Companion module with a start/pause toggle, nudges, set duration, running order Prev / Take / Next, and live time and colour on the keys. <span data-for="online">It connects over the internet, from wherever Companion runs.</span><span data-for="windows">It connects to the laptop over your show network.</span></p>
+                    <p style="margin-top:10px;"><a href="/download/companion-module" download><b>Download the Companion module</b></a> (free), then in Companion: Modules &rarr; Import module package.</p>
                 </div>
 
                 <div class="card">
@@ -599,6 +600,7 @@
         document.querySelectorAll('.trial-days').forEach((el) => { el.textContent = info.trialDays; });
         if (!info.downloadAvailable) return;
         document.querySelectorAll('.win-dl').forEach((el) => { el.hidden = false; });
+        document.getElementById('navDownload').href = '/download/windows'; // straight to the installer, like the big button
         document.querySelectorAll('.win-soon').forEach((el) => { el.hidden = true; });
     }).catch(() => {});
 
