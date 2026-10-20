@@ -111,6 +111,11 @@ const roomControllerPanels = new Map(); // roomId -> { panelId, deviceId, name }
 const TAKE_OVER_ASK_MS = Number(process.env.TAKE_OVER_ASK_MS) || 15000;
 const takeOverRequests = new Map(); // roomId -> { id, requesterId, holderId, timer }
 
+// The show's time zone, as the control pages' browsers report it (they follow a
+// laptop's clock change at once; Node - here and in Companion - reads the zone
+// once at start). Companion shows "Ends at" in it. In memory only.
+const roomShowTz = new Map(); // roomId -> minutes, as Date#getTimezoneOffset()
+
 function endTakeOverRequest(roomId, result) {
   const req = takeOverRequests.get(roomId);
   if (!req) return;
@@ -486,6 +491,12 @@ io.on('connection', (socket) => {
     }
     setRoomController(roomId, socket); // also cancels any reservation for a reconnecting controller
     broadcastControllerStatus(roomId);
+  });
+  // A control page's time zone (on connect, and every minute).
+  socket.on('clientClock', (msg) => {
+    if (socket.clientType !== 'control') return;
+    const v = msg && msg.tzOffsetMin;
+    if (Number.isInteger(v) && v >= -900 && v <= 900) roomShowTz.set(roomId, v);
   });
   // The panel in control answers: { id, allow }
   socket.on('takeOverAnswer', (msg) => {
@@ -1756,6 +1767,7 @@ app.get('/api/rooms/:roomId/companion', ...roomAuth, (req, res) => {
     messageMode:   s.messageMode || 'none',
     speed:         s.speed || 1,
     configDurationMs: Number.isFinite(s.configDurationMs) ? s.configDurationMs : s.durationMs,
+    showTzOffsetMin: roomShowTz.has(req.roomId) ? roomShowTz.get(req.roomId) : null, // see roomShowTz
     ...companionControlInfo(req.roomId),
     // When the timer reaches 0:00 (epoch ms): running = the real finish; paused or
     // stopped = "if started/resumed now". null when counting up or already past 0:00.

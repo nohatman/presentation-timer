@@ -2623,6 +2623,10 @@
 
         const socket = io({ auth: { token: controlToken, deviceName: myDeviceName, panelId: myPanelId, deviceId: myDeviceId } });
         socket.on('connect', checkServerBuild);
+        // This browser's time zone, for Companion's "Ends at" (see roomShowTz in server.js).
+        const sendClientClock = () => socket.emit('clientClock', { tzOffsetMin: new Date().getTimezoneOffset() });
+        socket.on('connect', sendClientClock);
+        setInterval(sendClientClock, 60000);
         // A public link (Share over the internet): the show laptop may drop off the internet.
         socket.on('relayNotice', ({ offline }) => { document.getElementById('relayBanner').hidden = !offline; });
 
