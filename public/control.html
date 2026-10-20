@@ -2776,9 +2776,9 @@
             const seg = (field, options) => `<div class="seg" role="group">${options.map(([v, label]) =>
                 `<button type="button" class="key" aria-pressed="${shareChoice[field] === v}" onclick="pickShare('${field}', '${v}')">${label}</button>`).join('')}</div>`;
             const who = Object.entries(SHARE_WHO).filter(([v]) => d[v + 'Url']).map(([v, o]) => [v, o.label]);
-            const via = d.publicDisplayUrl ? seg('via', [['internet', 'Over the internet'], ['network', 'Show network']]) : '';
+            const via = d.publicDisplayUrl ? seg('via', [['internet', 'Over the internet'], ['network', 'Local network']]) : '';
             const where = !d.publicDisplayUrl ? ''
-                : shareChoice.via === 'internet' ? ' Works on any phone, even on mobile data.' : ' Only on the show network\u2019s Wi-Fi.';
+                : shareChoice.via === 'internet' ? ' Works on any phone, even on mobile data.' : ' Only on the local network (the show Wi-Fi or cable).';
             const canShare = typeof navigator.share === 'function';
             document.getElementById('shareBody').innerHTML = `
                 <div class="share-pick">${seg('who', who)}${via}</div>

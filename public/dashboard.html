@@ -658,7 +658,7 @@
                     ${renderLinkField('Display link (for a screen)', 'publicDisplayLinkText', pub.publicDisplayUrl, `${roomSlug} - Display`, canShare)}
                     ${renderLinkField('Control link (anyone with it can run this room)', 'publicControlLinkText', pub.publicControlUrl, `${roomSlug} - Control`, canShare)}
                     ${pub.publicViewUrl ? renderLinkField('View link (for a client: sees everything, changes nothing)', 'publicViewLinkText', pub.publicViewUrl, `${roomSlug} - View`, canShare) : ''}
-                    <div class="public-links-head">On the show network</div>` : ''}
+                    <div class="public-links-head">On the local network</div>` : ''}
                 ${renderLinkField('Display link (for a screen)', 'displayLinkText', displayUrl, `${roomSlug} - Display`, canShare)}
                 ${renderLinkField('Control link (anyone with it can run this room)', 'controlLinkText', controlUrl, `${roomSlug} - Control`, canShare)}
                 ${room && room.viewUrl ? renderLinkField('View link (for a client: sees everything, changes nothing)', 'viewLinkText', room.viewUrl, `${roomSlug} - View`, canShare) : ''}
