@@ -147,6 +147,17 @@
         .link-field .row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
         .link-field .field { flex: 1; min-width: 0; }
         .link-field .qrbox { margin-top: 10px; width: 180px; height: 180px; background: #fff; border-radius: 2px; padding: 6px; }
+        /* Share window: one link at a time (same layout as the control page's). */
+        .share-pick { display: grid; gap: 8px; margin: 4px 0 14px; }
+        .share-pick .seg { display: flex; width: 100%; }
+        .share-pick .seg .key { flex: 1; min-height: 40px; }
+        .share-one { display: grid; justify-items: center; gap: 10px; text-align: center; }
+        .share-one .share-what { color: var(--ink-2); font-size: 0.95rem; line-height: 1.4; }
+        .share-one .share-what b { color: var(--ink); }
+        .share-one .qr { width: min(260px, 70vw); aspect-ratio: 1; background: #fff; padding: 8px; border-radius: 2px; }
+        .share-one .qr svg { width: 100%; height: 100%; display: block; }
+        .share-one .url { font-family: var(--mono); font-size: 0.8rem; color: var(--ink-2); overflow-wrap: anywhere; max-width: 100%; }
+        .share-one .row { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
         .dialog .room-title { margin: -4px 0 12px; font-weight: 700; color: var(--ink); font-size: 1.05rem; }
 
         /* Paired screens */
@@ -462,7 +473,7 @@
                     return;
                 }
                 await fetchRooms();
-                document.getElementById('modalContent').innerHTML = renderRoomLinksModal('New room links', room.slug, data.controlUrl, data.displayUrl);
+                document.getElementById('modalContent').innerHTML = renderRoomLinksModal('New room links', room.slug, data.controlUrl, data.displayUrl, undefined, data);
             } catch (error) {
                 console.error('Error regenerating links:', error);
                 closeModal();
@@ -564,83 +575,6 @@
             }
         }
 
-        // navigator.share() rejects with AbortError when the user cancels the
-        // native share sheet - that's not a failure, so it doesn't fall back
-        // to copying. Any other failure (or the API being unavailable, though
-        // the Share button is only rendered when it exists) falls back to a
-        // clean copy rather than an error alert.
-        async function shareLink(title, elementId, buttonEl) {
-            const url = document.getElementById(elementId).value;
-            try {
-                await navigator.share({ title, url });
-            } catch (error) {
-                if (error && error.name === 'AbortError') return;
-                console.error('Share failed, falling back to copy:', error);
-                await copyLink(elementId, buttonEl);
-            }
-        }
-
-        async function copyBothLinks(buttonEl) {
-            const control = document.getElementById('controlLinkText').value;
-            const display = document.getElementById('displayLinkText').value;
-            try {
-                await navigator.clipboard.writeText(`Control: ${control}\nDisplay: ${display}`);
-                flashCopied(buttonEl);
-            } catch (error) {
-                console.error('Copy failed:', error);
-            }
-        }
-
-        async function shareBothLinks(roomSlug, buttonEl) {
-            const control = document.getElementById('controlLinkText').value;
-            const display = document.getElementById('displayLinkText').value;
-            try {
-                await navigator.share({ title: roomSlug, text: `Control: ${control}\nDisplay: ${display}` });
-            } catch (error) {
-                if (error && error.name === 'AbortError') return;
-                console.error('Share failed, falling back to copy:', error);
-                await copyBothLinks(buttonEl);
-            }
-        }
-
-
-        function renderLinkField(labelText, inputId, url, shareTitle, canShare) {
-            return `
-                <div class="link-field">
-                    <label class="label" for="${inputId}">${escapeHtml(labelText)}</label>
-                    <div class="row">
-                        <input id="${inputId}" class="field code" type="text" readonly value="${escapeHtml(url)}" onclick="this.select()">
-                        <button onclick="copyLink('${inputId}', this)" class="key small">Copy</button>
-                        ${canShare ? `<button onclick="shareLink('${escapeHtml(shareTitle)}', '${inputId}', this)" class="key small">Share</button>` : ''}
-                        <button onclick="toggleQr('${inputId}', this)" class="key small">QR</button>
-                    </div>
-                    <div id="${inputId}Qr" class="qrbox" hidden></div>
-                </div>
-            `;
-        }
-
-        // QR code for a link, so a phone or tablet can join by scanning the
-        // dashboard screen. Generated server-side (works offline on a show
-        // laptop); POSTed so the link's token never ends up in a URL or log.
-        async function toggleQr(inputId, btn) {
-            const box = document.getElementById(inputId + 'Qr');
-            if (!box.hidden) { box.hidden = true; return; }
-            try {
-                const response = await authFetch('/api/qr', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text: document.getElementById(inputId).value })
-                });
-                const data = await response.json();
-                if (!data.ok) throw new Error(data.error);
-                box.innerHTML = data.svg;
-                box.firstElementChild.style.cssText = 'width:100%;height:100%;display:block;';
-                box.hidden = false;
-            } catch (err) {
-                btn.textContent = 'QR failed';
-            }
-        }
-
         // Reused for room creation, New Links regeneration, and (per the
         // requirement) any other room-card action that displays control/
         // display links. Deliberately calm wording, no "save this now" /
@@ -648,25 +582,20 @@
         // room card or regenerated later, and regeneration is always its own
         // separately-confirmed step (never triggered by opening this modal).
         function renderRoomLinksModal(title, roomSlug, controlUrl, displayUrl, roomId, room) {
-            const pub = room && room.publicDisplayUrl ? room : null;
-            const canShare = typeof navigator.share === 'function';
+            const r = room || {};
+            dashShare = {
+                slug: roomSlug,
+                links: { display: displayUrl, control: controlUrl, view: r.viewUrl, publicDisplay: r.publicDisplayUrl, publicControl: r.publicControlUrl, publicView: r.publicViewUrl },
+                who: dashShare && dashShare.links.view ? dashShare.who : 'display',
+                via: r.publicDisplayUrl ? 'internet' : 'network',
+                qr: {},
+            };
+            setTimeout(renderDashShare); // fills in once this markup is on the page
             return `
-                <h2 id="modalTitle">${escapeHtml(title)}</h2>
-                <p class="room-title">${escapeHtml(roomSlug)}</p>
-                <p>Control link for the operator, display link for the screen, view link for a client who wants to watch. You can open these again from the room card.</p>
-                ${pub ? `<div class="public-links-head" style="border-top:0;padding-top:0;margin-top:0;">Over the internet (works on mobile data)</div>
-                    ${renderLinkField('Display link (for a screen)', 'publicDisplayLinkText', pub.publicDisplayUrl, `${roomSlug} - Display`, canShare)}
-                    ${renderLinkField('Control link (anyone with it can run this room)', 'publicControlLinkText', pub.publicControlUrl, `${roomSlug} - Control`, canShare)}
-                    ${pub.publicViewUrl ? renderLinkField('View link (for a client: sees everything, changes nothing)', 'publicViewLinkText', pub.publicViewUrl, `${roomSlug} - View`, canShare) : ''}
-                    <div class="public-links-head">On the local network</div>` : ''}
-                ${renderLinkField('Display link (for a screen)', 'displayLinkText', displayUrl, `${roomSlug} - Display`, canShare)}
-                ${renderLinkField('Control link (anyone with it can run this room)', 'controlLinkText', controlUrl, `${roomSlug} - Control`, canShare)}
-                ${room && room.viewUrl ? renderLinkField('View link (for a client: sees everything, changes nothing)', 'viewLinkText', room.viewUrl, `${roomSlug} - View`, canShare) : ''}
+                <h2 id="modalTitle">${escapeHtml(title)} · ${escapeHtml(roomSlug)}</h2>
+                <div id="dashShareBody"></div>
                 <div class="actions" style="justify-content:space-between;">
-                    <span style="display:flex;gap:6px;flex-wrap:wrap;">
-                        <button onclick="copyBothLinks(this)" class="key small flat">Copy both links</button>
-                        ${canShare ? `<button onclick="shareBothLinks('${escapeHtml(roomSlug)}', this)" class="key small flat">Share both links</button>` : ''}
-                    </span>
+                    <button onclick="copyAllLinks(this)" class="key small flat">Copy all links</button>
                     <button onclick="closeModal()" class="key lit">Close</button>
                 </div>
                 ${roomId ? `<div class="actions" style="justify-content:flex-start;border-top:1px solid var(--seam);padding-top:12px;">
@@ -674,6 +603,80 @@
                     <button onclick="deleteRoom('${escapeHtml(roomId)}')" class="key small flat danger">Delete room</button>
                 </div>` : ''}
             `;
+        }
+
+        // One link at a time: who it's for x how they connect (see renderRoomLinksModal).
+        let dashShare = null;
+        const SHARE_WHO = {
+            display: { label: 'Display', what: 'For a screen: shows the timer only.' },
+            control: { label: 'Control', what: 'For another operator: anyone with it can run this room.' },
+            view: { label: 'View', what: 'For a client: sees everything, can change nothing.' },
+        };
+        const dashShareKey = () => dashShare.via === 'internet' ? 'public' + dashShare.who[0].toUpperCase() + dashShare.who.slice(1) : dashShare.who;
+        function pickDashShare(field, value) {
+            dashShare[field] = value;
+            renderDashShare();
+        }
+        async function renderDashShare() {
+            const body = document.getElementById('dashShareBody');
+            if (!body || !dashShare) return;
+            const L = dashShare.links;
+            if (!L[dashShare.who]) dashShare.who = 'display';
+            const url = L[dashShareKey()];
+            const seg = (field, options) => `<div class="seg" role="group">${options.map(([v, label]) =>
+                `<button type="button" class="key" aria-pressed="${dashShare[field] === v}" onclick="pickDashShare('${field}', '${v}')">${label}</button>`).join('')}</div>`;
+            const who = Object.entries(SHARE_WHO).filter(([v]) => L[v]).map(([v, o]) => [v, o.label]);
+            const via = L.publicDisplay ? seg('via', [['internet', 'Over the internet'], ['network', 'Local network']]) : '';
+            const where = !L.publicDisplay ? ''
+                : dashShare.via === 'internet' ? ' Works on any phone, even on mobile data.' : ' Only on the local network (the show Wi-Fi or cable).';
+            const canShare = typeof navigator.share === 'function';
+            body.innerHTML = `
+                <div class="share-pick">${seg('who', who)}${via}</div>
+                <div class="share-one">
+                    <div class="share-what"><b>${SHARE_WHO[dashShare.who].label} link.</b> ${SHARE_WHO[dashShare.who].what}${where}</div>
+                    <div class="qr" id="dashShareQr" aria-hidden="true">${dashShare.qr[url] || ''}</div>
+                    <div class="url">${escapeHtml(url || '')}</div>
+                    <div class="row">
+                        <button type="button" class="key small" onclick="copyDashShare(this)">Copy link</button>
+                        ${canShare ? `<button type="button" class="key small" onclick="shareDashShare(this)">Share</button>` : ''}
+                    </div>
+                </div>`;
+            if (url && !dashShare.qr[url]) {
+                // Generated server-side (works offline on a show laptop); POSTed so
+                // the link's token never ends up in a URL or log.
+                try {
+                    const response = await authFetch('/api/qr', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: url }) });
+                    const data = await response.json();
+                    if (!data.ok) throw new Error(data.error);
+                    dashShare.qr[url] = data.svg;
+                    const box = document.getElementById('dashShareQr');
+                    if (box && L[dashShareKey()] === url) box.innerHTML = data.svg;
+                } catch (err) {
+                    const box = document.getElementById('dashShareQr');
+                    if (box) box.textContent = 'QR code unavailable';
+                }
+            }
+        }
+        async function copyDashShare(btn) {
+            try { await navigator.clipboard.writeText(dashShare.links[dashShareKey()]); flashCopied(btn); }
+            catch (error) { console.error('Copy failed:', error); }
+        }
+        async function shareDashShare(btn) {
+            try { await navigator.share({ title: `${dashShare.slug} - ${SHARE_WHO[dashShare.who].label}`, url: dashShare.links[dashShareKey()] }); }
+            catch (error) { if (!error || error.name !== 'AbortError') await copyDashShare(btn); }
+        }
+        // Every link, labelled - for pasting into an email or message.
+        async function copyAllLinks(btn) {
+            const L = dashShare.links;
+            const lines = [];
+            if (L.publicDisplay) {
+                lines.push('Over the internet (any phone, even on mobile data):');
+                for (const k of ['display', 'control', 'view']) { const u = L['public' + k[0].toUpperCase() + k.slice(1)]; if (u) lines.push(`${SHARE_WHO[k].label}: ${u}`); }
+                lines.push('', 'On the local network:');
+            }
+            for (const k of ['display', 'control', 'view']) if (L[k]) lines.push(`${SHARE_WHO[k].label}: ${L[k]}`);
+            try { await navigator.clipboard.writeText(`${dashShare.slug}\n${lines.join('\n')}`); flashCopied(btn); }
+            catch (error) { console.error('Copy failed:', error); }
         }
 
         // Show laptop only: what to type into Companion's Foxy connection. The
@@ -1013,11 +1016,9 @@
             if (room) openRoomLinksModal('Share links', room.slug, room.controlUrl, room.displayUrl, triggerEl, room.id, room);
         }
 
-        // QR codes show straight away (they're what people come here for).
+        // The QR shows straight away (it's what people come here for).
         function openRoomLinksModal(title, roomSlug, controlUrl, displayUrl, triggerEl, roomId, room) {
             openModal(renderRoomLinksModal(title, roomSlug, controlUrl, displayUrl, roomId, room), triggerEl);
-            ['publicDisplayLinkText', 'publicControlLinkText', 'publicViewLinkText', 'displayLinkText', 'controlLinkText', 'viewLinkText']
-                .forEach((id) => { if (document.getElementById(id)) toggleQr(id, document.body); });
         }
 
         // Load saved card order from localStorage
