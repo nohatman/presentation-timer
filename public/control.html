@@ -490,23 +490,20 @@
         .rundown-msg:empty { display: none; }
         .rundown-msg.error { color: #ff8a80; }
         .rundown-msg.ok { color: var(--go); }
-        /* Share links window: each link with its QR code. */
-        .share-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 6px; }
-        .share-grid { row-gap: 6px; }
-        /* Title, hint, QR, link and keys line up across Display and Control, however the hints wrap. */
-        .share-item { display: grid; grid-row: span 5; grid-template-rows: subgrid; align-items: start; }
-        .share-item .row { margin-bottom: 10px; }
-        .share-item h3 { margin: 0; font-size: 1.05rem; color: var(--ink); }
-        .share-item .hint-line { font-size: 0.9rem; color: var(--ink-2); }
-        .share-item .qr { width: 100%; max-width: 200px; aspect-ratio: 1; background: #fff; padding: 6px; border-radius: 2px; }
-        .share-item .qr svg { width: 100%; height: 100%; display: block; }
-        .share-item .url { font-family: var(--mono); font-size: 0.78rem; color: var(--ink-2); overflow-wrap: anywhere; }
-        .share-item .row { display: flex; gap: 6px; flex-wrap: wrap; }
-        .share-section { grid-column: 1 / -1; margin: 6px 0 -4px; padding-top: 10px; border-top: 1px solid var(--seam); font-weight: 700; color: var(--ink); }
-        .share-section.first { border-top: 0; padding-top: 0; margin-top: 0; }
+        /* Share links window: one link at a time, picked by who it's for and
+           (with internet links on) how they connect; one big QR to scan. */
+        .share-pick { display: grid; gap: 8px; margin-bottom: 14px; }
+        .share-pick .seg { display: flex; width: 100%; }
+        .share-pick .seg .key { flex: 1; min-height: 40px; }
+        .share-one { display: grid; justify-items: center; gap: 10px; text-align: center; }
+        .share-one .share-what { color: var(--ink-2); font-size: 0.95rem; line-height: 1.4; }
+        .share-one .share-what b { color: var(--ink); }
+        .share-one .qr { width: min(260px, 70vw); aspect-ratio: 1; background: #fff; padding: 8px; border-radius: 2px; }
+        .share-one .qr svg { width: 100%; height: 100%; display: block; }
+        .share-one .url { font-family: var(--mono); font-size: 0.8rem; color: var(--ink-2); overflow-wrap: anywhere; max-width: 100%; }
+        .share-one .row { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
         #relayBanner { position: fixed; left: 50%; top: calc(8px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); z-index: 1001; width: max-content; max-width: calc(100vw - 24px); background: var(--warn-key); color: #1a1000; padding: 10px 16px; border-radius: var(--radius); font-weight: 600; box-shadow: 0 6px 20px rgba(0,0,0,0.5); }
         #relayBanner[hidden] { display: none; }
-        @media (max-width: 560px) { .share-grid { grid-template-columns: 1fr; } .share-item .qr { max-width: 170px; } }
         .threshold-row {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -1521,9 +1518,9 @@
         <div id="relayBanner" role="status" data-view-ok hidden>The show laptop is offline. This page carries on by itself when it's back.</div>
         <!-- Share links & QR (see openShareLinks). -->
         <div id="shareOverlay" class="dialog-overlay" data-view-ok style="display: none;" onclick="if (event.target === this) closeShareLinks();">
-            <div id="shareBox" class="dialog" role="dialog" aria-modal="true" aria-labelledby="shareTitle" tabindex="-1" style="max-width: 560px;" data-view-ok>
+            <div id="shareBox" class="dialog" role="dialog" aria-modal="true" aria-labelledby="shareTitle" tabindex="-1" style="max-width: 440px;" data-view-ok>
                 <h2 id="shareTitle">Share links</h2>
-                <div id="shareBody" class="share-grid" data-view-ok></div>
+                <div id="shareBody" data-view-ok></div>
                 <div class="actions" data-view-ok><button type="button" class="key lit" onclick="closeShareLinks()" data-view-ok>Close</button></div>
             </div>
         </div>
@@ -2747,34 +2744,53 @@
                 data = await res.json();
             } catch (err) { data = { ok: false }; }
             if (!data.ok) { uiNotice("Couldn't load the links", (data && data.error) || 'Check the connection and try again.'); return; }
+            shareLinksData = data;
+            document.getElementById('shareTitle').textContent = `Share links · ${data.slug}`;
+            if (!data.publicDisplayUrl) shareChoice.via = 'network';
+            else if (!shareChoice.viaPicked) shareChoice.via = 'internet'; // internet links work on any phone: start there
+            if (!data.viewUrl && shareChoice.who === 'view') shareChoice.who = 'display';
+            renderShareLinks();
+            document.getElementById('shareOverlay').style.display = 'flex';
+            document.getElementById('shareBox').focus();
+        }
+
+        // One link at a time: who it's for x how they connect.
+        const SHARE_WHO = {
+            display: { label: 'Display', what: 'For a screen: shows the timer only.' },
+            control: { label: 'Control', what: 'For another operator: anyone with it can run this room.' },
+            view: { label: 'View', what: 'For a client: sees everything, can change nothing.' },
+        };
+        const shareChoice = { who: 'display', via: 'network', viaPicked: false };
+        function shareKey() {
+            return shareChoice.via === 'internet' ? 'public' + shareChoice.who[0].toUpperCase() + shareChoice.who.slice(1) : shareChoice.who;
+        }
+        function pickShare(field, value) {
+            shareChoice[field] = value;
+            if (field === 'via') shareChoice.viaPicked = true;
+            renderShareLinks();
+        }
+        function renderShareLinks() {
+            const d = shareLinksData;
+            const key = shareKey();
+            const url = d[key + 'Url'], qr = d[key + 'Qr'];
+            const seg = (field, options) => `<div class="seg" role="group">${options.map(([v, label]) =>
+                `<button type="button" class="key" aria-pressed="${shareChoice[field] === v}" onclick="pickShare('${field}', '${v}')">${label}</button>`).join('')}</div>`;
+            const who = Object.entries(SHARE_WHO).filter(([v]) => d[v + 'Url']).map(([v, o]) => [v, o.label]);
+            const via = d.publicDisplayUrl ? seg('via', [['internet', 'Over the internet'], ['network', 'Show network']]) : '';
+            const where = !d.publicDisplayUrl ? ''
+                : shareChoice.via === 'internet' ? ' Works on any phone, even on mobile data.' : ' Only on the show network\u2019s Wi-Fi.';
             const canShare = typeof navigator.share === 'function';
-            const item = (title, hint, url, qr, key) => `
-                <div class="share-item">
-                    <h3>${title}</h3>
-                    <div class="hint-line">${hint}</div>
-                    <div class="qr" aria-hidden="true">${qr}</div>
-                    <div class="url">${escapeHtml(url)}</div>
+            document.getElementById('shareBody').innerHTML = `
+                <div class="share-pick">${seg('who', who)}${via}</div>
+                <div class="share-one">
+                    <div class="share-what"><b>${SHARE_WHO[shareChoice.who].label} link.</b> ${SHARE_WHO[shareChoice.who].what}${where}</div>
+                    <div class="qr" aria-hidden="true">${qr || ''}</div>
+                    <div class="url">${escapeHtml(url || '')}</div>
                     <div class="row">
-                        <button type="button" class="key small" onclick="copyShareLink('${key}', this)">Copy</button>
+                        <button type="button" class="key small" onclick="copyShareLink('${key}', this)">Copy link</button>
                         ${canShare ? `<button type="button" class="key small" onclick="shareShareLink('${key}')">Share</button>` : ''}
                     </div>
                 </div>`;
-            shareLinksData = data;
-            const overlay = document.getElementById('shareOverlay');
-            document.getElementById('shareTitle').textContent = `Share links · ${data.slug}`;
-            const pub = data.publicDisplayUrl
-                ? '<div class="share-section first">Over the internet (works on mobile data)</div>' +
-                  item('Display', 'For a screen: shows the timer only.', data.publicDisplayUrl, data.publicDisplayQr, 'publicDisplay') +
-                  item('Control', 'For another operator: anyone with it can run this room.', data.publicControlUrl, data.publicControlQr, 'publicControl') +
-                  (data.publicViewUrl ? item('View', 'For a client: sees everything, can change nothing.', data.publicViewUrl, data.publicViewQr, 'publicView') : '') +
-                  '<div class="share-section">On the show network</div>'
-                : '';
-            document.getElementById('shareBody').innerHTML = pub +
-                item('Display', 'For a screen: shows the timer only.', data.displayUrl, data.displayQr, 'display') +
-                item('Control', 'For another operator: anyone with it can run this room.', data.controlUrl, data.controlQr, 'control') +
-                (data.viewUrl ? item('View', 'For a client: sees everything, can change nothing.', data.viewUrl, data.viewQr, 'view') : '');
-            overlay.style.display = 'flex';
-            document.getElementById('shareBox').focus();
         }
         let shareLinksData = null;
         function closeShareLinks() { document.getElementById('shareOverlay').style.display = 'none'; }
