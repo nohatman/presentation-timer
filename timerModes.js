@@ -79,6 +79,16 @@ function setDuration(state, ms, nowMs) {
   return syncStoppedDuration(state, nowMs);
 }
 
+// A preset (Companion's "30 MIN"): like the control page's, it sets the Duration
+// for the next Start/Reset and never changes a run in progress. Stopped: the
+// display shows it straight away, as before.
+function stageDuration(state, ms, nowMs) {
+  if (state.mode === 'stopped') return setDuration(state, ms, nowMs);
+  state.configDurationMs = Math.max(0, Math.floor(ms));
+  state.timerMode = 'duration'; // an End-at run still finishes at its target (runEndAtMs); Reset/Start use this
+  return state;
+}
+
 // Config from updateSettings / startTimer. Recognised fields:
 //   timerMode, endAtTarget, endAtTzOffsetMin, durationMs
 // Mode resolution: explicit timerMode wins; otherwise an explicit durationMs
@@ -263,4 +273,5 @@ module.exports = {
   nudge,
   loadRundownItem,
   setSpeed,
+  stageDuration,
 };

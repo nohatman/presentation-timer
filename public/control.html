@@ -2184,10 +2184,11 @@
                 what = s.endAtTarget ? `End at ${s.endAtTarget}` : 'End at (no time applied)';
             } else {
                 // The run's length while live (nudges included), else the configured
-                // Duration. A nudged run says what the setting is: Reset goes back to it.
+                // Duration. When they differ (a nudge, or a preset from Companion) it
+                // says what Reset goes to.
                 const setting = s.configDurationMs !== undefined ? s.configDurationMs : s.durationMs;
                 what = `Duration ${fmtDurationMs(run ? s.durationMs : setting)}`;
-                if (run && s.durationMs !== setting) note = `nudged from ${fmtDurationMs(setting)}`;
+                if (run && s.durationMs !== setting) note = `Reset goes to ${fmtDurationMs(setting)}`;
             }
             el.innerHTML = `<span class="setup-live-tag ${run ? s.mode : ''}">${tag}</span><span class="setup-live-value">${what}</span>`
                 + (note ? `<span class="setup-new-note">${note}</span>` : '');

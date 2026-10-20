@@ -139,3 +139,46 @@ test('the asker can cancel, and without the setting Take over is instant', async
   await sleep(150);
   assert.ok(inControl(b), 'instant when the setting is off');
 });
+
+test('Companion sees who is in control and a waiting request, and can answer it', async () => {
+  const { a, b } = await roomWithAsk('Companion room');
+  const rest = (method, p, body) => fetch(`${BASE_URL}/api/rooms/${encodeURIComponent('Companion room')}${p}`, {
+    method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` }, body: body ? JSON.stringify(body) : undefined,
+  }).then((r) => r.json());
+
+  let c = await rest('GET', '/companion');
+  assert.equal(c.controller, 'A');
+  assert.equal(c.takeOverRequest, null);
+
+  const asked = once(a, 'takeOverRequest');
+  b.emit('requestControl');
+  await asked;
+  c = await rest('GET', '/companion');
+  assert.equal(c.takeOverRequest.requesterName, 'B');
+  assert.ok(c.takeOverRequest.secondsLeft >= 0);
+
+  const result = once(b, 'takeOverResult');
+  const ended = once(a, 'takeOverRequestEnded');
+  assert.ok((await rest('POST', '/takeover', { allow: false })).ok);
+  assert.equal((await result).result, 'refused');
+  assert.equal((await ended).result, 'refused', 'the asked panel closes its Allow / Refuse');
+  assert.equal((await rest('POST', '/takeover', { allow: true })).ok, false, 'nothing left to answer');
+  assert.ok(inControl(a));
+});
+
+test('a Companion duration preset never changes a running timer', async () => {
+  const { a } = await roomWithAsk('Preset room');
+  const rest = (method, p, body) => fetch(`${BASE_URL}/api/rooms/${encodeURIComponent('Preset room')}${p}`, {
+    method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` }, body: body ? JSON.stringify(body) : undefined,
+  }).then((r) => r.json());
+  await rest('POST', '/set-duration', { durationMs: 20 * 60000 });
+  assert.equal((await rest('GET', '/companion')).configDurationMs, 20 * 60000);
+  await rest('POST', '/start');
+  await rest('POST', '/set-duration', { durationMs: 30 * 60000 });
+  const c = await rest('GET', '/companion');
+  assert.equal(c.configDurationMs, 30 * 60000, 'the setting changes');
+  assert.ok(c.remainingMs <= 20 * 60000 && c.remainingMs > 19 * 60000, 'the run keeps its 20 minutes');
+  await rest('POST', '/reset');
+  assert.equal((await rest('GET', '/companion')).remainingMs, 30 * 60000, 'Reset goes to the new setting');
+  a.close();
+});

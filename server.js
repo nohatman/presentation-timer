@@ -477,7 +477,7 @@ io.on('connection', (socket) => {
         if (pending.requesterId !== socket.id) socket.emit('takeOverResult', { result: 'busy', holderName: holder.deviceName || null });
         return;
       }
-      const request = { id: crypto.randomBytes(6).toString('hex'), requesterId: socket.id, holderId: holder.id, timer: null };
+      const request = { id: crypto.randomBytes(6).toString('hex'), requesterId: socket.id, holderId: holder.id, timer: null, expiresAt: Date.now() + TAKE_OVER_ASK_MS };
       request.timer = setTimeout(() => endTakeOverRequest(roomId, 'timeout'), TAKE_OVER_ASK_MS);
       takeOverRequests.set(roomId, request);
       holder.emit('takeOverRequest', { id: request.id, requesterName: socket.deviceName || null, seconds: TAKE_OVER_ASK_MS / 1000 });
@@ -1755,6 +1755,8 @@ app.get('/api/rooms/:roomId/companion', ...roomAuth, (req, res) => {
     timerOnStart:  !!s.timerOnStart,
     messageMode:   s.messageMode || 'none',
     speed:         s.speed || 1,
+    configDurationMs: Number.isFinite(s.configDurationMs) ? s.configDurationMs : s.durationMs,
+    ...companionControlInfo(req.roomId),
     // When the timer reaches 0:00 (epoch ms): running = the real finish; paused or
     // stopped = "if started/resumed now". null when counting up or already past 0:00.
     // Companion shows it in its own PC's time zone.
@@ -1762,6 +1764,29 @@ app.get('/api/rooms/:roomId/companion', ...roomAuth, (req, res) => {
       : (s.mode === 'running' && Number.isFinite(s.runEndAtMs)) ? Math.round(s.runEndAtMs)
       : Math.round(Date.now() + Math.max(0, remainingMs) / (s.speed || 1)),
   });
+});
+
+// Who is in control, and any "Ask before handing over" request waiting on them,
+// for Companion's IN CONTROL key.
+function companionControlInfo(roomId) {
+  const activeId = roomControllers.get(roomId);
+  const active = activeId && io.sockets.sockets.get(activeId);
+  const reserved = roomControllerPanels.get(roomId);
+  const controller = (active && (active.deviceName || 'Unnamed panel')) || (reserved && controllerGraceTimers.has(roomId) && reserved.name) || null;
+  const req = takeOverRequests.get(roomId);
+  const requester = req && io.sockets.sockets.get(req.requesterId);
+  return {
+    controller,
+    takeOverRequest: req ? { requesterName: (requester && requester.deviceName) || 'Another device', secondsLeft: Math.max(0, Math.ceil((req.expiresAt - Date.now()) / 1000)) } : null,
+  };
+}
+
+// POST answer a waiting "Ask before handing over" request from Companion, for
+// the operator in control. Body: { allow: boolean }
+app.post('/api/rooms/:roomId/takeover', ...roomAuth, (req, res) => {
+  if (!takeOverRequests.get(req.roomId)) return res.json({ ok: false, error: 'Nobody is asking for control' });
+  endTakeOverRequest(req.roomId, req.body && req.body.allow ? 'allowed' : 'refused');
+  res.json({ ok: true, roomId: req.params.roomId });
 });
 
 // GET room state (read-only)
@@ -1868,7 +1893,8 @@ app.post('/api/rooms/:roomId/set-duration', ...roomAuth, (req, res) => {
 
   const { roomId } = req;
   const timerState = req.timerState;
-  timerModes.setDuration(timerState, durationMs, Date.now());
+  // Like a control-page preset: never changes a run in progress (Reset/Start use it).
+  timerModes.stageDuration(timerState, durationMs, Date.now());
 
   emitState(roomId, timerState);
   scheduleSave();
