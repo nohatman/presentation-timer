@@ -2951,11 +2951,14 @@
             // Sync rundown state — only re-render when data actually changed,
             // and never while an input inside the rundown list has focus (would
             // destroy the cursor position) or while a drag is in progress.
-            const incomingRundownHash = JSON.stringify([state.rundown, state.rundownIndex]);
+            const incomingRundownHash = JSON.stringify([state.rundown, state.rundownIndex, state.rundownSelected]);
             if (incomingRundownHash !== lastRundownHash) {
                 lastRundownHash = incomingRundownHash;
                 if (state.rundown !== undefined) rundownItems = state.rundown;
-                if (state.rundownIndex !== undefined) currentRundownIndex = state.rundownIndex;
+                // The selection is the room's (shared with other control pages and
+                // Companion's Prev / Next); older servers only know the live item.
+                if (Number.isInteger(state.rundownSelected) && state.rundownSelected >= 0) currentRundownIndex = state.rundownSelected;
+                else if (state.rundownIndex !== undefined) currentRundownIndex = state.rundownIndex;
                 if (!rundownHasFocus() && !isRundownDragging()) {
                     renderRundownList();
                 }
@@ -3943,7 +3946,14 @@
             if (rundownEditMode && event.target.closest('input')) return;
             // All other clicks: select the row (no auto-load — use Take or Enter)
             currentRundownIndex = idx;
+            shareRundownSelection();
             renderRundownList();
+        }
+
+        // The selection belongs to the room: other control pages and Companion's
+        // keys follow it. Only the panel in control moves it for everyone.
+        function shareRundownSelection() {
+            if (isActiveController && currentRundownIndex >= 0) socket.emit('selectRundown', { index: currentRundownIndex });
         }
 
         function navigateRundown(dir) {
@@ -3955,6 +3965,7 @@
                 if (next < 0 || next >= rundownItems.length) return;
                 currentRundownIndex = next;
             }
+            shareRundownSelection();
             renderRundownList();
             const rows = document.querySelectorAll('#rundownList > div');
             if (rows[currentRundownIndex]) rows[currentRundownIndex].scrollIntoView({ block: 'nearest' });

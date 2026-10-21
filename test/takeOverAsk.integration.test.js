@@ -213,3 +213,26 @@ test('Start at: armed from a control page or Companion; starting by hand cancels
   assert.equal((await rest('POST', '/schedule', { startAt: '99:99' })).ok, false);
   a.close();
 });
+
+test('running order: one selection for the room; Take moves it on', async () => {
+  const { a } = await roomWithAsk('Selection room');
+  const rest = (method, p, body) => fetch(`${BASE_URL}/api/rooms/${encodeURIComponent('Selection room')}${p}`, {
+    method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` }, body: body ? JSON.stringify(body) : undefined,
+  }).then((r) => r.json());
+  a.emit('setRundown', { items: [{ name: 'One', durationMs: 60000 }, { name: 'Two', durationMs: 60000 }, { name: 'Three', durationMs: 60000 }], resetIndex: true });
+  await sleep(150);
+  assert.equal((await rest('POST', '/rundown/select', { step: 1 })).rundownSelected, 0, 'nothing selected yet: Next picks the first');
+  assert.equal((await rest('POST', '/rundown/select', { step: 1 })).rundownSelected, 1);
+  const seen = new Promise((resolve) => a.on('timerState', (s) => { if (s.rundownSelected === 2) resolve(s); }));
+  await rest('POST', '/rundown/select', { index: 2 });
+  assert.equal((await seen).rundownSelected, 2, 'a control page sees Companion\'s selection');
+  a.emit('selectRundown', { index: 0 });
+  await sleep(150);
+  assert.equal((await rest('GET', '/companion')).rundownSelected, 0, 'and Companion sees the page\'s');
+  await rest('POST', '/rundown/goto', { index: 0 });
+  const c = await rest('GET', '/companion');
+  assert.equal(c.rundownIndex, 0);
+  assert.equal(c.rundownSelected, 1, 'after a Take the selection moves to the next item');
+  assert.equal((await rest('POST', '/rundown/select', { index: 99 })).rundownSelected, 2, 'clamped to the last item');
+  a.close();
+});

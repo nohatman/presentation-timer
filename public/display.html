@@ -930,7 +930,9 @@
             const { mode, showClock } = currentState;
 
             if (showClock) {
-                return 'Time of day';
+                // Start at armed while the clock shows: say what's coming.
+                return currentState.scheduledStartAt && currentState.scheduledStartLabel
+                    ? `Timer starts ${currentState.scheduledStartLabel}` : 'Time of day';
             }
 
             switch (mode) {

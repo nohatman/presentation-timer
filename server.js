@@ -293,6 +293,7 @@ function createDefaultTimerState() {
     timerOnStart: false, // a display showing the clock switches back to the timer on Start
     takeOverAsk: false,  // Take over asks whoever is in control first (see requestControl)
     rundownAutoStart: false, // running order Take also starts the timer (control pages + Companion TAKE)
+    rundownSelected: -1,     // the running-order item Prev/Next/clicks have picked (what Take loads), shared by every control page and Companion
     scheduledStartAt: null,    // "Start at": epoch ms the laptop starts the timer (see timerModes.checkScheduledStart)
     scheduledStartLabel: null, // ... as the operator typed it, 'HH:MM'
     scheduleMissed: null,      // 'HH:MM' of a start that couldn't be made on time (never made late)
@@ -497,6 +498,15 @@ io.on('connection', (socket) => {
     setRoomController(roomId, socket); // also cancels any reservation for a reconnecting controller
     broadcastControllerStatus(roomId);
   });
+  // Running order: select an item (Prev / Next / a click) without loading it.
+  socket.on('selectRundown', (data) => {
+    if (!requireActiveController()) return;
+    const timerState = getRoomState(roomId);
+    if (!timerState || !selectRundownItem(timerState, data && data.index)) return;
+    emitState(roomId, timerState);
+    scheduleSave();
+  });
+
   // "Start at": { startAt: 'HH:MM', tzOffsetMin } -> ack { ok, at }
   socket.on('armStart', (data, ack) => {
     const reply = typeof ack === 'function' ? ack : () => {};
@@ -704,6 +714,7 @@ io.on('connection', (socket) => {
       // Clamp index if items were removed
       timerState.rundownIndex = timerState.rundown.length - 1;
     }
+    if (timerState.rundownSelected >= timerState.rundown.length) timerState.rundownSelected = timerState.rundown.length - 1;
     emitState(roomId, timerState);
     scheduleSave();
   });
@@ -1820,6 +1831,7 @@ app.get('/api/rooms/:roomId/companion', ...roomAuth, (req, res) => {
     countStyle:    countingUp ? 'up' : (s.countUp ? 'downUp' : 'down'),
     timerOnStart:  !!s.timerOnStart,
     rundownAutoStart: !!s.rundownAutoStart,
+    rundownSelected: Number.isInteger(s.rundownSelected) ? s.rundownSelected : -1,
     scheduledStartAt: s.scheduledStartAt || null,
     scheduledStartLabel: s.scheduledStartLabel || null,
     scheduleMissed: s.scheduleMissed || null,
@@ -1851,6 +1863,18 @@ function companionControlInfo(roomId) {
     takeOverRequest: req ? { requesterName: (requester && requester.deviceName) || 'Another device', secondsLeft: Math.max(0, Math.ceil((req.expiresAt - Date.now()) / 1000)) } : null,
   };
 }
+
+// POST select a running-order item without loading it. Body: { index } (0-based)
+// or { step: 1 | -1 } (Next / Prev).
+app.post('/api/rooms/:roomId/rundown/select', ...roomAuth, (req, res) => {
+  const s = req.timerState;
+  const { index, step } = req.body || {};
+  const from = s.rundownSelected >= 0 ? s.rundownSelected : (s.rundownIndex >= 0 ? s.rundownIndex : -1);
+  const target = Number.isInteger(index) ? index : Number.isInteger(step) ? (from < 0 ? 0 : from + step) : null;
+  if (target === null) return res.json({ ok: false, error: 'Send index or step' });
+  if (selectRundownItem(s, target)) { emitState(req.roomId, s); scheduleSave(); }
+  res.json({ ok: true, roomId: req.params.roomId, rundownSelected: s.rundownSelected });
+});
 
 // POST "Start at". Body: { startAt: 'HH:MM' } arms it, { startAt: null } cancels
 // (and clears a "missed" notice). HH:MM is the show's clock: the zone the
@@ -2000,9 +2024,20 @@ app.post('/api/rooms/:roomId/set-duration', ...roomAuth, (req, res) => {
 // REST API — Rundown navigation
 // ============================================
 
+// The selected running-order item (what Take loads). -> true if it changed
+function selectRundownItem(s, index) {
+  const n = (s.rundown || []).length;
+  if (!Number.isInteger(index) || n === 0) return false;
+  const i = Math.max(0, Math.min(n - 1, index));
+  if (i === s.rundownSelected) return false;
+  s.rundownSelected = i;
+  return true;
+}
+
 function loadRundownItem(s, index, autoStart) {
   manualOverride(s);
   timerModes.loadRundownItem(s, index, autoStart, Date.now());
+  s.rundownSelected = Math.min(index + 1, s.rundown.length - 1); // Take, Take, Take walks through the show
 }
 
 // POST /api/rooms/:roomId/rundown/prev — load previous item (stops timer)
