@@ -3855,13 +3855,13 @@
                 return;
             }
             list.innerHTML = rundownItems.map((item, idx) => {
-                // Live (on the display): red, like a tally light and Companion's slot
-                // keys. Selected but not taken yet: blue outline.
+                // Like a vision mixer (and Companion's keys): live (on the display) is
+                // red; selected but not taken yet - the preview - is green.
                 const live = idx === (Number.isInteger(currentState.rundownIndex) ? currentState.rundownIndex : -1);
                 const sel = idx === currentRundownIndex && !live;
                 const rowStyle = `display:flex;gap:6px;align-items:center;padding:8px 10px;margin-bottom:4px;border-radius:var(--radius);cursor:pointer;
-                                  background:${live ? 'rgba(239,75,60,0.16)' : sel ? 'rgba(127,182,230,0.10)' : 'var(--well)'};
-                                  border:1px solid ${live ? 'var(--stop)' : sel ? 'var(--info)' : 'var(--seam)'};
+                                  background:${live ? 'rgba(239,75,60,0.16)' : sel ? 'rgba(63,185,80,0.12)' : 'var(--well)'};
+                                  border:1px solid ${live ? 'var(--stop)' : sel ? 'var(--go)' : 'var(--seam)'};
                                   ${live ? 'border-left:4px solid var(--stop);padding-left:7px;' : ''}`;
                 const liveTag = live ? '<span class="rundown-live-tag">LIVE</span>' : '';
                 if (rundownEditMode && isActiveController) {
