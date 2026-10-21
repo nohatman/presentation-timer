@@ -940,7 +940,9 @@
                     return 'Paused';
                 case 'stopped':
                 default:
-                    return 'Ready';
+                    // Start at armed: the timer is ready and says when it goes.
+                    return currentState.scheduledStartAt && currentState.scheduledStartLabel
+                        ? `Starts ${currentState.scheduledStartLabel}` : 'Ready';
             }
         }
 

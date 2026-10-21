@@ -182,3 +182,34 @@ test('a Companion duration preset never changes a running timer', async () => {
   assert.equal((await rest('GET', '/companion')).remainingMs, 30 * 60000, 'Reset goes to the new setting');
   a.close();
 });
+
+test('Start at: armed from a control page or Companion; starting by hand cancels it', async () => {
+  const { a } = await roomWithAsk('Schedule room');
+  const rest = (method, p, body) => fetch(`${BASE_URL}/api/rooms/${encodeURIComponent('Schedule room')}${p}`, {
+    method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` }, body: body ? JSON.stringify(body) : undefined,
+  }).then((r) => r.json());
+  const inAnHour = new Date(Date.now() + 3600 * 1000);
+  const hhmm = `${String(inAnHour.getHours()).padStart(2, '0')}:${String(inAnHour.getMinutes()).padStart(2, '0')}`;
+
+  const armed = await new Promise((resolve) => a.emit('armStart', { startAt: hhmm, tzOffsetMin: new Date().getTimezoneOffset() }, resolve));
+  assert.equal(armed.ok, true);
+  let c = await rest('GET', '/companion');
+  assert.equal(c.scheduledStartLabel, hhmm);
+  assert.ok(c.scheduledStartAt > Date.now() + 58 * 60000 && c.scheduledStartAt <= Date.now() + 3600 * 1000);
+  assert.equal(c.mode, 'stopped');
+
+  // a person pressing Start wins: the schedule is cancelled, with a note
+  const state = new Promise((resolve) => a.on('timerState', (s) => { if (s.mode === 'running') resolve(s); }));
+  a.emit('startTimer', {});
+  const s = await state;
+  assert.equal(s.scheduledStartAt, null);
+  assert.match(s.scheduleNote.text, /cancelled/);
+  await rest('POST', '/reset');
+
+  // Companion arms and cancels
+  assert.ok((await rest('POST', '/schedule', { startAt: hhmm })).scheduledStartAt);
+  assert.equal((await rest('GET', '/companion')).scheduledStartLabel, hhmm);
+  assert.equal((await rest('POST', '/schedule', { startAt: null })).scheduledStartAt, null);
+  assert.equal((await rest('POST', '/schedule', { startAt: '99:99' })).ok, false);
+  a.close();
+});

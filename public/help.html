@@ -216,7 +216,7 @@
             <thead><tr><th>Group</th><th>Buttons</th></tr></thead>
             <tbody>
                 <tr><td>Show</td><td>Time + speaker (in the timer colour), Up next, Item 3/8, Ends at, <b>In control</b> (flashes amber when a device asks to take over; press to Refuse) and <b>Allow handover</b></td></tr>
-                <tr><td>Run</td><td>Start / Pause / Resume, Reset, ±30 s, ±1 min, ±5 min, Slower, Speed (shows it; press for normal), Faster</td></tr>
+                <tr><td>Run</td><td>Start / Pause / Resume, Reset, Start at (shows the armed time and countdown, flashes in the last 10 s; press to cancel), Arm 14:30 (edit the time), ±30 s, ±1 min, ±5 min, Slower, Speed (shows it; press for normal), Faster</td></tr>
                 <tr><td>Running order</td><td>Prev, Next and the slots <b>select</b> an item (blue); nothing changes on the display. <b>TAKE</b> loads it (and starts it when <b>Auto-start</b> is on: the same switch as the control page's "Auto-start when taking"), then selects the next one, so TAKE, TAKE, TAKE walks through the show. A quick second press is ignored. The live slot is red, the selected one blue.</td></tr>
                 <tr><td>Display</td><td>Timer, Clock, Wrap up (edit the message), Clear message</td></tr>
                 <tr><td>Setup</td><td>Durations 5–45 min (like the control page's presets: they set the next Start or Reset and never change a running timer), Count down / Down then up / Count up, Back to timer on Start</td></tr>
@@ -264,6 +264,7 @@
             <li><b>How it counts</b> (next to Timer / Clock): <b>Count down</b>; <b>Down, then up</b> (carries on counting the overrun); or <b>Count up</b> (a stopwatch from 0:00).</li>
             <li><b>Display Settings</b> (bottom of the page): warning thresholds, colours (type a hex code or pick), background and chromakey, size, and what the screen shows, including time of day and finish time.</li>
             <li><b>Several control panels:</b> one is in control and the others watch (orange frame). Tap <b>Take over</b> to take control. A panel that drops out keeps its place for 30 minutes.</li>
+            <li><b>Start at:</b> in Timer setup, enter a time and press <b>Arm</b>. The laptop starts the timer at that time even if nobody has a control page open; until then the display shows the timer ready, with "Starts 14:30". Pressing Start, Reset or Take yourself cancels it. If the laptop was off or asleep at that time, the timer is <b>not</b> started late: the control page says the start was missed, for you to decide.</li>
             <li><b>Ask before handing over:</b> under <b>Taking control</b>, tick it and Take over asks whoever is in control to Allow or Refuse. No answer within 15 seconds hands control over anyway, so a phone left in a pocket never blocks the show.</li>
             <li><b>View link for a client:</b> <b>Share links &amp; QR</b> has a View link. It opens this page with everything visible (preview, running order, messages) but nothing can be changed, and it can never take control.</li>
             <li><b>Keyboard:</b> <kbd>Space</kbd> start/pause · <kbd>R</kbd> reset · <kbd>+</kbd> / <kbd>-</kbd> ±1 min (hold Shift for ±5).</li>

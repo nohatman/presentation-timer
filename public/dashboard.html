@@ -581,6 +581,13 @@
         // "cannot be recovered" language - links can be reopened from the
         // room card or regenerated later, and regeneration is always its own
         // separately-confirmed step (never triggered by opening this modal).
+        // "Start at" on a room card: armed, or a start that was missed.
+        function scheduleText(room) {
+            if (room.scheduledStartLabel) return `starts ${escapeHtml(room.scheduledStartLabel)}`;
+            if (room.scheduleMissed) return `missed ${escapeHtml(room.scheduleMissed)} start`;
+            return '';
+        }
+
         function renderRoomLinksModal(title, roomSlug, controlUrl, displayUrl, roomId, room) {
             const r = room || {};
             dashShare = {
@@ -1168,7 +1175,7 @@
                         </div>
                         <div class="well">
                             <span class="timer-display ${timerClass}">${displayTime}</span>
-                            <span class="well-meta">${view.modeText}${room.mode === 'running' ? `<br>ends ${getEndingTime(room.remainingMs)}` : ''}</span>
+                            <span class="well-meta">${view.modeText}${room.mode === 'running' ? `<br>ends ${getEndingTime(room.remainingMs)}` : scheduleText(room) ? `<br>${scheduleText(room)}` : ''}</span>
                         </div>
                         <div class="room-info">
                             <span><b>${room.connections}</b> connected</span>
@@ -1261,7 +1268,7 @@
                     <div class="row-actions"><button onclick="deleteRoom('${id}')" class="key small danger" style="grid-column: 1 / -1;">Delete</button></div>
                 </div>`;
             }
-            const ends = room.mode === 'running' ? `ends ${getEndingTime(room.remainingMs)}` : '';
+            const ends = room.mode === 'running' ? `ends ${getEndingTime(room.remainingMs)}` : scheduleText(room);
             return `<div class="room-row panel room-item ${room.mode}" data-room-id="${id}" ${dragAttrs}>
                 <span class="sel">${selectBox(room, v.isSelected)}</span>
                 ${tallyLamp(room)}
@@ -1289,7 +1296,7 @@
                     <div class="room-actions"><button onclick="deleteRoom('${id}')" class="key small danger">Delete</button></div>
                 </div>`;
             }
-            const ends = room.mode === 'running' ? `ends ${getEndingTime(room.remainingMs)}` : v.modeText;
+            const ends = room.mode === 'running' ? `ends ${getEndingTime(room.remainingMs)}` : scheduleText(room) || v.modeText;
             return `<div class="room-card panel mini room-item ${room.mode}" data-room-id="${id}" ${dragAttrs}>
                 <div class="card-top">
                     ${selectBox(room, v.isSelected)}

@@ -293,6 +293,10 @@ function createDefaultTimerState() {
     timerOnStart: false, // a display showing the clock switches back to the timer on Start
     takeOverAsk: false,  // Take over asks whoever is in control first (see requestControl)
     rundownAutoStart: false, // running order Take also starts the timer (control pages + Companion TAKE)
+    scheduledStartAt: null,    // "Start at": epoch ms the laptop starts the timer (see timerModes.checkScheduledStart)
+    scheduledStartLabel: null, // ... as the operator typed it, 'HH:MM'
+    scheduleMissed: null,      // 'HH:MM' of a start that couldn't be made on time (never made late)
+    scheduleNote: null,        // { text, at }: the last thing a schedule did, for the control page's notice
     displayScale: 1.5, // Display size multiplier (0.5 - 2.0)
     // Display appearance - lets an operator brand/chromakey a shared display
     // link without touching the main timer controls. Hex colors; visibility
@@ -493,6 +497,29 @@ io.on('connection', (socket) => {
     setRoomController(roomId, socket); // also cancels any reservation for a reconnecting controller
     broadcastControllerStatus(roomId);
   });
+  // "Start at": { startAt: 'HH:MM', tzOffsetMin } -> ack { ok, at }
+  socket.on('armStart', (data, ack) => {
+    const reply = typeof ack === 'function' ? ack : () => {};
+    if (!requireActiveController()) return reply({ ok: false });
+    const timerState = getRoomState(roomId);
+    if (!timerState) return reply({ ok: false });
+    const r = timerModes.armScheduledStart(timerState, data || {}, Date.now());
+    if (r.ok) timerState.scheduleNote = null;
+    emitState(roomId, timerState);
+    scheduleSave();
+    reply(r);
+  });
+  socket.on('cancelStart', () => {
+    if (!requireActiveController()) return;
+    const timerState = getRoomState(roomId);
+    if (!timerState) return;
+    timerModes.cancelScheduledStart(timerState);
+    timerState.scheduleMissed = null;
+    timerState.scheduleNote = null;
+    emitState(roomId, timerState);
+    scheduleSave();
+  });
+
   // A control page's time zone (on connect, and every minute).
   socket.on('clientClock', (msg) => {
     if (socket.clientType !== 'control') return;
@@ -533,6 +560,7 @@ io.on('connection', (socket) => {
     data = data || {};
     // Mode/duration/end-at handling (incl. computing the End at run length from
     // the server clock + operator timezone) lives in timerModes.js.
+    manualOverride(timerState);
     timerModes.startTimer(timerState, data, Date.now());
     if (data.speed !== undefined) timerModes.setSpeed(timerState, data.speed, Date.now());
     if (data.amberThresholdMs !== undefined) timerState.amberThresholdMs = data.amberThresholdMs;
@@ -598,6 +626,7 @@ io.on('connection', (socket) => {
     if (!requireActiveController()) return;
     const timerState = getRoomState(roomId);
     if (!timerState) return;
+    manualOverride(timerState);
     timerModes.resetTimer(timerState, Date.now());
     emitState(roomId, timerState);
     scheduleSave();
@@ -822,9 +851,29 @@ function disconnectAllSocketsForClient(clientId) {
   }
 }
 
-// Timer tick - send updates every second for all running timers
+// "Start at": a person starting, resetting or taking an item by hand cancels a
+// waiting schedule (and clears an old "missed" notice) - a person always wins,
+// nothing then starts behind their back.
+function manualOverride(state) {
+  const label = state.scheduledStartLabel;
+  if (timerModes.cancelScheduledStart(state)) state.scheduleNote = { text: `Scheduled ${label} start cancelled: started or reset by hand`, at: Date.now() };
+  state.scheduleMissed = null;
+}
+
+// Timer tick - send updates every second for all running timers, and make (or
+// mark missed) any scheduled start that is due.
 setInterval(() => {
+  const now = Date.now();
   timerRooms.forEach((timerState, roomId) => {
+    const label = timerState.scheduledStartLabel;
+    const fired = timerModes.checkScheduledStart(timerState, now);
+    if (fired) {
+      timerState.scheduleNote = { text: fired === 'started' ? `Started at ${label} as scheduled` : `Missed the ${label} start: not started (the laptop was off or asleep)`, at: now };
+      console.log(`⏰ Room ${roomId}: scheduled ${label} start ${fired}`);
+      emitState(roomId, timerState);
+      scheduleSave();
+      return;
+    }
     if (timerState.mode === 'running') {
       emitState(roomId, timerState);
     }
@@ -1069,6 +1118,8 @@ function summarizeRoom(row, req) {
     controlUrl: links.controlUrl,
     displayUrl: links.displayUrl,
     viewUrl: links.viewUrl || null,
+    scheduledStartLabel: state.scheduledStartAt ? state.scheduledStartLabel : null,
+    scheduleMissed: state.scheduleMissed || null,
     licenceLocked: !licenceAllowsRoom(roomId)
   };
 }
@@ -1343,6 +1394,7 @@ app.post('/api/admin/rooms/:id/start', ...adminRoomAuth, (req, res) => {
   if (timerState.mode === 'running') {
     return res.json({ ok: false, error: 'Timer is already running' });
   }
+  manualOverride(timerState);
   timerModes.startTimer(timerState, {}, Date.now());
   emitState(roomId, timerState);
   scheduleSave();
@@ -1374,6 +1426,7 @@ app.post('/api/admin/rooms/:id/resume', ...adminRoomAuth, (req, res) => {
 
 app.post('/api/admin/rooms/:id/reset', ...adminRoomAuth, (req, res) => {
   const { roomId, timerState, room } = req;
+  manualOverride(timerState);
   timerModes.resetTimer(timerState, Date.now());
   emitState(roomId, timerState);
   scheduleSave();
@@ -1767,6 +1820,9 @@ app.get('/api/rooms/:roomId/companion', ...roomAuth, (req, res) => {
     countStyle:    countingUp ? 'up' : (s.countUp ? 'downUp' : 'down'),
     timerOnStart:  !!s.timerOnStart,
     rundownAutoStart: !!s.rundownAutoStart,
+    scheduledStartAt: s.scheduledStartAt || null,
+    scheduledStartLabel: s.scheduledStartLabel || null,
+    scheduleMissed: s.scheduleMissed || null,
     messageMode:   s.messageMode || 'none',
     speed:         s.speed || 1,
     configDurationMs: Number.isFinite(s.configDurationMs) ? s.configDurationMs : s.durationMs,
@@ -1796,6 +1852,27 @@ function companionControlInfo(roomId) {
   };
 }
 
+// POST "Start at". Body: { startAt: 'HH:MM' } arms it, { startAt: null } cancels
+// (and clears a "missed" notice). HH:MM is the show's clock: the zone the
+// control pages report, else the server's.
+app.post('/api/rooms/:roomId/schedule', ...roomAuth, (req, res) => {
+  const s = req.timerState;
+  const startAt = req.body && req.body.startAt;
+  let result = { ok: true };
+  if (startAt) {
+    const tz = roomShowTz.has(req.roomId) ? roomShowTz.get(req.roomId) : undefined;
+    result = timerModes.armScheduledStart(s, { startAt, tzOffsetMin: tz }, Date.now());
+    if (!result.ok) return res.json({ ok: false, error: 'startAt must be HH:MM' });
+  } else {
+    timerModes.cancelScheduledStart(s);
+    s.scheduleMissed = null;
+  }
+  s.scheduleNote = null;
+  emitState(req.roomId, s);
+  scheduleSave();
+  res.json({ ok: true, roomId: req.params.roomId, scheduledStartAt: s.scheduledStartAt || null });
+});
+
 // POST answer a waiting "Ask before handing over" request from Companion, for
 // the operator in control. Body: { allow: boolean }
 app.post('/api/rooms/:roomId/takeover', ...roomAuth, (req, res) => {
@@ -1822,6 +1899,7 @@ app.post('/api/rooms/:roomId/start', ...roomAuth, (req, res) => {
     return res.json({ ok: false, error: 'Timer is already running' });
   }
 
+  manualOverride(timerState);
   timerModes.startTimer(timerState, {}, Date.now()); // End at rooms start with time-to-target
 
   emitState(roomId, timerState);
@@ -1870,6 +1948,7 @@ app.post('/api/rooms/:roomId/reset', ...roomAuth, (req, res) => {
   const { roomId } = req;
   const timerState = req.timerState;
 
+  manualOverride(timerState);
   timerModes.resetTimer(timerState, Date.now());
 
   emitState(roomId, timerState);
@@ -1922,6 +2001,7 @@ app.post('/api/rooms/:roomId/set-duration', ...roomAuth, (req, res) => {
 // ============================================
 
 function loadRundownItem(s, index, autoStart) {
+  manualOverride(s);
   timerModes.loadRundownItem(s, index, autoStart, Date.now());
 }
 

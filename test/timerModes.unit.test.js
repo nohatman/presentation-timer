@@ -364,3 +364,29 @@ test('setSpeed: mid-run the time shown stays put and only the rate changes', () 
   tm.setSpeed(e, 2, NOW + 10 * MIN);
   assert.equal(e.runEndAtMs, NOW + 10 * MIN + 10 * MIN, 'End at run: 20 timer-minutes left at 2x = 10 real minutes');
 });
+
+test('Scheduled start: starts on time, a late check is "missed" (never started late), cancel clears it', () => {
+  const s = fresh();
+  tm.applyTimerConfig(s, { durationMs: 30 * MIN }, NOW);
+  assert.equal(tm.armScheduledStart(s, { startAt: '14:30', tzOffsetMin: BST }, NOW).ok, true);
+  assert.equal(s.scheduledStartAt, NOW + 30 * MIN, '14:30 BST is 30 min after 13:00 UTC');
+  assert.equal(s.scheduledStartLabel, '14:30');
+  assert.equal(tm.checkScheduledStart(s, NOW + 29 * MIN), null, 'not yet');
+  assert.equal(tm.checkScheduledStart(s, NOW + 30 * MIN + 900), 'started');
+  assert.equal(s.mode, 'running');
+  assert.equal(s.startTime, NOW + 30 * MIN + 900);
+  assert.equal(s.scheduledStartAt, null, 'a schedule fires once');
+
+  const late = fresh();
+  tm.armScheduledStart(late, { startAt: '14:30', tzOffsetMin: BST }, NOW);
+  assert.equal(tm.checkScheduledStart(late, NOW + 38 * MIN), 'missed', 'laptop asleep at 14:30: woke at 14:38');
+  assert.equal(late.mode, 'stopped', 'never started late');
+  assert.equal(late.scheduleMissed, '14:30');
+
+  const c = fresh();
+  tm.armScheduledStart(c, { startAt: '13:00', tzOffsetMin: BST }, NOW); // 13:00 BST already passed today
+  assert.equal(c.scheduledStartAt, NOW + 23 * 60 * MIN, 'a time already gone means tomorrow');
+  assert.equal(tm.cancelScheduledStart(c), true);
+  assert.equal(tm.checkScheduledStart(c, NOW + 24 * 60 * MIN), null);
+  assert.equal(tm.armScheduledStart(c, { startAt: '25:99' }, NOW).ok, false);
+});

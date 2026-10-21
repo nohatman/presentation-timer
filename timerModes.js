@@ -222,6 +222,45 @@ function nudge(state, deltaMs, nowMs) {
   return state;
 }
 
+// Scheduled start ("Start at 14:30"). Armed: the laptop starts the timer at
+// that moment (see checkScheduledStart, called every second), whether or not
+// anyone has a control page open. Until then the room is simply ready, the
+// display saying "Starts 14:30". A start the server could not make on time (it
+// was off or the laptop asleep) is NOT made late: it becomes "missed" for a
+// person to decide. HH:MM is the operator's wall clock, as for End at; a time
+// at or before now means tomorrow.
+const SCHEDULE_GRACE_MS = 10000; // a tick this late still counts as on time
+
+function armScheduledStart(state, data, nowMs) {
+  const t = parseEndAt(data && data.startAt);
+  if (!t) return { ok: false };
+  const tz = Number.isFinite(data.tzOffsetMin) ? data.tzOffsetMin : state.endAtTzOffsetMin;
+  const inMs = endAtDurationMs(t.text, tz, nowMs);
+  if (inMs === null) return { ok: false };
+  state.scheduledStartAt = nowMs + inMs;
+  state.scheduledStartLabel = t.text;
+  state.scheduleMissed = null;
+  return { ok: true, at: state.scheduledStartAt };
+}
+
+function cancelScheduledStart(state) {
+  const had = !!state.scheduledStartAt;
+  state.scheduledStartAt = null;
+  state.scheduledStartLabel = null;
+  return had;
+}
+
+// -> 'started' | 'missed' | null
+function checkScheduledStart(state, nowMs) {
+  if (!state.scheduledStartAt || nowMs < state.scheduledStartAt) return null;
+  const label = state.scheduledStartLabel;
+  const late = nowMs - state.scheduledStartAt > SCHEDULE_GRACE_MS;
+  cancelScheduledStart(state);
+  if (late || state.mode !== 'stopped') { state.scheduleMissed = label; return 'missed'; }
+  startTimer(state, {}, nowMs);
+  return 'started';
+}
+
 // Timer speed. Mid-run, the time shown stays exactly where it is and only the
 // rate changes from now on (elapsed is (wall - start - pauses) * speed, so the
 // pause total is rebased; without that a speed change jumped the timer). An End-at
@@ -274,4 +313,8 @@ module.exports = {
   loadRundownItem,
   setSpeed,
   stageDuration,
+  armScheduledStart,
+  cancelScheduledStart,
+  checkScheduledStart,
+  SCHEDULE_GRACE_MS,
 };

@@ -110,6 +110,15 @@
         body.client-view #deviceNameBtn,
         body.client-view #dashboardLink, body.client-view #dashboardLinkSep,
         body.client-view #shareLinksLink, body.client-view #shareLinksSep { display: none !important; }
+        .start-at { margin-top: 10px; }
+        .start-at-row { display: flex; align-items: center; gap: 8px; }
+        .start-at-label { color: var(--ink-2); font-size: 0.95rem; }
+        .start-at-row input { width: 130px; height: 40px; box-sizing: border-box; font-family: var(--digits); font-weight: 700; font-size: 1.1rem; }
+        .start-at-row .button, .start-at-armed .button, .start-at-missed .button { min-height: 40px; padding: 6px 14px; }
+        .start-at-armed, .start-at-missed { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 6px 6px 10px; border-radius: var(--radius); font-weight: 700; }
+        .start-at-armed { border: 1px solid var(--warn); background: rgba(240,160,32,0.12); color: var(--warn); }
+        .start-at-missed { border: 1px solid var(--stop); background: rgba(239,75,60,0.12); color: #ff8a80; }
+        .start-at-armed[hidden], .start-at-missed[hidden], .start-at-row[hidden] { display: none; }
         .rundown-live-tag { flex-shrink: 0; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; padding: 1px 6px; border-radius: 2px; background: var(--stop-key); color: #fff; }
         label.checkbox-label.timer-on-start { margin: 8px 0 0; padding: 0; border: 0; background: none; font-size: 0.95rem; color: var(--ink-2); min-height: 32px; }
         label.checkbox-label input[type="checkbox"] {
@@ -1655,6 +1664,17 @@
                     <div id="timerSetupLive" class="setup-live"></div>
                     <div id="durationDraftHint" class="setup-hint" role="status" hidden></div>
                     <div id="endAtDraftHint" class="setup-hint" role="status" hidden></div>
+                    <!-- Start at: the laptop starts the timer at a clock time (see
+                         timerModes.armScheduledStart / checkScheduledStart). -->
+                    <div class="start-at">
+                        <div class="start-at-row" id="startAtSetRow">
+                            <span class="start-at-label">Start at</span>
+                            <input type="time" id="startAtTime" aria-label="Start the timer at (clock time)">
+                            <button type="button" class="button secondary" id="startAtArmBtn" onclick="armStartAt()">Arm</button>
+                        </div>
+                        <div class="start-at-armed" id="startAtArmed" role="status" hidden><span id="startAtArmedText"></span><button type="button" class="button secondary" onclick="cancelStartAt()">Cancel</button></div>
+                        <div class="start-at-missed" id="startAtMissed" role="status" hidden><span id="startAtMissedText"></span><button type="button" class="button secondary" onclick="cancelStartAt()">Dismiss</button></div>
+                    </div>
                 </div>
                 <div>
                     <div class="setup-heading">Display shows</div>
@@ -2869,6 +2889,8 @@
 
             if (typeof state.serverNow === 'number') serverClockOffsetMs = state.serverNow - Date.now();
             currentState = state;
+            renderStartAt();
+            noticeSchedule(state);
             updateStatus();
             updateEndsAt();
             updatePlayPauseButton();
@@ -3213,6 +3235,44 @@
             closeTakeOverModal();
         }
 
+        // ---- Start at (scheduled start) ----
+        function fmtCountdown(ms) {
+            const t = Math.max(0, Math.ceil(ms / 1000));
+            const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), sec = t % 60;
+            return h ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}` : `${m}:${String(sec).padStart(2, '0')}`;
+        }
+        function renderStartAt() {
+            const s = currentState || {};
+            const armed = !!s.scheduledStartAt;
+            const missed = !armed && !!s.scheduleMissed;
+            document.getElementById('startAtSetRow').hidden = armed || missed;
+            document.getElementById('startAtArmed').hidden = !armed;
+            document.getElementById('startAtMissed').hidden = !missed;
+            if (armed) {
+                const left = s.scheduledStartAt - serverNowMs();
+                const tomorrow = left > 0 && new Date(Date.now() + left).getDate() !== new Date().getDate() ? ' tomorrow' : '';
+                document.getElementById('startAtArmedText').textContent = `ARMED · starts ${s.scheduledStartLabel}${tomorrow} (in ${fmtCountdown(left)})`;
+            }
+            if (missed) document.getElementById('startAtMissedText').textContent = `Missed the ${s.scheduleMissed} start: not started (the laptop was off or asleep)`;
+        }
+        function armStartAt() {
+            const v = document.getElementById('startAtTime').value;
+            if (!/^\d{2}:\d{2}$/.test(v)) { uiNotice('Start at', 'Enter the time to start, e.g. 14:30.'); return; }
+            socket.emit('armStart', { startAt: v, tzOffsetMin: new Date().getTimezoneOffset() }, (res) => {
+                if (!res || !res.ok) uiNotice('Start at', "Couldn't arm the start. Check the time and that this device is in control.");
+            });
+        }
+        function cancelStartAt() { socket.emit('cancelStart'); }
+        // What a schedule just did (started, missed, cancelled by hand): a short notice.
+        let lastScheduleNoteAt = null;
+        function noticeSchedule(state) {
+            const note = state.scheduleNote;
+            if (!note || note.at === lastScheduleNoteAt) return;
+            const fresh = lastScheduleNoteAt !== null || serverNowMs() - note.at < 15000; // not an old one on page load
+            lastScheduleNoteAt = note.at;
+            if (fresh) showControlNotice(note.text);
+        }
+
         // ---- "Ask before handing over" (Taking control) ----
         // Asking: the view-only bar counts down and its Take over key becomes
         // Cancel. Asked: the panel in control gets Allow / Refuse.
@@ -3310,7 +3370,9 @@
                 // Stopped — show expected end if resumed from full duration
                 const durationMs = (s.durationMs || 0);
                 if (durationMs > 0) {
-                    wallEndMs = Date.now() + durationMs / speed;
+                    // Start at armed: it ends a run's length after the scheduled start.
+                    const from = s.scheduledStartAt ? s.scheduledStartAt - serverClockOffsetMs : Date.now();
+                    wallEndMs = from + durationMs / speed;
                 }
             }
 
@@ -3328,7 +3390,7 @@
             const mm = String(wallEnd.getMinutes()).padStart(2,'0');
             const ss = String(wallEnd.getSeconds()).padStart(2,'0');
 
-            const prefix = s.mode === 'stopped' ? 'Would end at'
+            const prefix = s.mode === 'stopped' ? (s.scheduledStartAt ? 'Will end at' : 'Would end at')
                          : s.mode === 'paused'  ? 'If resumed, ends at'
                          :                        'Ends at';
 
@@ -4479,6 +4541,7 @@
         // Update end time display every second to keep it current
         setInterval(() => {
             updateEndTimeCalc();
+            renderStartAt();
         }, 1000);
 
         // Save settings to localStorage
