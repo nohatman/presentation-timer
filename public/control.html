@@ -4541,6 +4541,7 @@
         // Update end time display every second to keep it current
         setInterval(() => {
             updateEndTimeCalc();
+            updateEndsAt(); // a stopped timer's "Would end at" moves on with the clock
             renderStartAt();
         }, 1000);
 
