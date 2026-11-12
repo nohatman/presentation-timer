@@ -236,7 +236,8 @@
             0%, 50% { opacity: 1; }
             51%, 100% { opacity: 0.3; }
         }
-        /* Flash button on the control page: on/off, once a second, until stopped. */
+        /* Flash button on the control page: the timer (never the clock) on/off,
+           once a second, until stopped. */
         /* !important: wins over the red pulse, flash at zero and no-red-pulse. */
         .flash-demand {
             animation: flashDemand 1s steps(1) infinite !important;
@@ -885,7 +886,6 @@
             });
             document.getElementById('clockDisplayText').textContent = timeStr;
             fitToWidth('clock', clockEl, document.getElementById('clockDisplayText'), baseClockFontSize);
-            clockEl.classList.toggle('flash-demand', !!(currentState && currentState.flashing));
         }
 
         // #rrggbb (or #rgb) -> "rgba(r, g, b, alpha)"; null if not a valid hex color.

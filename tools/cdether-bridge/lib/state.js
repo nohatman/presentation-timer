@@ -89,9 +89,10 @@ function deriveFrame(s, nowMs, clockOffsetMs = 0, opts = {}) {
   const nowCorrected = nowMs + (clockOffsetMs || 0);
 
   // The operator's Flash button (control page): every other second is the
-  // OFF frame, whatever is showing - timer or clock - until it's pressed
-  // again. Only the rig-proven OFF frame, nothing new on the wire.
-  if (s.flashing && Math.floor(nowCorrected / 1000) % 2 === 1) return off('flash');
+  // OFF frame while the timer is showing (never the clock), until it's
+  // pressed again. Only the rig-proven OFF frame, nothing new on the wire.
+  const showingClock = s.showClock || s.outputMode === 'clock';
+  if (s.flashing && !showingClock && Math.floor(nowCorrected / 1000) % 2 === 1) return off('flash');
 
   // Time-of-day / clock mode (P1.1, rig-proven): ordinary four-digit BCD
   // frames already render arbitrary values correctly (12:00 / 23:59 / 00:00 /

@@ -206,8 +206,9 @@ test('Flash button: alternates the normal frame with OFF, once a second', () => 
   assert.deepEqual(mss(deriveFrame(running, NOW + 2000, 0, {})).slice(2), ['green']);
 });
 
-test('Flash button: flashes the clock and an idle timer too, not when switched off', () => {
-  assert.equal(deriveFrame(state({ showClock: true, flashing: true }), NOW + 1000, 0, {}).colour, 'off');
+test('Flash button: flashes an idle timer too, never the clock, not when switched off', () => {
+  assert.equal(deriveFrame(state({ showClock: true, flashing: true }), NOW + 1000, 0, {}).colour, 'green');
+  assert.equal(deriveFrame(state({ outputMode: 'clock', flashing: true }), NOW + 1000, 0, {}).colour, 'green');
   assert.equal(deriveFrame(state({ flashing: true }), NOW + 1000, 0, {}).colour, 'off');
   assert.equal(deriveFrame(state({ showClock: true }), NOW + 1000, 0, {}).colour, 'green');
   assert.equal(deriveFrame(state({ flashing: false }), NOW + 1000, 0, {}).colour, 'green');
