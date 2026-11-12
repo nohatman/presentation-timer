@@ -62,11 +62,18 @@ test('finished countdown -> 00:00 red', () => {
   assert.deepEqual(mss(deriveFrame(s, NOW, 0, {})), [0, 0, 'red']);
 });
 
-test('Down, then up: past zero the overrun counts up from 00:00 in red', () => {
+test('Down, then up: past zero the overrun counts up in red with a minus sign', () => {
   const s = state({ mode: 'running', countUp: true, durationMs: 60000, startTime: NOW - 120000 });
   const f = deriveFrame(s, NOW, 0, {});
   assert.deepEqual(mss(f), [1, 0, 'red']);
+  assert.equal(f.minus, true);
   assert.equal(f.reason, 'overrun');
+  // 9:59 over still has the minus; 10:00 over and beyond carry on without it
+  const at = (overSec) => deriveFrame(state({ mode: 'running', countUp: true, durationMs: 60000, startTime: NOW - 60000 - overSec * 1000 }), NOW, 0, {});
+  assert.deepEqual([at(599).minutes, at(599).seconds, at(599).minus], [9, 59, true]);
+  assert.deepEqual([at(600).minutes, at(600).seconds, at(600).minus], [10, 0, false]);
+  // a plain finished countdown (not "Down, then up") never shows a minus
+  assert.ok(!deriveFrame(state({ mode: 'running', durationMs: 60000, startTime: NOW - 90000 }), NOW, 0, {}).minus);
   // 7.5 s over -> 00:07 (floored, like the display)
   assert.deepEqual(mss(deriveFrame(state({ mode: 'running', countUp: true, durationMs: 60000, startTime: NOW - 67500 }), NOW, 0, {})), [0, 7, 'red']);
   // paused in the overrun holds the value

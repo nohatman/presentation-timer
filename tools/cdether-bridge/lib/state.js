@@ -131,12 +131,14 @@ function deriveFrame(s, nowMs, clockOffsetMs = 0, opts = {}) {
     return { ...shown, colour, finished: false, remainingMs, reason: idle ? 'idle-duration' : 'count-up' };
   }
 
-  // "Down, then up": past zero, count the overrun up from 00:00 in red, like
-  // the display (which also shows it in its overrun colour). No minus sign:
-  // that encoding is still unproven on the hardware (P1.1).
+  // "Down, then up": past zero, count the overrun up in red with a minus sign
+  // (-0:01, -0:02 ...), like the display. The minus takes the left digit
+  // (rig-proven 2026-11-12, see lib/cdether.js), so from 10 minutes over it
+  // carries on as plain 10:00, 10:01 ... in red, then H:MM past 99:59.
   if (finished && s.countUp) {
     const shown = clampToDisplay(overMs);
-    return { ...shown, colour: 'red', finished: true, remainingMs: 0, overMs, reason: 'overrun' };
+    const minus = !shown.hoursMode && shown.minutes <= 9;
+    return { ...shown, minus, colour: 'red', finished: true, remainingMs: 0, overMs, reason: 'overrun' };
   }
 
   // Stopped at zero, with flashing on: every other second is the OFF frame.

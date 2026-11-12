@@ -87,3 +87,13 @@ test('UdpSender rejects ready on an unusable bind address', async () => {
   const sender = new UdpSender({ address: '127.0.0.1', port: 0, bindAddress: '203.0.113.7' }); // TEST-NET-3, not local
   await assert.rejects(sender.ready);
 });
+
+// Rig-proven 2026-11-12: nibble 0xA in the left digit shows a minus sign.
+test('minus: 0xA in the left digit (-1:23 green, -0:05 red, as proven on the rig)', () => {
+  assert.deepEqual([...encodeFrame({ minutes: 1, seconds: 23, colour: 'green', minus: true })], [0x1a, 0x32, 0x01]);
+  assert.deepEqual([...encodeFrame({ minutes: 0, seconds: 5, colour: 'red', minus: true })], [0x0a, 0x50, 0x02]);
+  assert.deepEqual([...encodeFrame({ minutes: 9, seconds: 59, colour: 'red', minus: true })], [0x9a, 0x95, 0x02]);
+  // only one digit for minutes after the minus: clamps to -9:59
+  assert.deepEqual([...encodeFrame({ minutes: 12, seconds: 0, colour: 'red', minus: true })], [0x9a, 0x95, 0x02]);
+  assert.equal(describeFrame(encodeFrame({ minutes: 0, seconds: 5, colour: 'red', minus: true })), '[0a 50 02] -0:05 red');
+});

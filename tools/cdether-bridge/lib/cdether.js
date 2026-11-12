@@ -36,13 +36,18 @@ const STATE_NAME = { 0x01: 'green', 0x02: 'red', 0x03: 'amber', 0x04: 'off' };
 // Four BCD digits can only represent 00:00 .. 99:59.
 const MAX_MINUTES = 99;
 const MAX_SECONDS = 59;
+// A minus sign in the left digit: BCD nibble 0xA there shows "-" (rig-proven
+// 2026-11-12: 1a 32 01 -> -1:23 green, 0a 50 02 -> -0:05 red). It takes the
+// tens-of-minutes digit, so a minus value can only go to -9:59.
+const MINUS_NIBBLE = 0x0a;
+const MAX_MINUS_MINUTES = 9;
 
 /**
  * Encode one CDEther frame.
  * @param {{minutes?:number, seconds?:number, colour?:'green'|'red'|'amber'|'off'}} frame
  * @returns {Buffer} exactly 3 bytes
  */
-function encodeFrame({ minutes = 0, seconds = 0, colour = 'green' } = {}) {
+function encodeFrame({ minutes = 0, seconds = 0, colour = 'green', minus = false } = {}) {
   const stateByte = STATE_BYTE[colour];
   if (stateByte === undefined) {
     throw new Error(`Unknown CDEther colour/state "${colour}" (verified: green|red|amber|off)`);
@@ -58,7 +63,9 @@ function encodeFrame({ minutes = 0, seconds = 0, colour = 'green' } = {}) {
   if (mm > MAX_MINUTES) { mm = MAX_MINUTES; ss = MAX_SECONDS; }
   if (ss > MAX_SECONDS) ss = MAX_SECONDS;
 
-  const byte1 = ((mm % 10) << 4) | Math.floor(mm / 10);
+  if (minus && mm > MAX_MINUS_MINUTES) { mm = MAX_MINUS_MINUTES; ss = MAX_SECONDS; }
+
+  const byte1 = ((mm % 10) << 4) | (minus ? MINUS_NIBBLE : Math.floor(mm / 10));
   const byte2 = ((ss % 10) << 4) | Math.floor(ss / 10);
 
   return Buffer.from([byte1, byte2, stateByte]);
@@ -70,9 +77,12 @@ const OFF_FRAME = encodeFrame({ minutes: 0, seconds: 0, colour: 'off' });
 /** Human-readable one-liner for logs: "[21 43 01] 12:34 green". */
 function describeFrame(buf) {
   const hex = [...buf].map((b) => b.toString(16).padStart(2, '0')).join(' ');
-  const mm = (buf[0] & 0x0f) * 10 + (buf[0] >> 4);
   const ss = (buf[1] & 0x0f) * 10 + (buf[1] >> 4);
   const state = STATE_NAME[buf[2]] || `0x${buf[2].toString(16).padStart(2, '0')}`;
+  if ((buf[0] & 0x0f) === MINUS_NIBBLE) {
+    return `[${hex}] -${buf[0] >> 4}:${String(ss).padStart(2, '0')} ${state}`;
+  }
+  const mm = (buf[0] & 0x0f) * 10 + (buf[0] >> 4);
   return `[${hex}] ${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')} ${state}`;
 }
 
