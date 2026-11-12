@@ -2156,6 +2156,8 @@ app.post('/api/rooms/:roomId/message', ...roomAuth, (req, res) => {
 // ============================================
 const STARTED_AT = Date.now();
 const STARTED_BUILD = buildInfo.getBuildInfo(__dirname);
+// The release number people see ("1.2.0"), shown on the laptop's dashboard.
+const APP_VERSION = (() => { try { return require('./package.json').version; } catch { return null; } })();
 const LOCAL_MODE = process.env.FOXY_MODE === 'local'; // set only by the Local Show Server launcher
 
 // ---- Share over the internet ----
@@ -2529,7 +2531,7 @@ app.get('/api/local/status', auth.requireDashboardAuth, requireLocalOperator, as
 // Trial status for the dashboard's banner, and a "Check again" that asks
 // Foxy Timer Online straight away (e.g. after connecting to the internet).
 app.get('/api/local/licence', auth.requireDashboardAuth, requireLocalOperator, (req, res) => {
-  res.json({ ok: true, ...licence.info() });
+  res.json({ ok: true, ...licence.info(), version: APP_VERSION });
 });
 
 app.post('/api/local/licence/check', auth.requireDashboardAuth, requireLocalOperator, async (req, res) => {

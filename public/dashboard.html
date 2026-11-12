@@ -885,13 +885,15 @@
             const warn = document.getElementById('licenceWarning');
             const contact = `<a href="${escapeHtml(lic.onlineUrl)}/#contact" target="_blank" rel="noopener">get in touch</a>`;
             text.classList.toggle('soon', lic.status === 'active' && lic.daysLeft <= 3);
+            const ver = lic.version ? `${lic.version} · ` : ''; // the release number, e.g. "1.2.0 · "
+
             if (!lic.limited) {
-                text.textContent = `Free trial · ${lic.daysLeft} ${lic.daysLeft === 1 ? 'day' : 'days'} left`;
+                text.textContent = `${ver}Free trial · ${lic.daysLeft} ${lic.daysLeft === 1 ? 'day' : 'days'} left`;
                 warn.hidden = true;
                 updateLaptopCollapse();
                 return;
             }
-            text.textContent = 'Free version';
+            text.textContent = `${ver}Free version`;
             let msg;
             if (lic.status === 'expired') {
                 msg = `<b>Your free trial has ended.</b> Foxy Timer keeps working as the free version: ${FREE_VERSION_LIMITS}. To keep using every room, ${contact}.`;

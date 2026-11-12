@@ -555,7 +555,10 @@ function hiveAdapters() {
         name: i.name, address: i.address, broadcast: i.broadcast,
         wireless: /wi-?fi|wireless|wlan/i.test(i.name),
         virtual: /vethernet|virtual|hyper-v|vmware|virtualbox|docker|wsl|loopback|tailscale|zerotier|vpn/i.test(i.name),
-      }));
+      }))
+      // Virtual ports (Windows' own Hyper-V switch, VPNs) never reach a CDEther:
+      // not offered, unless one was picked by hand before.
+      .filter((a) => !a.virtual || a.name === settings.hive.adapter);
   } catch { return []; }
 }
 
@@ -810,6 +813,8 @@ function buildMenu() {
       submenu: [
         { label: 'Foxy Timer help', click: () => { const w = new BrowserWindow({ width: 900, height: 800, icon: ICON, show: !HIDDEN }); wireLinks(w); w.loadURL(`${LOCAL}/help`); } },
         { label: 'foxytimer.com', click: () => shell.openExternal('https://foxytimer.com') },
+        { type: 'separator' },
+        { label: `Foxy Timer ${app.getVersion()}${buildId() ? ` (build ${buildId()})` : ''}`, enabled: false },
       ],
     },
   ];
