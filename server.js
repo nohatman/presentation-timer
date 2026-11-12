@@ -247,7 +247,8 @@ function loadRooms() {
     let count = 0;
     for (const [roomId, state] of loaded.entries()) {
       // Merge with defaults so any new fields added later are present
-      timerRooms.set(roomId, timerModes.normalizeState({ ...createDefaultTimerState(), ...state }));
+      // flashing is on-demand only: a restart never brings back a flashing display.
+      timerRooms.set(roomId, timerModes.normalizeState({ ...createDefaultTimerState(), ...state, flashing: false }));
       count++;
     }
     if (count > 0) console.log(`✅ Loaded ${count} room(s) from database`);
@@ -313,6 +314,7 @@ function createDefaultTimerState() {
     displayGlow: 'full',     // glow round the digits: 'full' (as always) | 'soft' | 'off'
     displayRedPulse: true,   // digits pulse once in the red
     displayZeroFlash: true,  // digits flash at zero
+    flashing: false,         // operator's Flash button: displays flash until it's pressed again (not kept over a restart)
     showSpeakerName: true,
     showUpNext: true,
     showTimeOfDay: false,  // display: "Now 14:32" line under the timer
@@ -673,6 +675,7 @@ io.on('connection', (socket) => {
     if (DISPLAY_GLOWS.includes(data.displayGlow)) timerState.displayGlow = data.displayGlow;
     if (data.displayRedPulse !== undefined) timerState.displayRedPulse = !!data.displayRedPulse;
     if (data.displayZeroFlash !== undefined) timerState.displayZeroFlash = !!data.displayZeroFlash;
+    if (data.flashing !== undefined) timerState.flashing = !!data.flashing;
 
     emitState(roomId, timerState);
     scheduleSave();

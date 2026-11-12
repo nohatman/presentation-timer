@@ -236,6 +236,14 @@
             0%, 50% { opacity: 1; }
             51%, 100% { opacity: 0.3; }
         }
+        /* Flash button on the control page: on/off, once a second, until stopped. */
+        /* !important: wins over the red pulse, flash at zero and no-red-pulse. */
+        .flash-demand {
+            animation: flashDemand 1s steps(1) infinite !important;
+        }
+        @keyframes flashDemand {
+            50% { opacity: 0; }
+        }
         .speaker-name {
             font-size: 7vmin;
             font-weight: 500;
@@ -826,7 +834,9 @@
 
             // Flash at zero (a stopwatch never "finishes"). The .blinking animation
             // does the flashing; updateTimerColor keeps the class across its resets.
+            // The operator's Flash button flashes it any time, harder than at zero.
             timerEl.classList.toggle('blinking', isFinished && !countUp && !countingUp && currentState.displayZeroFlash !== false);
+            timerEl.classList.toggle('flash-demand', !!currentState.flashing);
         }
 
         // "Now 14:32 · Finish 14:55" under the timer, each part optional. Both
@@ -875,6 +885,7 @@
             });
             document.getElementById('clockDisplayText').textContent = timeStr;
             fitToWidth('clock', clockEl, document.getElementById('clockDisplayText'), baseClockFontSize);
+            clockEl.classList.toggle('flash-demand', !!(currentState && currentState.flashing));
         }
 
         // #rrggbb (or #rgb) -> "rgba(r, g, b, alpha)"; null if not a valid hex color.
@@ -891,7 +902,7 @@
 
         function updateTimerColor(element, remainingMs, totalMs, amberThresholdMs, redThresholdMs, isFinished) {
             // Runs every frame: keep .blinking (flash at zero) or its animation restarts and never shows.
-            element.className = element.classList.contains('blinking') ? 'timer-display blinking' : 'timer-display';
+            element.className = 'timer-display' + (element.classList.contains('blinking') ? ' blinking' : '') + (element.classList.contains('flash-demand') ? ' flash-demand' : '');
 
             let stateClass = 'color-normal';
             if (isFinished) {

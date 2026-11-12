@@ -194,3 +194,21 @@ test('speed multiplier is honoured', () => {
   // elapsed = 60000 * 2 = 120000 -> remaining 480000 -> 08:00
   assert.deepEqual(mss(deriveFrame(s, NOW, 0, {})), [8, 0, 'green']);
 });
+
+// NOW is a whole second (1_700_000_000_000), so NOW is an "on" second and
+// NOW + 1000 an "off" second for the on-demand flash.
+test('Flash button: alternates the normal frame with OFF, once a second', () => {
+  const running = state({ mode: 'running', durationMs: 600000, startTime: NOW - 60000, flashing: true });
+  assert.deepEqual(mss(deriveFrame(running, NOW, 0, {})), [9, 0, 'green']);
+  const offSecond = deriveFrame({ ...running, startTime: NOW - 59000 }, NOW + 1000, 0, {});
+  assert.equal(offSecond.colour, 'off');
+  assert.equal(offSecond.reason, 'flash');
+  assert.deepEqual(mss(deriveFrame(running, NOW + 2000, 0, {})).slice(2), ['green']);
+});
+
+test('Flash button: flashes the clock and an idle timer too, not when switched off', () => {
+  assert.equal(deriveFrame(state({ showClock: true, flashing: true }), NOW + 1000, 0, {}).colour, 'off');
+  assert.equal(deriveFrame(state({ flashing: true }), NOW + 1000, 0, {}).colour, 'off');
+  assert.equal(deriveFrame(state({ showClock: true }), NOW + 1000, 0, {}).colour, 'green');
+  assert.equal(deriveFrame(state({ flashing: false }), NOW + 1000, 0, {}).colour, 'green');
+});

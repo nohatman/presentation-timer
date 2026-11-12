@@ -165,3 +165,20 @@ test('digits font, glow, red pulse and zero flash are validated settings', async
   assert.equal(scr.state.displayGlow, 'off');
   ctl.socket.close(); scr.socket.close();
 });
+
+test('Flash button: the control page switches flashing on and off for every display', async () => {
+  const { control, display } = await createRoom();
+  const ctl = await open(control);
+  const scr = await open(display);
+  assert.equal(scr.state.flashing, false);
+  ctl.socket.emit('updateSettings', { flashing: true });
+  await sleep(150);
+  assert.equal(scr.state.flashing, true);
+  scr.socket.emit('updateSettings', { flashing: false }); // a display can't stop it
+  await sleep(150);
+  assert.equal(scr.state.flashing, true);
+  ctl.socket.emit('updateSettings', { flashing: false });
+  await sleep(150);
+  assert.equal(scr.state.flashing, false);
+  ctl.socket.close(); scr.socket.close();
+});

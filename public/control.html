@@ -686,6 +686,11 @@
         }
         /* Timer / Clock: the selected one is lit. */
         .output-mode-buttons .button.primary { background: var(--lit); color: #121314; }
+        .flash-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; }
+        .flash-row label.checkbox-label.timer-on-start { margin: 0; }
+        .flash-button { min-height: 36px; padding: 6px 16px; flex: 0 0 auto; }
+        .flash-button[aria-pressed="true"] { background: var(--warn, #f0a020); border-color: var(--warn, #f0a020); color: #1a1000; animation: flashKey 1s steps(1) infinite; }
+        @keyframes flashKey { 50% { background: transparent; color: var(--warn, #f0a020); } }
         .action-target[hidden] {
             display: none;
         }
@@ -1699,10 +1704,15 @@
                             </div>
                         </div>
                     </div>
-                    <label class="checkbox-label timer-on-start" title="If the display is showing the clock, Start switches it to the timer.">
-                        <input type="checkbox" id="timerOnStart" onchange="socket.emit('updateSettings', { timerOnStart: this.checked })">
-                        <span>Back to timer on Start</span>
-                    </label>
+                    <!-- Flash: every display (and the Hive) flashes until pressed again -
+                         to get a speaker's attention. Not kept over a restart. -->
+                    <div class="flash-row">
+                        <label class="checkbox-label timer-on-start" title="If the display is showing the clock, Start switches it to the timer.">
+                            <input type="checkbox" id="timerOnStart" onchange="socket.emit('updateSettings', { timerOnStart: this.checked })">
+                            <span>Back to timer on Start</span>
+                        </label>
+                        <button type="button" class="button secondary flash-button" id="flashBtn" aria-pressed="false" onclick="toggleFlash()" title="Flash the displays to get the speaker's attention">Flash</button>
+                    </div>
                 </div>
                 <div>
                     <div class="setup-heading">Quick presets <span class="presets-save-hint"><span class="mouse">· Ctrl+click to save</span><span class="touch">· Long-press to save</span></span></div>
@@ -2868,6 +2878,7 @@
             // Timer / Clock follow the room, whoever changed it (another panel, Companion, Start).
             if (state.outputMode) updateOutputModeButtons(state.outputMode);
             document.getElementById('timerOnStart').checked = !!state.timerOnStart;
+            updateFlashButton(!!state.flashing);
             document.getElementById('takeOverAsk').checked = !!state.takeOverAsk;
             document.getElementById('rundownAutoStart').checked = !!state.rundownAutoStart; // a room setting: Companion's TAKE follows it too
             // roomInfo is only ever sent once, on the first state after connecting
@@ -3640,6 +3651,19 @@
         function updateOutputModeButtons(mode) {
             document.getElementById('modeTimerBtn').classList.toggle('primary', mode==='timer');
             document.getElementById('modeClockBtn').classList.toggle('primary', mode==='clock');
+        }
+
+        // Flash the displays on demand (see .flash-row). The button flashes too
+        // while they do, and reads "Stop flash".
+        let flashingNow = false;
+        function updateFlashButton(on) {
+            flashingNow = on;
+            const btn = document.getElementById('flashBtn');
+            btn.setAttribute('aria-pressed', String(on));
+            btn.textContent = on ? 'Stop flash' : 'Flash';
+        }
+        function toggleFlash() {
+            socket.emit('updateSettings', { flashing: !flashingNow });
         }
 
         function setOutputMode(mode){
