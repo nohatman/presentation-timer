@@ -120,6 +120,12 @@
         .screen-chip:hover { border-color: var(--ink-2); color: var(--ink); }
         .screen-chip.on { border-style: solid; border-color: var(--seam); background: var(--well); color: var(--ink); }
         .screen-chip.on::before { content: ''; width: 8px; height: 8px; border-radius: 1px; background: var(--go); }
+        .screen-chip.on.hive-wait::before { background: var(--warn); }
+        .screen-chip.on.hive-fault::before { background: var(--stop); }
+        .menu .sub.fault { color: var(--stop); }
+        .menu .sub.wait { color: var(--warn); }
+        .menu .hive-port { display: flex; align-items: center; gap: 8px; padding: 4px 12px 8px; font-size: 0.92rem; color: var(--ink-2); }
+        .menu .hive-port select { flex: 1; min-width: 0; font: inherit; background: var(--well); color: var(--ink); border: 1px solid var(--seam); border-radius: var(--radius); padding: 3px 6px; }
 
         /* Menus (screen picker, more) - base styles in foxy.css */
         .menu .menu-note { color: var(--ink-2); font-size: 0.92rem; padding: 6px 12px 4px; max-width: 280px; line-height: 1.4; }
@@ -1326,7 +1332,9 @@
             appOutputs = outputs;
             if (!roomsData.length) return; // rooms not loaded yet; the next refresh draws them
             updateDashboard();
-            if (screenMenuFor) renderScreenMenu();
+            // Not while the network-port list is open: redrawing would close it.
+            const picking = document.activeElement && document.activeElement.closest && document.activeElement.closest('#screenMenu select');
+            if (screenMenuFor && !picking) renderScreenMenu();
         }
         if (window.foxyApp) {
             window.foxyApp.getOutputs().then(setAppOutputs).catch(() => {});
@@ -1336,8 +1344,47 @@
         function screenChip(room) {
             if (!appOutputs || room.licenceLocked) return '';
             const nums = appOutputs.screens.filter((sc) => sc.roomId === room.id).map((sc) => sc.number);
-            const label = nums.length ? `Screen ${nums.join(' + ')}` : (appOutputs.enabled ? 'No screen' : 'Screens off');
-            return `<button type="button" class="screen-chip ${nums.length ? 'on' : ''}" aria-haspopup="menu" title="Choose which screen shows this room" onclick="openScreenMenu('${escapeHtml(room.id)}', this)">${label}</button>`;
+            const hive = appOutputs.hive && appOutputs.hive.roomId === room.id ? appOutputs.hive : null;
+            const parts = [nums.length ? `Screen ${nums.join(' + ')}` : '', hive ? 'Hive' : ''].filter(Boolean);
+            const label = parts.length ? parts.join(' + ') : (appOutputs.enabled ? 'No screen' : 'Screens off');
+            // The dot goes amber/red when the Hive isn't sending (screens can't fail that way).
+            const hiveClass = !hive ? '' : hive.state === 'error' ? 'hive-fault' : hive.state === 'live' ? '' : 'hive-wait';
+            const title = hive && hive.reason ? `Hive display: ${hive.reason}` : 'Choose which screen shows this room';
+            return `<button type="button" class="screen-chip ${parts.length ? 'on' : ''} ${hiveClass}" aria-haspopup="menu" title="${escapeHtml(title)}" onclick="openScreenMenu('${escapeHtml(room.id)}', this)">${label}</button>`;
+        }
+
+        // The Hive display (CDEther) part of the screen menu: one tick box,
+        // the network port it uses, and what it's doing.
+        const HIVE_WORDS = { off: '', connecting: 'Starting…', live: 'On', degraded: 'Reconnecting…', error: 'Not working' };
+        function hiveMenuPart(room) {
+            const hive = appOutputs.hive;
+            if (!hive || !hive.available) return '';
+            const mine = hive.roomId === room.id;
+            const roomName = (id) => { const r = roomsData.find((x) => x.id === id); return r ? r.slug : 'another room'; };
+            let sub = '';
+            let subClass = '';
+            if (mine) {
+                sub = [HIVE_WORDS[hive.state], hive.reason].filter(Boolean).join(' · ');
+                subClass = hive.state === 'error' ? 'fault' : hive.state === 'live' ? '' : 'wait';
+            } else if (hive.roomId) {
+                sub = `Now showing ${roomName(hive.roomId)}`;
+            } else {
+                sub = 'Through a CDEther box on the network port';
+            }
+            const ports = hive.adapters.length
+                ? hive.adapters.map((a) => `<option value="${escapeHtml(a.name)}" ${a.name === hive.adapter ? 'selected' : ''}>${escapeHtml(a.name)} (${escapeHtml(a.address)})</option>`).join('')
+                : '<option value="">No network port connected</option>';
+            return `<hr><button type="button" class="screen-option" role="menuitemcheckbox" aria-checked="${mine}" onclick="chooseHive()"><span class="tick" aria-hidden="true">${mine ? '✓' : ''}</span><span>Hive display (CDEther)<span class="sub ${subClass}">${escapeHtml(sub)}</span></span></button>
+                <label class="hive-port">Network port <select onchange="chooseHivePort(this.value)" ${hive.adapters.length ? '' : 'disabled'}>${ports}</select></label>`;
+        }
+        async function chooseHive() {
+            const roomId = screenMenuFor;
+            if (!roomId || !appOutputs || !appOutputs.hive) return;
+            setAppOutputs(await window.foxyApp.setHive({ roomId: appOutputs.hive.roomId === roomId ? null : roomId }));
+        }
+        async function chooseHivePort(name) {
+            if (!name) return;
+            setAppOutputs(await window.foxyApp.setHive({ adapter: name }));
         }
 
         let screenMenuFor = null;
@@ -1355,7 +1402,7 @@
             }).join('');
             const note = appOutputs.enabled ? '' : '<div class="menu-note">Timers on other screens are switched off. Choosing a screen turns them on.</div>';
             const single = appOutputs.screens.length < 2 ? '<div class="menu-note">Only this laptop\'s screen is connected. Plug in a screen or projector to show the timer on it.</div>' : '';
-            menu.innerHTML = `<div class="menu-note">Show <b>${escapeHtml(room.slug)}</b> on:</div>${note}${items}${single}<hr><button type="button" role="menuitem" onclick="window.foxyApp.identifyScreens()">Identify screens</button>`;
+            menu.innerHTML = `<div class="menu-note">Show <b>${escapeHtml(room.slug)}</b> on:</div>${note}${items}${single}${hiveMenuPart(room)}<hr><button type="button" role="menuitem" onclick="window.foxyApp.identifyScreens()">Identify screens</button>`;
         }
         function openScreenMenu(id, btn) {
             const menu = document.getElementById('screenMenu');

@@ -61,6 +61,13 @@ fs.mkdirSync(APP, { recursive: true });
 for (const f of FINGERPRINT_FILES) fs.copyFileSync(path.join(ROOT, f), path.join(APP, f));
 fs.cpSync(path.join(ROOT, 'public'), path.join(APP, 'public'), { recursive: true });
 fs.cpSync(path.join(ROOT, 'tools', 'local-server'), path.join(APP, 'tools', 'local-server'), { recursive: true });
+// The Hive display (CDEther) bridge the app runs (Output > Hive display). Its
+// one dependency, socket.io-client, comes from app/node_modules.
+const BRIDGE_SRC = path.join(ROOT, 'tools', 'cdether-bridge');
+const BRIDGE_OUT = path.join(APP, 'tools', 'cdether-bridge');
+fs.mkdirSync(BRIDGE_OUT, { recursive: true });
+for (const f of ['bridge.js', 'package.json']) fs.copyFileSync(path.join(BRIDGE_SRC, f), path.join(BRIDGE_OUT, f));
+fs.cpSync(path.join(BRIDGE_SRC, 'lib'), path.join(BRIDGE_OUT, 'lib'), { recursive: true });
 
 // package.json without dev dependencies / scripts, then a production install.
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));

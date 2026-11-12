@@ -27,6 +27,12 @@ function line(level, msg) {
   console.log(`${new Date().toISOString()} [${level}] ${msg}`);
 }
 
+// Started by the Foxy Timer desktop app (an IPC channel is open): tell it the
+// status as it changes, so the dashboard can show it. A no-op in a terminal.
+const toApp = typeof process.send === 'function'
+  ? (msg) => { try { process.send(msg); } catch { /* app gone */ } }
+  : () => {};
+
 async function main() {
   if (process.argv.includes('--list-adapters')) {
     console.log('Network adapters:\n' + adapterHint());
@@ -38,6 +44,7 @@ async function main() {
     cfg = loadConfig(process.env, process.argv.slice(2));
   } catch (err) {
     line('error', err.message);
+    toApp({ type: 'error', message: err.message.split('\n')[0] });
     process.exit(1);
   }
 
@@ -84,6 +91,7 @@ async function main() {
       await sender.ready;
     } catch (err) {
       line('error', `Cannot open/bind UDP socket (${cfg.bindAddress || 'unbound'}): ${err.message}`);
+      toApp({ type: 'error', message: `Can't send on ${cfg.interfaceName || 'that network port'}: ${err.message}` });
       process.exit(1);
     }
   }
@@ -112,6 +120,7 @@ async function main() {
 
   let lastOverall = null;
   engine.on('status', (snap) => {
+    toApp({ type: 'status', state: snap.overall.state, reason: snap.overall.reason, broadcast: cfg.broadcastAddress, interfaceName: cfg.interfaceName });
     if (snap.overall.state !== lastOverall) {
       lastOverall = snap.overall.state;
       line('info', `STATUS ${snap.overall.state.toUpperCase()} - ${snap.overall.reason}`);
@@ -134,7 +143,8 @@ async function main() {
     lastFrameKey = key;
   });
 
-  engine.on('fatal', async () => {
+  engine.on('fatal', async (err) => {
+    toApp({ type: 'error', message: String(err && err.message || err) });
     await sender.close();
     process.exit(2);
   });
@@ -161,6 +171,9 @@ async function main() {
     process.on('message', (m) => {
       if (m && (m === 'shutdown' || m.cmd === 'shutdown')) shutdown('IPC shutdown');
     });
+    // The app that started us has gone (closed or crashed): don't keep
+    // driving the display on our own.
+    if (typeof process.send === 'function') process.on('disconnect', () => shutdown('app closed'));
   }
   if (process.stdin && process.stdin.readable) {
     process.stdin.setEncoding('utf8');

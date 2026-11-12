@@ -11,6 +11,8 @@ contextBridge.exposeInMainWorld('foxyApp', {
   getOutputs: () => ipcRenderer.invoke('outputs:get'),
   setScreenRoom: (displayId, roomId) => ipcRenderer.invoke('outputs:set', displayId, roomId),
   identifyScreens: () => ipcRenderer.invoke('outputs:identify'),
+  // Hive display (CDEther): { roomId } (null = off) and/or { adapter }.
+  setHive: (change) => ipcRenderer.invoke('hive:set', change),
   onOutputs: (callback) => ipcRenderer.on('outputs:changed', (event, outputs) => callback(outputs)),
   // App questions: the page says it's showing one, then answers with the
   // chosen option's index.

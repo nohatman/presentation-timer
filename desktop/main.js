@@ -169,8 +169,9 @@ async function toggleSharperText(item) {
 const SETTINGS_FILE = path.join(app.getPath('userData'), 'settings.json');
 // outputs: { [display id]: room id, or null for nothing } - a screen not in it
 // yet gets the default (see screenRoomId). outputEnabled switches them all off.
-let settings = { outputEnabled: true, outputs: {} };
+let settings = { outputEnabled: true, outputs: {}, hive: { roomId: null, adapter: null } };
 try { settings = { ...settings, ...JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8')) }; } catch { /* first run */ }
+settings.hive = { roomId: null, adapter: null, ...(settings.hive || {}) };
 // Settings from the one-output version: carry its screen + room across.
 if (settings.outputDisplayId != null && !Object.keys(settings.outputs).length) {
   settings.outputs[settings.outputDisplayId] = settings.outputRoomId || null;
@@ -308,7 +309,7 @@ function createMainWindow() {
     const response = await appDialog({
       title: 'Close Foxy Timer?',
       options: [
-        { label: 'Keep the timer running', detail: 'Closes this window. Phones, screens and Companion carry on. Open Foxy Timer again to get the window back.', kind: 'primary', busy: 'Closing…' },
+        { label: 'Keep the timer running', detail: `Closes this window. Phones, screens and Companion carry on${hiveRoom() ? ', but the Hive display switches off' : ''}. Open Foxy Timer again to get the window back.`, kind: 'primary', busy: 'Closing…' },
         { label: 'Stop Foxy Timer', detail: 'Stops the timer. Every display, control page and Companion disconnects.', kind: 'danger', busy: 'Stopping…' },
         { label: 'Cancel', kind: 'plain' },
       ],
@@ -528,6 +529,159 @@ async function appDialog({ title, message, options, cancelId }) {
   return response;
 }
 
+// ---------------------------------------------------------------- Hive display
+// A Hive / Interspace display through a CDEther box on the laptop's network
+// port. The bridge (tools/cdether-bridge/bridge.js) runs as a child of this
+// app on the bundled Node, following one room through its Display link -
+// read-only, the same as a screen. settings.hive = { roomId, adapter }: a
+// room set means "on"; kept across restarts so a reopened app carries on.
+// If it stops (cable out at start, crash), it's started again every few
+// seconds while a room is set. Closing the app switches the Hive off (the
+// bridge sends OFF on the way out).
+const BRIDGE_DIR = app.isPackaged ? path.join(BASE, 'app', 'tools', 'cdether-bridge') : path.join(BASE, 'tools', 'cdether-bridge');
+const HIVE_RETRY_MS = 5000;
+let bridgeNet = null;
+try { bridgeNet = require(path.join(BRIDGE_DIR, 'lib', 'net.js')); } catch { /* bridge not in this build */ }
+let hiveChild = null;
+let hiveStatus = { state: 'off', reason: '' };
+let hiveLastStart = 0;
+let hiveStopping = null;
+
+function hiveAdapters() {
+  if (!bridgeNet) return [];
+  try {
+    return bridgeNet.listInterfaces().filter((i) => i.broadcast)
+      .map((i) => ({
+        name: i.name, address: i.address, broadcast: i.broadcast,
+        wireless: /wi-?fi|wireless|wlan/i.test(i.name),
+        virtual: /vethernet|virtual|hyper-v|vmware|virtualbox|docker|wsl|loopback|tailscale|zerotier|vpn/i.test(i.name),
+      }));
+  } catch { return []; }
+}
+
+// The chosen port, else a real cable port (the CDEther is on a cable):
+// "Ethernet..." first, never a virtual one (Hyper-V switch, VPN) or Wi-Fi by itself.
+function hiveAdapter() {
+  const list = hiveAdapters();
+  // A port picked by hand is the only one used: unplugged = not sending, never
+  // quietly another port.
+  if (settings.hive.adapter) return list.find((a) => a.name === settings.hive.adapter) || null;
+  const wired = list.filter((a) => !a.wireless && !a.virtual);
+  return wired.find((a) => /^ethernet/i.test(a.name)) || wired[0] || null;
+}
+
+function hiveRoom() {
+  const room = settings.hive.roomId ? roomById(settings.hive.roomId) : null;
+  return room && !room.licenceLocked ? room : null;
+}
+
+function setHiveStatus(next) {
+  const changed = next.state !== hiveStatus.state || next.reason !== hiveStatus.reason;
+  hiveStatus = next;
+  if (changed) buildMenu();
+}
+
+function startHive() {
+  const room = hiveRoom();
+  if (!room || hiveChild || hiveStopping || !bridgeNet) return;
+  const adapter = hiveAdapter();
+  if (!adapter) {
+    setHiveStatus({ state: 'error', reason: settings.hive.adapter ? `"${settings.hive.adapter}" isn't connected. Check the network cable.` : 'No network cable connected. Plug the CDEther into this laptop\'s network port.' });
+    return;
+  }
+  let token = null;
+  try { token = new URL(room.displayUrl).searchParams.get('token'); } catch { /* no link */ }
+  if (!token) { setHiveStatus({ state: 'error', reason: 'This room has no Display link.' }); return; }
+  hiveLastStart = Date.now();
+  const env = { ...process.env, SERVER_URL: LOCAL, DISPLAY_TOKEN: token, CDETHER_INTERFACE: adapter.name };
+  delete env.ELECTRON_RUN_AS_NODE;
+  delete env.BROADCAST_ADDRESS;
+  const child = spawn(NODE, [path.join(BRIDGE_DIR, 'bridge.js')], { cwd: BRIDGE_DIR, env, stdio: ['ignore', 'ignore', 'ignore', 'ipc'], windowsHide: true });
+  hiveChild = child;
+  setHiveStatus({ state: 'connecting', reason: `Starting on ${adapter.name}…` });
+  child.on('message', (m) => {
+    if (!m || hiveChild !== child) return;
+    if (m.type === 'status') {
+      const state = m.state === 'idle' ? 'connecting' : m.state;
+      const reason = state === 'live' ? `Sending to ${m.broadcast} on ${m.interfaceName}` : m.reason;
+      setHiveStatus({ state, reason });
+    } else if (m.type === 'error') {
+      setHiveStatus({ state: 'error', reason: m.message });
+    }
+  });
+  child.on('error', (err) => { if (hiveChild === child) setHiveStatus({ state: 'error', reason: err.message }); });
+  child.on('exit', () => {
+    if (hiveChild !== child) return;
+    hiveChild = null;
+    if (!hiveRoom()) setHiveStatus({ state: 'off', reason: '' });
+    else if (hiveStatus.state !== 'error') setHiveStatus({ state: 'error', reason: 'Stopped unexpectedly. Starting again…' });
+  });
+}
+
+// Intentional stop: the bridge sends OFF, then exits. Forced after 3 s.
+function stopHive() {
+  const child = hiveChild;
+  if (!child) return hiveStopping || Promise.resolve();
+  hiveChild = null;
+  hiveStopping = new Promise((resolve) => {
+    const done = () => { clearTimeout(force); hiveStopping = null; resolve(); };
+    const force = setTimeout(() => { try { child.kill(); } catch { /* gone */ } done(); }, 3000);
+    child.once('exit', done);
+    try { child.send({ cmd: 'shutdown' }); } catch { try { child.kill(); } catch { /* gone */ } done(); }
+  });
+  return hiveStopping;
+}
+
+// Called every few seconds and after any change: start, restart or stop the
+// bridge so it matches settings.hive and the rooms.
+let hiveRunning = { roomId: null, adapter: null, token: null };
+async function syncHive() {
+  const room = hiveRoom();
+  const adapter = room ? hiveAdapter() : null;
+  let token = null;
+  try { token = room ? new URL(room.displayUrl).searchParams.get('token') : null; } catch { /* none */ }
+  const want = { roomId: room ? room.id : null, adapter: adapter ? adapter.name : null, token };
+  const same = want.roomId === hiveRunning.roomId && want.adapter === hiveRunning.adapter && want.token === hiveRunning.token;
+  if (hiveChild && !same) await stopHive();
+  if (!room) { if (hiveStatus.state !== 'off') setHiveStatus({ state: 'off', reason: '' }); hiveRunning = want; return; }
+  if (!hiveChild && Date.now() - hiveLastStart >= (same ? HIVE_RETRY_MS : 0)) {
+    hiveRunning = want;
+    startHive();
+  }
+}
+
+function setHive(change) {
+  settings.hive = { ...settings.hive, ...change };
+  saveSettings();
+  hiveLastStart = 0;
+  syncHive().then(buildMenu);
+}
+
+function hiveSnapshot() {
+  const adapter = hiveAdapter();
+  return {
+    available: !!bridgeNet,
+    roomId: hiveRoom() ? settings.hive.roomId : null,
+    adapter: adapter ? adapter.name : null,
+    adapterChosen: settings.hive.adapter || null,
+    adapters: hiveAdapters(),
+    state: hiveStatus.state,
+    reason: hiveStatus.reason,
+  };
+}
+
+ipcMain.handle('hive:set', (event, change) => {
+  const next = {};
+  if (change && Object.prototype.hasOwnProperty.call(change, 'roomId')) {
+    const room = change.roomId == null ? null : roomById(String(change.roomId));
+    if (change.roomId != null && (!room || room.licenceLocked)) return outputsSnapshot();
+    next.roomId = room ? room.id : null;
+  }
+  if (change && Object.prototype.hasOwnProperty.call(change, 'adapter')) next.adapter = change.adapter ? String(change.adapter) : null;
+  setHive(next);
+  return outputsSnapshot();
+});
+
 // ---------------------------------------------------------------- dashboard
 // What the dashboard needs to show "🖥 Screen 2" on each room and change it
 // (desktop/preload.js). Sent again whenever the menu is rebuilt - that is,
@@ -542,6 +696,7 @@ function outputsSnapshot() {
       primary: entry.primary,
       roomId: settings.outputEnabled ? screenRoomId(entry) : null,
     })),
+    hive: hiveSnapshot(),
   };
 }
 
@@ -558,6 +713,41 @@ ipcMain.handle('outputs:set', (event, displayId, roomId) => {
 ipcMain.handle('outputs:identify', () => { identifyScreens(); });
 
 // ---------------------------------------------------------------- menu
+const HIVE_WORDS = { off: 'off', connecting: 'starting…', live: 'on', degraded: 'reconnecting…', error: 'not working' };
+function hiveMenu() {
+  const room = hiveRoom();
+  const adapter = hiveAdapter();
+  const adapters = hiveAdapters();
+  return [
+    { type: 'separator' },
+    {
+      label: `Hive display (CDEther)  →  ${room ? `${room.slug} · ${HIVE_WORDS[hiveStatus.state] || hiveStatus.state}` : 'nothing'}`,
+      submenu: [
+        { label: 'Nothing', type: 'checkbox', checked: !room, click: () => setHive({ roomId: null }) },
+        { type: 'separator' },
+        ...(rooms.length
+          ? rooms.map((r) => ({
+            label: r.licenceLocked ? `${r.slug} (not in the free version)` : r.slug,
+            type: 'checkbox', checked: !!room && room.id === r.id, enabled: !r.licenceLocked,
+            click: () => setHive({ roomId: r.id }),
+          }))
+          : [{ label: 'No rooms yet', enabled: false }]),
+        { type: 'separator' },
+        {
+          label: `Network port  →  ${adapter ? adapter.name : 'none connected'}`,
+          submenu: adapters.length
+            ? adapters.map((a) => ({
+              label: `${a.name}  (${a.address})`, type: 'checkbox', checked: !!adapter && adapter.name === a.name,
+              click: () => setHive({ adapter: a.name }),
+            }))
+            : [{ label: 'No network port connected', enabled: false }],
+        },
+        ...(room && hiveStatus.reason ? [{ label: hiveStatus.reason.slice(0, 90), enabled: false }] : []),
+      ],
+    },
+  ];
+}
+
 function buildMenu() {
   const entries = orderedDisplays();
   const template = [
@@ -598,6 +788,7 @@ function buildMenu() {
           };
         }),
         ...(entries.length === 1 ? [{ type: 'separator' }, { label: 'No other screen connected', enabled: false }] : []),
+        ...(bridgeNet ? hiveMenu() : []),
       ],
     },
     {
@@ -645,6 +836,12 @@ if (process.argv.includes('--stop')) {
     createMainWindow();
     buildMenu();
     syncOutput();
+    syncHive();
+    app.on('before-quit', (e) => {
+      if (!hiveChild) return;
+      e.preventDefault(); // let the Hive switch off first, then quit for real
+      stopHive().then(() => app.quit());
+    });
 
     screen.on('display-added', () => { syncOutput(); buildMenu(); });
     screen.on('display-removed', () => { syncOutput(); buildMenu(); });
@@ -661,6 +858,7 @@ if (process.argv.includes('--stop')) {
         engineDownSince = null;
         await refreshRooms();
         if (rooms.map((r) => r.id + r.slug + r.licenceLocked).join() !== before) { buildMenu(); syncOutput(); }
+        syncHive();
         return;
       }
       engineDownSince = engineDownSince || Date.now();
