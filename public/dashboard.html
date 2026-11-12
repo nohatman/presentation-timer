@@ -125,6 +125,26 @@
         .menu .sub.fault { color: var(--stop); }
         .menu .sub.wait { color: var(--warn); }
         .menu .hive-port { display: flex; align-items: center; gap: 8px; padding: 4px 12px 8px; font-size: 0.92rem; color: var(--ink-2); }
+        /* Hive display switch in the top bar (Windows app) */
+        .hive-btn { display: inline-flex; align-items: center; gap: 7px; }
+        .hive-btn[hidden] { display: none; }
+        .hive-btn .dot { width: 9px; height: 9px; border-radius: 1px; background: #5a5d62; }
+        .hive-btn.live .dot { background: var(--go); }
+        .hive-btn.wait .dot { background: var(--warn); }
+        .hive-btn.fault .dot { background: var(--stop); }
+        .hive-menu { width: 300px; padding: 10px 12px 12px; }
+        .hive-menu h3 { margin: 0 0 8px; font-size: 1rem; }
+        .hive-menu .hive-switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 0 10px; font-weight: 600; }
+        .hive-menu .hive-switch button { width: auto; display: inline-flex; padding: 0; border-radius: 999px; }
+        .hive-menu .track { width: 46px; height: 26px; border-radius: 999px; background: #45484d; position: relative; transition: background 0.15s; }
+        .hive-menu .track::after { content: ''; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; transition: left 0.15s; }
+        .hive-menu [aria-checked="true"] .track { background: var(--go-key); }
+        .hive-menu [aria-checked="true"] .track::after { left: 23px; }
+        .hive-menu .hive-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; font-size: 0.92rem; color: var(--ink-2); }
+        .hive-menu .hive-field select { font: inherit; color: var(--ink); background: var(--well); border: 1px solid var(--seam); border-radius: var(--radius); padding: 5px 6px; }
+        .hive-menu .hive-state { font-size: 0.92rem; color: var(--ink-2); line-height: 1.4; margin-top: 2px; }
+        .hive-menu .hive-state.fault { color: var(--stop); }
+        .hive-menu .hive-state.wait { color: var(--warn); }
         .menu .hive-port select { flex: 1; min-width: 0; font: inherit; background: var(--well); color: var(--ink); border: 1px solid var(--seam); border-radius: var(--radius); padding: 3px 6px; }
 
         /* Menus (screen picker, more) - base styles in foxy.css */
@@ -227,6 +247,7 @@
         <nav class="nav-links">
             <a href="/" id="homeLink" class="key small">Home</a>
             <a href="/admin/clients" id="manageClientsLink" class="key small" style="display:none;">Clients</a>
+            <button type="button" id="hiveBtn" class="key small hive-btn" hidden aria-haspopup="dialog" aria-expanded="false" onclick="toggleHiveMenu(this)"></button>
             <a href="/help" id="helpLink" class="key small" target="foxy-help">Help</a>
             <button id="companionBtn" onclick="openCompanionSetup(this)" class="key small" style="display:none;">Companion</button>
             <button onclick="logout()" id="logoutBtn" class="key small">Log out</button>
@@ -305,6 +326,7 @@
     <!-- One shared ⋯ menu for List and Mini layouts: kept outside
          #roomsContainer, which is redrawn every second. -->
     <div id="screenMenu" class="menu" role="menu" hidden></div>
+    <div id="hiveMenu" class="menu hive-menu" role="dialog" aria-label="Hive display" hidden></div>
     <div id="appDialog" class="dialog-overlay app-dialog" hidden>
         <div class="dialog app-dialog-box" role="alertdialog" aria-modal="true" aria-labelledby="appDialogTitle" tabindex="-1"></div>
     </div>
@@ -1091,6 +1113,7 @@
             const container = document.getElementById('roomsContainer');
 
             autoRoomLayout();
+            renderHiveBtn(); // room names can change
             // Update header stats
             document.getElementById('totalRooms').textContent = roomsData.length;
             const totalConnections = roomsData.reduce((sum, room) => sum + room.connections, 0);
@@ -1333,8 +1356,10 @@
             if (!roomsData.length) return; // rooms not loaded yet; the next refresh draws them
             updateDashboard();
             // Not while the network-port list is open: redrawing would close it.
-            const picking = document.activeElement && document.activeElement.closest && document.activeElement.closest('#screenMenu select');
+            const picking = document.activeElement && document.activeElement.closest && document.activeElement.closest('#screenMenu select, #hiveMenu select');
             if (screenMenuFor && !picking) renderScreenMenu();
+            renderHiveBtn();
+            if (!document.getElementById('hiveMenu').hidden && !picking) renderHiveMenu();
         }
         if (window.foxyApp) {
             window.foxyApp.getOutputs().then(setAppOutputs).catch(() => {});
@@ -1385,6 +1410,84 @@
         async function chooseHivePort(name) {
             if (!name) return;
             setAppOutputs(await window.foxyApp.setHive({ adapter: name }));
+        }
+
+        // ---- Hive display switch in the top bar ----
+        // One Hive per laptop, so it lives with the app-wide controls: an
+        // On/Off switch, which room it follows (only asked with 2+ rooms) and
+        // the network port. The room's screen menu does the same thing.
+        function hiveView() {
+            const hive = appOutputs && appOutputs.hive;
+            if (!hive || !hive.available) return null;
+            const usable = roomsData.filter((r) => !r.licenceLocked);
+            const room = roomsData.find((r) => r.id === hive.roomId) || null;
+            // The room switching On would use: the last one chosen, else the first.
+            const next = room || usable.find((r) => r.id === hive.lastRoomId) || usable[0] || null;
+            const cls = !room ? '' : hive.state === 'live' ? 'live' : hive.state === 'error' ? 'fault' : 'wait';
+            return { hive, usable, room, next, cls };
+        }
+        function renderHiveBtn() {
+            const btn = document.getElementById('hiveBtn');
+            const v = hiveView();
+            btn.hidden = !v;
+            if (!v) return;
+            btn.className = `key small hive-btn ${v.cls}`;
+            const word = !v.room ? 'Off' : v.usable.length > 1 ? v.room.slug : (HIVE_WORDS[v.hive.state] || 'On');
+            btn.innerHTML = `<span class="dot" aria-hidden="true"></span>Hive: ${escapeHtml(word)}`;
+            btn.title = v.room ? `Hive display: ${v.hive.reason || ''}` : 'Hive display (CDEther) - off';
+        }
+        function renderHiveMenu() {
+            const menu = document.getElementById('hiveMenu');
+            const v = hiveView();
+            if (!v) { closeHiveMenu(); return; }
+            const { hive, usable, room, next } = v;
+            const on = !!room;
+            const rooms = usable.length > 1
+                ? `<label class="hive-field">Follows room<select onchange="chooseHiveRoom(this.value)">${usable.map((r) => `<option value="${escapeHtml(r.id)}" ${next && r.id === next.id ? 'selected' : ''}>${escapeHtml(r.slug)}</option>`).join('')}</select></label>`
+                : '';
+            const ports = hive.adapters.length
+                ? hive.adapters.map((a) => `<option value="${escapeHtml(a.name)}" ${a.name === hive.adapter ? 'selected' : ''}>${escapeHtml(a.name)} (${escapeHtml(a.address)})</option>`).join('')
+                : '<option value="">No network port connected</option>';
+            const stateText = on ? [hive.state === 'live' ? '' : HIVE_WORDS[hive.state], hive.reason].filter(Boolean).join(' · ') :'Plug the CDEther into this laptop\'s network port, then switch on.';
+            const stateClass = on ? (hive.state === 'error' ? 'fault' : hive.state === 'live' ? '' : 'wait') : '';
+            menu.innerHTML = `<h3>Hive display (CDEther)</h3>
+                <div class="hive-switch"><span id="hiveSwitchLabel">${on ? 'On' : 'Off'}</span>
+                    <button type="button" role="switch" aria-checked="${on}" aria-labelledby="hiveSwitchLabel" onclick="toggleHive()" ${next ? '' : 'disabled'}><span class="track"></span></button></div>
+                ${rooms}
+                <label class="hive-field">Network port<select onchange="chooseHivePort(this.value)" ${hive.adapters.length ? '' : 'disabled'}>${ports}</select></label>
+                <div class="hive-state ${stateClass}">${escapeHtml(stateText)}</div>`;
+        }
+        function toggleHiveMenu(btn) {
+            const menu = document.getElementById('hiveMenu');
+            if (!menu.hidden) { closeHiveMenu(); return; }
+            closeRoomMenu(); closeScreenMenu();
+            renderHiveMenu();
+            menu.hidden = false;
+            btn.setAttribute('aria-expanded', 'true');
+            const b = btn.getBoundingClientRect();
+            menu.style.left = Math.max(8, Math.min(window.innerWidth - menu.offsetWidth - 8, b.right - menu.offsetWidth)) + 'px';
+            menu.style.top = (b.bottom + 4) + 'px';
+            const sw = menu.querySelector('[role="switch"]');
+            if (sw) sw.focus();
+        }
+        function closeHiveMenu() {
+            const menu = document.getElementById('hiveMenu');
+            if (menu) menu.hidden = true;
+            const btn = document.getElementById('hiveBtn');
+            if (btn) btn.setAttribute('aria-expanded', 'false');
+        }
+        async function toggleHive() {
+            const v = hiveView();
+            if (!v) return;
+            setAppOutputs(await window.foxyApp.setHive({ roomId: v.room ? null : (v.next ? v.next.id : null) }));
+            const sw = document.querySelector('#hiveMenu [role="switch"]');
+            if (sw) sw.focus();
+        }
+        async function chooseHiveRoom(id) {
+            const v = hiveView();
+            if (!v) return;
+            // On: follow the new room now. Off: remember it for switching on.
+            setAppOutputs(await window.foxyApp.setHive(v.room ? { roomId: id } : { lastRoomId: id }));
         }
 
         let screenMenuFor = null;
@@ -1510,10 +1613,11 @@
         document.addEventListener('click', (e) => {
             if (!e.target.closest('#roomMenu') && !e.target.closest('.key.more')) closeRoomMenu();
             if (!e.target.closest('#screenMenu') && !e.target.closest('.screen-chip')) closeScreenMenu();
+            if (!e.target.closest('#hiveMenu') && !e.target.closest('#hiveBtn')) closeHiveMenu();
         });
-        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeRoomMenu(); closeScreenMenu(); } });
-        window.addEventListener('scroll', () => { closeRoomMenu(); closeScreenMenu(); }, { passive: true });
-        window.addEventListener('resize', () => { closeRoomMenu(); closeScreenMenu(); });
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeRoomMenu(); closeScreenMenu(); closeHiveMenu(); } });
+        window.addEventListener('scroll', () => { closeRoomMenu(); closeScreenMenu(); closeHiveMenu(); }, { passive: true });
+        window.addEventListener('resize', () => { closeRoomMenu(); closeScreenMenu(); closeHiveMenu(); });
 
         // ---- "This laptop": one summary line unless opened or something needs attention ----
         let laptopOpenedByUser = false;

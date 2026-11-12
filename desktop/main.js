@@ -662,6 +662,7 @@ function hiveSnapshot() {
   return {
     available: !!bridgeNet,
     roomId: hiveRoom() ? settings.hive.roomId : null,
+    lastRoomId: settings.hive.lastRoomId || null,
     adapter: adapter ? adapter.name : null,
     adapterChosen: settings.hive.adapter || null,
     adapters: hiveAdapters(),
@@ -678,6 +679,9 @@ ipcMain.handle('hive:set', (event, change) => {
     next.roomId = room ? room.id : null;
   }
   if (change && Object.prototype.hasOwnProperty.call(change, 'adapter')) next.adapter = change.adapter ? String(change.adapter) : null;
+  // The room the top-bar switch turns on with: the last one followed or picked.
+  const last = next.roomId || (change && change.lastRoomId != null ? String(change.lastRoomId) : null);
+  if (last && roomById(last)) next.lastRoomId = last;
   setHive(next);
   return outputsSnapshot();
 });
